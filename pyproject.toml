@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
-    {name = "jinhyuk2me"},
+    {name = "TheMomentLab"},
 ]
 keywords = ["lerobot", "robotics", "gui", "calibration", "teleop"]
 classifiers = [
@@ -34,9 +34,9 @@ dependencies = [
 lerobot-studio = "lerobot_studio.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/jinhyuk2me/lerobot-studio"
-Repository = "https://github.com/jinhyuk2me/lerobot-studio"
-Issues = "https://github.com/jinhyuk2me/lerobot-studio/issues"
+Homepage = "https://github.com/TheMomentLab/lerobot-studio"
+Repository = "https://github.com/TheMomentLab/lerobot-studio"
+Issues = "https://github.com/TheMomentLab/lerobot-studio/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

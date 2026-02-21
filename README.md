@@ -28,7 +28,7 @@ pip install lerobot-studio
 Or from source:
 
 ```bash
-git clone https://github.com/jinhyuk2me/lerobot-studio.git
+git clone https://github.com/TheMomentLab/lerobot-studio.git
 cd lerobot-studio
 pip install -e .
 ```
