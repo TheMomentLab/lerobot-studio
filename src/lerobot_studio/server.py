@@ -171,11 +171,12 @@ class CameraStreamer:
                 cap.set(cv2.CAP_PROP_FOURCC, fourcc)
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, s["width"])
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, s["height"])
-                cap.set(cv2.CAP_PROP_FPS, s["fps"])
+                cap.set(cv2.CAP_PROP_FPS, min(s["fps"], 8))
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 if cap.isOpened():
                     ret, _ = cap.read()
                     if ret:
+                        cap.set(cv2.CAP_PROP_FPS, s["fps"])
                         time.sleep(0.5)
                     else:
                         cap.release()
@@ -636,34 +637,22 @@ def create_app(
         repo_id = f"{user}/{repo}"
         base = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo
         info_path = base / "meta" / "info.json"
-        if not info_path.exists():
-            return Response(status_code=404, content="Dataset not found")
         
-        try:
-            from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
-        except ImportError:
-            return Response(status_code=500, content="lerobot is not installed")
+        if not info_path.exists():
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"detail": "Dataset not found"})
 
         try:
-            ds = LeRobotDataset(repo_id, local_files_only=True)
             info = json.loads(info_path.read_text())
             cameras = [k for k, v in info.get("features", {}).items() if v.get("dtype") == "video"]
             
             episodes = []
-            if hasattr(ds, "meta") and hasattr(ds.meta, "episodes"):
-                for ep_idx, ep_data in ds.meta.episodes.items():
-                    episodes.append({
-                        "episode_index": ep_idx,
-                        "length": ep_data.get("length", 0),
-                        "tasks": ep_data.get("tasks", [])
-                    })
-            else:
-                for ep_idx in range(info.get("total_episodes", 0)):
-                    episodes.append({
-                        "episode_index": ep_idx,
-                        "length": 0,
-                        "tasks": []
-                    })
+            for ep_idx in range(info.get("total_episodes", 0)):
+                episodes.append({
+                    "episode_index": ep_idx,
+                    "length": 0,
+                    "tasks": []
+                })
             
             return {
                 "dataset_id": repo_id,
@@ -674,7 +663,8 @@ def create_app(
                 "episodes": episodes
             }
         except Exception as e:
-            return Response(status_code=500, content=f"Failed to load dataset: {str(e)}")
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"detail": f"Failed to load dataset: {str(e)}"})
 
     @app.get("/api/datasets/{user}/{repo}/videos/{camera}/{chunk}/{file}")
     def api_dataset_video(user: str, repo: str, camera: str, chunk: str, file: str):
@@ -684,6 +674,20 @@ def create_app(
             return Response(status_code=404, content="Video not found")
         from fastapi.responses import FileResponse
         return FileResponse(video_path, media_type="video/mp4")
+
+    @app.delete("/api/datasets/{user}/{repo}")
+    def api_dataset_delete(user: str, repo: str):
+        base = Path.home() / ".cache" / "huggingface" / "lerobot" / user / repo
+        if not base.exists():
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"detail": "Dataset not found"})
+        try:
+            import shutil
+            shutil.rmtree(base)
+            return {"ok": True}
+        except Exception as e:
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=500, content={"detail": f"Failed to delete dataset: {str(e)}"})
 
     # ─── API: Motor Setup ──────────────────────────────────────────────────
     @app.post("/api/motor_setup/start")
