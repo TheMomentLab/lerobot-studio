@@ -116,3 +116,21 @@ def build_motor_setup_args(python_exe: str, data: dict) -> list[str]:
         f"--robot.type={robot_type}",
         f"--robot.port={port}",
     ]
+
+
+def build_train_args(python_exe: str, cfg: dict) -> list[str]:
+    # LeRobot uses Hydra configuration
+    policy = cfg.get("train_policy", "act")
+    repo_id = cfg.get("train_repo_id", "user/dataset")
+    steps = cfg.get("train_steps", 100000)
+    device = cfg.get("train_device", "cuda")
+    
+    return [
+        python_exe,
+        "-m",
+        "lerobot.scripts.train",
+        f"policy={policy}",
+        f"dataset_repo_id={repo_id}",
+        f"training.offline_steps={steps}",
+        f"device={device}",
+    ]

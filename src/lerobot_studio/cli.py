@@ -1,9 +1,22 @@
 import argparse
 import sys
+import os
+import time
+import socket
+import threading
+import webbrowser
 from pathlib import Path
 
 
 def find_lerobot_src() -> Path | None:
+    for candidate in [
+        Path.cwd() / "src" / "lerobot",
+        Path.cwd() / "lerobot" / "src" / "lerobot",
+        Path.cwd() / "reference" / "lerobot" / "src",
+    ]:
+        if candidate.is_dir():
+            return candidate.parent
+
     try:
         import lerobot
         module_file = getattr(lerobot, "__file__", None)
@@ -12,14 +25,23 @@ def find_lerobot_src() -> Path | None:
     except ImportError:
         pass
 
-    for candidate in [
-        Path.cwd() / "src" / "lerobot",
-        Path.cwd() / "lerobot" / "src" / "lerobot",
-        Path.cwd() / "reference" / "lerobot" / "src",
-    ]:
-        if candidate.is_dir():
-            return candidate.parent
     return None
+
+
+def get_local_ip() -> str:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+def open_browser(port: int):
+    time.sleep(1.5)
+    webbrowser.open(f"http://localhost:{port}")
 
 
 def main():
@@ -46,6 +68,14 @@ def main():
     parser.add_argument(
         "--rules-path", type=Path, default=Path("/etc/udev/rules.d/99-lerobot.rules"),
         help="Path to udev rules file",
+    )
+    parser.add_argument(
+        "--no-browser", action="store_true",
+        help="Do not open a browser automatically",
+    )
+    parser.add_argument(
+        "--headless", action="store_true",
+        help="Alias for --no-browser",
     )
     args = parser.parse_args()
 
@@ -90,7 +120,17 @@ def main():
     print(f"🤖  LeRobot Studio v{_version()}")
     print(f"    lerobot: {lerobot_src}")
     print(f"    config:  {config_dir}")
-    print(f"    Open:    http://localhost:{args.port}\n")
+    print(f"    Open (Local):   http://localhost:{args.port}")
+    if args.host == "0.0.0.0":
+        print(f"    Open (Network): http://{get_local_ip()}:{args.port}")
+    print("\n")
+
+    if not args.no_browser and not args.headless:
+        is_ssh = "SSH_CLIENT" in os.environ or "SSH_TTY" in os.environ
+        has_display = "DISPLAY" in os.environ or os.name == "nt"
+        
+        if not is_ssh and has_display:
+            threading.Thread(target=open_browser, args=(args.port,), daemon=True).start()
 
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
