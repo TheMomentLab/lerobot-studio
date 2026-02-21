@@ -163,6 +163,7 @@ const WS = {
     RecordTab.syncBtn();
     CalibrateTab.syncBtn();
     MotorSetupTab.syncBtn();
+    TrainTab.syncBtn();
     StatusTab.updateProcs(msg.processes);
   },
 };
@@ -195,6 +196,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'motor-setup')  MotorSetupTab.refreshArms();
     if (btn.dataset.tab === 'teleop')       TeleopTab.showFeeds();
     if (btn.dataset.tab === 'record')       RecordTab.showFeeds();
+    if (btn.dataset.tab === 'train')        { TrainTab.refreshGpu(); TrainTab.refreshDatasets(); }
     if (btn.dataset.tab === 'dataset')      DatasetTab.refreshList();
   });
 });
@@ -1051,6 +1053,107 @@ document.getElementById('ms-stdin').addEventListener('keydown', e => {
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════════
+   TRAIN TAB
+══════════════════════════════════════════════════════════════════════════════ */
+const TrainTab = {
+  validateRepoId() {
+    const val = getVal('train-repo').trim();
+    const input = document.getElementById('train-repo');
+    const err = document.getElementById('train-repo-error');
+    if (!val) {
+      input.style.borderColor = 'var(--red)';
+      if (err) { err.textContent = 'Repo ID cannot be empty'; err.style.display = 'block'; }
+      return false;
+    }
+    if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(val)) {
+      input.style.borderColor = 'var(--red)';
+      if (err) { err.textContent = 'Must be in format: username/dataset-name'; err.style.display = 'block'; }
+      return false;
+    }
+    input.style.borderColor = 'var(--border)';
+    if (err) err.style.display = 'none';
+    return true;
+  },
+
+  async refreshDatasets() {
+    try {
+      const res = await api.get('/api/datasets');
+      const dl = document.getElementById('train-dataset-list');
+      if (dl && res.datasets) {
+        dl.innerHTML = res.datasets.map(ds => `<option value="${ds.id}"></option>`).join('');
+      }
+    } catch (e) {
+      console.warn("Failed to load datasets for train tab", e);
+    }
+  },
+
+  async start() {
+    if (!this.validateRepoId()) {
+      appendLog('train-log', '[ERROR] Invalid Dataset Repo ID format.', 'error');
+      return;
+    }
+    const repoId = getVal('train-repo').trim();
+
+    const body = {
+      train_policy: getVal('train-policy'),
+      train_repo_id: repoId,
+      train_steps: parseInt(getVal('train-steps'), 10) || 100000,
+      train_device: getVal('train-device'),
+    };
+    
+    this.clearLog();
+    const res = await api.post('/api/train/start', body);
+    if (!res.ok) appendLog('train-log', `[ERROR] ${res.error}`, 'error');
+  },
+
+  async stop() {
+    await api.post('/api/process/train/stop');
+  },
+
+  clearLog() { clearProcessLog('train-log'); },
+
+  syncBtn() {
+    syncProcessButtons('train', 'train-start-btn', 'train-stop-btn');
+  },
+
+  async refreshGpu() {
+    const el = document.getElementById('train-gpu-status');
+    if (!el) return;
+    
+    el.innerHTML = '<div class="muted">Loading GPU info...</div>';
+    
+    try {
+      const res = await api.get('/api/gpu/status');
+      if (res.exists) {
+        el.innerHTML = `
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between;">
+              <span>GPU Utilization</span>
+              <span style="font-family:var(--mono); font-weight:bold;">${res.utilization}%</span>
+            </div>
+            <div class="usb-bus-bar-track">
+              <div class="usb-bar-fill ${res.utilization > 80 ? 'danger' : res.utilization > 50 ? 'warn' : 'good'}" style="width:${res.utilization}%"></div>
+            </div>
+            
+            <div style="display:flex; justify-content:space-between; margin-top:8px;">
+              <span>VRAM Usage</span>
+              <span style="font-family:var(--mono);">${res.memory_used}MB / ${res.memory_total}MB</span>
+            </div>
+            <div class="usb-bus-bar-track">
+              <div class="usb-bar-fill ${res.memory_percent > 85 ? 'danger' : res.memory_percent > 70 ? 'warn' : 'good'}" style="width:${res.memory_percent}%"></div>
+            </div>
+          </div>
+        `;
+      } else {
+        el.innerHTML = `<div class="muted">NVIDIA GPU info unavailable: ${res.error || 'Check nvidia-smi'}</div>`;
+      }
+    } catch (e) {
+      el.innerHTML = `<div style="color:var(--red);">Failed to load GPU info</div>`;
+    }
+  }
+};
+
+/* ═══════════════════════════════════════════════════════════════════════════════
    DATASET VIEWER TAB
 ══════════════════════════════════════════════════════════════════════════════ */
 const DatasetTab = {
@@ -1306,9 +1409,10 @@ const FeedManager = {
   },
 
   _startWatcher(vid) {
-    const STALL_MS = 5000;
-    const TICK_MS  = 2000;
-    this._watcherState.set(vid, { lastHash: null, stalledAt: null });
+    const STALL_MS       = 5000;
+    const TICK_MS        = 2000;
+    const NO_FRAME_TICKS = 8;
+    this._watcherState.set(vid, { lastHash: null, stalledAt: null, noFrameTicks: 0 });
 
     const canvas = document.createElement('canvas');
     canvas.width = 16; canvas.height = 16;
@@ -1319,7 +1423,19 @@ const FeedManager = {
       if (!card) { clearInterval(id); this._watchers.delete(vid); return; }
 
       const img = card.querySelector('img');
-      if (!img || !img.complete || img.naturalWidth === 0) return;
+      if (!img || !img.complete || img.naturalWidth === 0) {
+        const ws = this._watcherState.get(vid);
+        if (ws && img && img.naturalWidth === 0) {
+          ws.noFrameTicks += 1;
+          if (ws.noFrameTicks >= NO_FRAME_TICKS) {
+            this._onError(img);
+            clearInterval(id);
+            this._watchers.delete(vid);
+            this._watcherState.delete(vid);
+          }
+        }
+        return;
+      }
 
       try {
         ctx.drawImage(img, 0, 0, 16, 16);

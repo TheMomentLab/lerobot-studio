@@ -413,7 +413,6 @@ def create_app(
     # ─── API: MJPEG Streaming ──────────────────────────────────────────────
     async def mjpeg_gen(video_path: str, request: Request):
         streamer = get_streamer(video_path, CONFIG_PATH)
-        deadline = time.monotonic() + 12
         try:
             while True:
                 if await request.is_disconnected():
@@ -422,10 +421,7 @@ def create_app(
                     break
                 frame = streamer.latest_frame
                 if frame:
-                    deadline = time.monotonic() + 12
                     yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-                elif time.monotonic() > deadline:
-                    break
                 await asyncio.sleep(1 / 30)
         finally:
             release_streamer(video_path)
