@@ -9,13 +9,14 @@ import queue
 import re
 import shlex
 import shutil
+import psutil
 import subprocess
 import sys
 import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import cv2
 import uvicorn
@@ -38,7 +39,7 @@ from starlette.responses import Response
 
 CAMERA_ROLES = [
     "(none)", "top_cam_1", "top_cam_2", "top_cam_3",
-    "follower_cam_1", "follower_cam_2",
+    "wrist_cam_1", "wrist_cam_2",
 ]
 ROBOT_TYPES = [
     "so101_follower", "so100_follower",
@@ -60,7 +61,7 @@ DEFAULT_CONFIG = {
     "left_teleop_id":      "my_so101_leader_1",
     "right_teleop_id":     "my_so101_leader_2",
     "cameras": {
-        "front_1": "/dev/follower_cam_1",
+        "wrist_1": "/dev/wrist_cam_1",
         "top_1":   "/dev/top_cam_1",
         "top_2":   "/dev/top_cam_2",
     },
@@ -154,6 +155,7 @@ def get_arms() -> list[dict]:
             "path":    str(p),
             "symlink": find_symlink(p.name),
             "serial": props.get("ID_SERIAL_SHORT", ""),
+            "kernels": kernels_from_devpath(props.get("DEVPATH", "")),
         })
     return arms
 
@@ -185,8 +187,12 @@ class CameraStreamer:
             opened = False
             with _cam_open_lock:
                 cap = cv2.VideoCapture(self.real_path)
-                fourcc = cv2.VideoWriter_fourcc(*s["codec"])
-                cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                fourcc_fn = getattr(cv2, "VideoWriter_fourcc", None)
+                if callable(fourcc_fn):
+                    fourcc = cast(int, fourcc_fn(*s["codec"]))
+                else:
+                    fourcc = cast(int, cv2.VideoWriter.fourcc(*s["codec"]))
+                cap.set(cv2.CAP_PROP_FOURCC, float(fourcc))
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH, s["width"])
                 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, s["height"])
                 cap.set(cv2.CAP_PROP_FPS, min(s["fps"], 8))
@@ -429,6 +435,55 @@ def _arm_rule_lines(rules_path: Path) -> list[str]:
     ]
 
 
+def _parse_udev_rules(content: str) -> dict[str, list[dict[str, str | bool]]]:
+    camera_rules: list[dict[str, str | bool]] = []
+    arm_rules: list[dict[str, str | bool]] = []
+    devices: list[dict[str, str | bool]] = []
+
+    def _extract(pattern: str, text: str) -> str:
+        match = re.search(pattern, text)
+        if not match:
+            return ""
+        return match.group(1)
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "SYMLINK" not in line:
+            continue
+
+        subsystem = _extract(r'SUBSYSTEM=="([^"]+)"', line)
+        kernels = _extract(r'KERNELS=="([^"]+)"', line)
+        serial = _extract(r'ATTRS\{serial\}=="([^"]+)"', line)
+        symlink = _extract(r'SYMLINK\+="([^"]+)"', line)
+        mode = _extract(r'MODE="([^"]+)"', line)
+
+        if not symlink:
+            continue
+
+        exists = os.path.exists(f"/dev/{symlink}")
+        item = {
+            "subsystem": subsystem,
+            "kernel": kernels,
+            "serial": serial,
+            "symlink": symlink,
+            "mode": mode,
+            "exists": exists,
+        }
+        devices.append(item)
+        if subsystem == "video4linux":
+            camera_rules.append(item)
+        elif subsystem == "tty":
+            arm_rules.append(item)
+
+    return {
+        "camera_rules": camera_rules,
+        "arm_rules": arm_rules,
+        "devices": devices,
+    }
+
+
 def _build_rules(assignments: dict[str, str], arm_assignments: dict[str, str], rules_path: Path) -> str:
     lines = _arm_rule_lines(rules_path) + [
         "",
@@ -607,6 +662,8 @@ def create_app(
     CONFIG_PATH = config_dir / "config.json"
     PROFILES_DIR = config_dir / "profiles"
     FALLBACK_RULES_PATH = config_dir / "99-lerobot.rules"
+    HISTORY_PATH = config_dir / "history.json"
+    HISTORY_MAX = 200
     PYTHON = sys.executable
 
     app = FastAPI(title="LeRobot Studio")
@@ -627,6 +684,7 @@ def create_app(
     def _on_process_exit(name: str):
         if name in {"record", "teleop"}:
             unlock_cameras()
+        append_history(f"{name}_end")
 
     proc_mgr = ProcessManager(lerobot_src, on_process_exit=_on_process_exit)
     push_jobs: dict[str, dict] = {}
@@ -638,10 +696,47 @@ def create_app(
     def save_config(cfg: dict):
         _save_config(CONFIG_PATH, cfg)
 
+    def append_history(event_type: str, meta: dict | None = None):
+        """Append a session event to history.json (best-effort, never raises)."""
+        entry = {
+            "ts": datetime.datetime.now().isoformat(timespec="seconds"),
+            "type": event_type,
+            "meta": meta or {},
+        }
+        try:
+            if HISTORY_PATH.exists():
+                entries = json.loads(HISTORY_PATH.read_text())
+                if not isinstance(entries, list):
+                    entries = []
+            else:
+                entries = []
+            entries.append(entry)
+            if len(entries) > HISTORY_MAX:
+                entries = entries[-HISTORY_MAX:]
+            HISTORY_PATH.write_text(json.dumps(entries, indent=2))
+        except Exception:
+            pass
+
     # ─── API: Devices & Config ─────────────────────────────────────────────
     @app.get("/api/devices")
     def api_devices():
         return {"cameras": get_cameras(), "arms": get_arms()}
+
+    @app.post("/api/camera/check_paths")
+    def api_camera_check_paths(data: dict[str, object]):
+        paths = data.get("paths", [])
+        result: dict[str, bool] = {}
+        if not isinstance(paths, list):
+            return result
+        for p in paths:
+            if not isinstance(p, str):
+                continue
+            try:
+                real = os.path.realpath(p)
+                result[p] = os.path.exists(real)
+            except Exception:
+                result[p] = False
+        return result
 
     @app.get("/api/config")
     def api_config_get():
@@ -729,9 +824,20 @@ def create_app(
         return ROBOT_TYPES
 
     # ─── API: udev Rules ───────────────────────────────────────────────────
+    def _current_rules_payload() -> dict[str, str | list[dict[str, str | bool]]]:
+        if not rules_path.exists():
+            return {"content": "# File not found", "camera_rules": [], "arm_rules": [], "devices": []}
+        content = rules_path.read_text()
+        parsed = _parse_udev_rules(content)
+        return {"content": content, **parsed}
+
+    @app.get("/api/udev/rules")
+    def api_udev_rules():
+        return _current_rules_payload()
+
     @app.get("/api/rules/current")
     def api_rules_current():
-        return {"content": rules_path.read_text() if rules_path.exists() else "# File not found"}
+        return _current_rules_payload()
 
     @app.get("/api/rules/status")
     def api_rules_status():
@@ -741,9 +847,14 @@ def create_app(
             sudo_noninteractive = probe.returncode == 0
         except Exception:
             sudo_noninteractive = False
+        rules_installed = rules_path.exists()
+        install_needed = not rules_installed
+        needs_root_for_install = install_needed and not sudo_noninteractive
         return {
             "rules_path": str(rules_path),
-            "rules_installed": rules_path.exists(),
+            "rules_installed": rules_installed,
+            "install_needed": install_needed,
+            "needs_root_for_install": needs_root_for_install,
             "fallback_rules_path": str(FALLBACK_RULES_PATH),
             "fallback_rules_exists": FALLBACK_RULES_PATH.exists(),
             "sudo_noninteractive": sudo_noninteractive,
@@ -775,6 +886,39 @@ def create_app(
             "manual_commands": _manual_udev_install_commands(FALLBACK_RULES_PATH, rules_path),
         }
 
+
+    @app.get("/api/rules/verify")
+    def api_rules_verify():
+        """Check each expected symlink from installed rules and report status."""
+        if not rules_path.exists():
+            return {"ok": True, "results": [], "note": "No rules file installed."}
+
+        parsed = _parse_udev_rules(rules_path.read_text())
+        results = []
+        for device in parsed.get("devices", []):
+            symlink = device.get("symlink", "")
+            if not symlink:
+                continue
+            dev_path = Path(f"/dev/{symlink}")
+            exists = dev_path.exists()
+            resolved_target = ""
+            status = "missing"
+            if exists:
+                try:
+                    resolved_target = dev_path.resolve().name
+                    status = "ok"
+                except Exception:
+                    resolved_target = "(unresolvable)"
+                    status = "error"
+            results.append({
+                "role": symlink,
+                "subsystem": device.get("subsystem", ""),
+                "match_key": device.get("serial") or device.get("kernel") or "",
+                "exists": exists,
+                "resolved_target": resolved_target,
+                "status": status,
+            })
+        return {"ok": True, "results": results}
     @app.post("/api/preflight")
     async def api_preflight(data: dict):
         checks = []
@@ -967,6 +1111,56 @@ def create_app(
         except Exception as e:
             return {"exists": False, "error": str(e)}
 
+    @app.get("/api/system/resources")
+    def api_system_resources():
+        try:
+            cpu_pct = psutil.cpu_percent(interval=0.2)
+            vm = psutil.virtual_memory()
+            du = shutil.disk_usage(Path.home())
+            hf_cache = Path.home() / ".cache" / "huggingface" / "lerobot"
+            lerobot_du = None
+            if hf_cache.exists():
+                try:
+                    lerobot_bytes = sum(f.stat().st_size for f in hf_cache.rglob('*') if f.is_file())
+                    lerobot_du = round(lerobot_bytes / 1024 / 1024, 1)
+                except Exception:
+                    pass
+            return {
+                "ok": True,
+                "cpu_percent": round(cpu_pct, 1),
+                "ram_used_mb": round(vm.used / 1024 / 1024),
+                "ram_total_mb": round(vm.total / 1024 / 1024),
+                "ram_percent": round(vm.percent, 1),
+                "disk_used_gb": round(du.used / 1024 ** 3, 1),
+                "disk_total_gb": round(du.total / 1024 ** 3, 1),
+                "disk_percent": round(du.used / du.total * 100, 1),
+                "lerobot_cache_mb": lerobot_du,
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ─── API: Session History ──────────────────────────────────────────────
+    @app.get("/api/history")
+    def api_history(limit: int = 50):
+        try:
+            if HISTORY_PATH.exists():
+                entries = json.loads(HISTORY_PATH.read_text())
+                if not isinstance(entries, list):
+                    entries = []
+                return {"ok": True, "entries": entries[-limit:]}
+            return {"ok": True, "entries": []}
+        except Exception as e:
+            return {"ok": False, "entries": [], "error": str(e)}
+
+    @app.post("/api/history/clear")
+    def api_history_clear():
+        try:
+            if HISTORY_PATH.exists():
+                HISTORY_PATH.unlink()
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     # ─── API: Process Control ──────────────────────────────────────────────
     @app.get("/api/process/{name}/status")
     def api_proc_status(name: str):
@@ -1006,8 +1200,15 @@ def create_app(
         cfg["record_cam_fps"] = cam_settings.get("fps", 30)
         requested_resume, resume_enabled = resolve_record_resume(cfg)
         args = build_record_args(PYTHON, cfg, resume_enabled)
+        ok = proc_mgr.start("record", args)
+        if ok:
+            append_history("record_start", {
+                "repo_id": data.get("record_repo_id", ""),
+                "task": data.get("record_task", ""),
+                "num_episodes": data.get("record_num_episodes", ""),
+            })
         return {
-            "ok": proc_mgr.start("record", args),
+            "ok": ok,
             "resume_requested": requested_resume,
             "resume_enabled": resume_enabled,
         }
@@ -1071,7 +1272,115 @@ def create_app(
                 }
 
         args = build_train_args(PYTHON, data)
-        return {"ok": proc_mgr.start("train", args)}
+        ok = proc_mgr.start("train", args)
+        if ok:
+            append_history("train_start", {
+                "policy": data.get("train_policy", ""),
+                "repo_id": data.get("train_repo_id", ""),
+                "steps": data.get("train_steps", ""),
+                "device": data.get("train_device", ""),
+            })
+        return {"ok": ok}
+
+
+    @app.get("/api/checkpoints")
+    def api_checkpoints():
+        """Scan outputs/train/ for available checkpoints (flat & timestamped runs)."""
+        results = []
+        seen_paths = set()
+
+        def _scan_checkpoints_dir(ckpts_dir: Path, run_name: str = ""):
+            if not ckpts_dir.is_dir():
+                return
+            for entry in ckpts_dir.iterdir():
+                if not entry.is_dir():
+                    continue
+                # Resolve symlinks (e.g. 'last' -> '005000')
+                resolved = entry.resolve() if entry.is_symlink() else entry
+                pretrained = resolved / "pretrained_model"
+                if not pretrained.is_dir():
+                    continue
+                real_path = str(pretrained)
+                if real_path in seen_paths:
+                    continue
+                seen_paths.add(real_path)
+                name = entry.name
+                display = f"{run_name}/{name}" if run_name else name
+                ckpt = {
+                    "name": name,
+                    "display": display,
+                    "path": str(entry / "pretrained_model"),
+                    "step": None,
+                    "policy": None,
+                    "size_mb": 0,
+                    "has_config": (pretrained / "config.json").exists(),
+                    "has_model": any(pretrained.glob("*.safetensors")) or any(pretrained.glob("*.bin")),
+                    "is_symlink": entry.is_symlink(),
+                    "modified": None,
+                }
+
+                # Parse step from directory name (e.g. '010000')
+                try:
+                    ckpt["step"] = int(name)
+                except ValueError:
+                    pass
+
+                # Read exact step from training_state/training_step.json
+                step_file = resolved / "training_state" / "training_step.json"
+                if step_file.exists():
+                    try:
+                        step_data = json.loads(step_file.read_text())
+                        if isinstance(step_data.get("step"), (int, float)):
+                            ckpt["step"] = int(step_data["step"])
+                    except Exception:
+                        pass
+
+                # Read policy type from pretrained_model/train_config.json
+                train_cfg = pretrained / "train_config.json"
+                if train_cfg.exists():
+                    try:
+                        tc = json.loads(train_cfg.read_text())
+                        ckpt["policy"] = tc.get("policy", {}).get("type") or tc.get("policy_type")
+                    except Exception:
+                        pass
+
+                # Calculate size and modification time
+                total_bytes = 0
+                latest_mtime = 0
+                for f in pretrained.rglob("*"):
+                    if f.is_file():
+                        st = f.stat()
+                        total_bytes += st.st_size
+                        if st.st_mtime > latest_mtime:
+                            latest_mtime = st.st_mtime
+                ckpt["size_mb"] = round(total_bytes / (1024 * 1024), 1)
+                if latest_mtime > 0:
+                    ckpt["modified"] = datetime.datetime.fromtimestamp(
+                        latest_mtime, tz=datetime.timezone.utc
+                    ).isoformat()
+
+                results.append(ckpt)
+
+        # Pattern 1: outputs/train/checkpoints/ (flat)
+        _scan_checkpoints_dir(Path("outputs/train/checkpoints"))
+
+        # Pattern 2: outputs/train/<run_name>/checkpoints/ (timestamped)
+        train_root = Path("outputs/train")
+        if train_root.is_dir():
+            for run_dir in train_root.iterdir():
+                if run_dir.name == "checkpoints":
+                    continue  # already scanned above
+                if run_dir.is_dir():
+                    _scan_checkpoints_dir(run_dir / "checkpoints", run_dir.name)
+
+        # Sort: 'last' first, then by step descending, then by modified
+        def sort_key(c):
+            if c["name"] == "last":
+                return (0, 0, "")
+            if c["name"] == "best":
+                return (1, 0, "")
+            return (2, -(c["step"] or 0), c["modified"] or "")
+        results.sort(key=sort_key)
 
     @app.post("/api/eval/start")
     async def api_eval_start(data: dict):
@@ -1088,7 +1397,13 @@ def create_app(
                 }
 
         args = build_eval_args(PYTHON, data)
-        return {"ok": proc_mgr.start("eval", args)}
+        ok = proc_mgr.start("eval", args)
+        if ok:
+            append_history("eval_start", {
+                "policy_path": data.get("eval_policy_path", ""),
+                "device": data.get("eval_device", ""),
+            })
+        return {"ok": ok}
 
     # ─── API: Calibrate ────────────────────────────────────────────────────
     @app.get("/api/calibrate/file")
@@ -1161,7 +1476,13 @@ def create_app(
         if proc_mgr.is_running("calibrate"):
             return {"ok": False, "error": "Already running"}
         args = build_calibrate_args(PYTHON, data)
-        return {"ok": proc_mgr.start("calibrate", args)}
+        ok = proc_mgr.start("calibrate", args)
+        if ok:
+            append_history("calibrate_start", {
+                "robot_type": data.get("calibrate_robot_type", ""),
+                "robot_id": data.get("calibrate_robot_id", ""),
+            })
+        return {"ok": ok}
 
     # ─── API: Dataset Viewer ───────────────────────────────────────────────
     @app.get("/api/datasets")
@@ -1468,6 +1789,46 @@ def create_app(
             },
         }
 
+    @app.get("/api/datasets/{user}/{repo}/tags")
+    def api_episode_tags_get(user: str, repo: str):
+        tags_dir = config_dir / "episode-tags"
+        tags_file = tags_dir / f"{user}_{repo}.json"
+        if tags_file.exists():
+            try:
+                tags = json.loads(tags_file.read_text())
+            except Exception:
+                tags = {}
+        else:
+            tags = {}
+        return {"ok": True, "tags": tags}
+
+    @app.post("/api/datasets/{user}/{repo}/tags")
+    def api_episode_tags_post(user: str, repo: str, body: dict | None = None):
+        payload = body or {}
+        episode_index = str(payload.get("episode_index", ""))
+        tag = str(payload.get("tag", "untagged"))
+        VALID_TAGS = {"good", "bad", "review", "untagged"}
+        if tag not in VALID_TAGS:
+            return {"ok": False, "error": f"Invalid tag. Must be one of: {', '.join(sorted(VALID_TAGS))}"}
+        if not episode_index:
+            return {"ok": False, "error": "episode_index is required"}
+        tags_dir = config_dir / "episode-tags"
+        tags_dir.mkdir(parents=True, exist_ok=True)
+        tags_file = tags_dir / f"{user}_{repo}.json"
+        if tags_file.exists():
+            try:
+                tags = json.loads(tags_file.read_text())
+            except Exception:
+                tags = {}
+        else:
+            tags = {}
+        if tag == "untagged":
+            tags.pop(episode_index, None)
+        else:
+            tags[episode_index] = tag
+        tags_file.write_text(json.dumps(tags, indent=2))
+        return {"ok": True, "episode_index": episode_index, "tag": tag}
+
     @app.post("/api/datasets/{user}/{repo}/push")
     async def api_dataset_push(user: str, repo: str, data: dict | None = None):
         payload = data or {}
@@ -1590,6 +1951,147 @@ def create_app(
             job = push_jobs.get(job_id)
             if not job:
                 return {"ok": False, "error": "Push job not found"}
+            return {"ok": True, **job}
+
+    # ─── API: HF Hub Dataset Search / Download ──────────────────────────────
+    download_jobs: dict[str, dict] = {}
+    download_jobs_lock = threading.Lock()
+
+    @app.get("/api/hub/datasets/search")
+    def api_hub_datasets_search(query: str = "", limit: int = 20, tag: str = "lerobot"):
+        """Search HuggingFace Hub for LeRobot datasets."""
+        try:
+            from huggingface_hub import list_datasets  # type: ignore
+        except ImportError:
+            return {"ok": False, "error": "huggingface_hub is not installed", "datasets": []}
+
+        limit = max(1, min(limit, 100))
+        try:
+            search_tags = [tag] if tag else []
+            kwargs: dict = {"tags": search_tags, "limit": limit, "full": False}
+            if query:
+                kwargs["search"] = query
+            results = []
+            for ds in list_datasets(**kwargs):
+                entry = {
+                    "id": ds.id,
+                    "downloads": getattr(ds, "downloads", 0) or 0,
+                    "likes": getattr(ds, "likes", 0) or 0,
+                    "tags": list(getattr(ds, "tags", []) or []),
+                    "last_modified": str(getattr(ds, "last_modified", "") or ""),
+                }
+                results.append(entry)
+            return {"ok": True, "datasets": results}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "datasets": []}
+
+    @app.post("/api/hub/datasets/download")
+    async def api_hub_datasets_download(data: dict | None = None):
+        """Download a dataset from HuggingFace Hub to local cache."""
+        payload = data or {}
+        repo_id = str(payload.get("repo_id", "")).strip()
+        if not repo_id or "/" not in repo_id:
+            return {"ok": False, "error": "repo_id must be in user/repo format"}
+
+        job_id = uuid.uuid4().hex[:12]
+        now = time.time()
+        with download_jobs_lock:
+            download_jobs[job_id] = {
+                "job_id": job_id,
+                "repo_id": repo_id,
+                "status": "queued",
+                "progress": 0,
+                "logs": [],
+                "error": "",
+                "started_at": now,
+                "updated_at": now,
+            }
+
+        def run_download_job():
+            with download_jobs_lock:
+                job = download_jobs.get(job_id)
+                if not job:
+                    return
+                job["status"] = "running"
+                job["progress"] = 5
+                job["updated_at"] = time.time()
+
+            rc = -1
+            try:
+                from huggingface_hub import snapshot_download  # type: ignore
+                local_dir = Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id
+                cli = shutil.which("huggingface-cli")
+                if cli:
+                    cmd = [cli, "download", repo_id, "--repo-type", "dataset", "--local-dir", str(local_dir)]
+                    env = {**os.environ}
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        env=env,
+                        bufsize=1,
+                    )
+                    progress = 5
+                    if proc.stdout:
+                        for raw in proc.stdout:
+                            line = raw.rstrip("\n")
+                            with download_jobs_lock:
+                                job2 = download_jobs.get(job_id)
+                                if not job2:
+                                    continue
+                                job2["logs"].append(line)
+                                if len(job2["logs"]) > 200:
+                                    del job2["logs"][:-200]
+                                m = re.search(r"(\d{1,3})%", line)
+                                ratio = re.search(r"\b([0-9]{1,6})\s*/\s*([0-9]{1,6})\b", line)
+                                if m:
+                                    pct = max(0, min(99, int(m.group(1))))
+                                    progress = max(progress, pct)
+                                elif ratio:
+                                    done = int(ratio.group(1))
+                                    total = max(1, int(ratio.group(2)))
+                                    pct = max(0, min(99, int((done / total) * 100)))
+                                    progress = max(progress, pct)
+                                else:
+                                    progress = min(95, progress + 1)
+                                job2["progress"] = progress
+                                job2["updated_at"] = time.time()
+                    rc = proc.wait()
+                else:
+                    snapshot_download(repo_id=repo_id, repo_type="dataset", local_dir=str(local_dir))
+                    rc = 0
+
+                with download_jobs_lock:
+                    job3 = download_jobs.get(job_id)
+                    if not job3:
+                        return
+                    if rc == 0:
+                        job3["status"] = "success"
+                        job3["progress"] = 100
+                    else:
+                        job3["status"] = "error"
+                        tail = "\n".join(job3["logs"][-5:]).strip()
+                        job3["error"] = tail or f"Download failed (exit {rc})"
+                    job3["updated_at"] = time.time()
+
+            except Exception as e:
+                with download_jobs_lock:
+                    job4 = download_jobs.get(job_id)
+                    if job4:
+                        job4["status"] = "error"
+                        job4["error"] = str(e)
+                        job4["updated_at"] = time.time()
+
+        threading.Thread(target=run_download_job, daemon=True).start()
+        return {"ok": True, "job_id": job_id}
+
+    @app.get("/api/hub/datasets/download/status/{job_id}")
+    def api_hub_download_status(job_id: str):
+        with download_jobs_lock:
+            job = download_jobs.get(job_id)
+            if not job:
+                return {"ok": False, "error": "Download job not found"}
             return {"ok": True, **job}
 
     # ─── API: Motor Setup ──────────────────────────────────────────────────

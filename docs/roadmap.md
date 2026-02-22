@@ -1,114 +1,126 @@
 # LeRobot Studio — 구현 로드맵 (Implementation Roadmap)
 
+최종 갱신: 2026-02-23
+
 ## 현재 상태 (Current State)
 
 사이드바 네비게이션 및 글로벌 콘솔 서랍(drawer)이 있는 워크벤치 스타일 웹 GUI:
 **설정(상태/매핑/모터 설정/캘리브레이션) → 작동(원격 조작/녹화) → 데이터(데이터셋) → ML(학습/평가)**
 
-백엔드: FastAPI + 하위 프로세스 생성(subprocess spawning) + WebSocket stdout 스트리밍  
-프론트엔드: Vanilla HTML/JS/CSS, 프레임워크 없음
+백엔드: FastAPI + subprocess 생성 + WebSocket stdout 스트리밍
+프론트엔드: Vanilla HTML/JS/CSS (18개 모듈 분리 완료), 프레임워크 없음
 
 ### 완료된 기능 (Completed Features)
 
-| 기능 (Feature) | 설명 (Description) |
-|---------|-------------|
-| 스트림 상태 피드백 | 로딩 스피너, 재시도(Retry)가 있는 에러 카드, 끊긴 피드 감지(캔버스 픽셀 해시), LIVE 배지 |
-| 품질 프리셋 (Quality presets) | 원격 조작(Teleop) 및 녹화(Record) 탭의 High / Medium / Low 버튼 — GET-then-PATCH를 통해 fps + jpeg_quality 조정 |
-| 피드별 켜기/끄기 | × 버튼으로 개별 스트림 일시 중지; Resume(재개) 시 캐시 무효화(cache-busting)로 복구 |
-| USB 대역폭 모니터링 | 피드 카드별 실시간 fps · MB/s; USB 버스 사용률 바(경고/위험 임계값) |
-| 사이드바 워크벤치 레이아웃 | 상단 탭 바를 대체하여 설정/작동/데이터/ML로 그룹화된 왼쪽 내비게이션 |
-| 글로벌 콘솔 서랍 | 통합 프로세스 로그 + stdin 입력 선택기 (`teleop/record/calibrate/motor_setup/train/eval`) |
-| 내비게이션의 상태 배지 | `/ws` 상태, udev 상태, 의존성 검사, 장치 접근 결과를 기반으로 RUNNING / ERROR / NEEDS_ROOT / MISSING_DEP / NEEDS_DEVICE 배지 표시 |
-| 가이드/고급 모드 | 데이터/ML 잠금 해제(데이터셋 존재 여부 + 학습 사전 검사)가 포함된 가이드(Guided) 기본값, 서브메뉴 그룹을 모두 표시하는 고급(Advanced) 모드 |
-| 반응형 사이드바 동작 | 데스크톱 사이드바, 중간 크기의 아이콘 레일, 백드롭이 있는 모바일 서랍 |
+| 기능 | 설명 |
+|---|---|
+| 워크벤치 레이아웃 | 사이드바(Setup/Operate/Data/ML) + 메인 워크스페이스 + 하단 콘솔 서랍 |
+| 카메라 스트리밍 | MJPEG 스트리밍, SHM 공유(프로세스 중 카메라 피드), 로딩/에러/LIVE 피드백 |
+| USB 대역폭 모니터링 | 피드별 실시간 fps/MB·s, 버스 사용률 바 |
+| 장치 매핑 (udev) | 카메라 KERNELS 기반 + 팔 serial 기반 심볼릭 링크 생성/적용/검증 |
+| Arm Identify Wizard | 분리/재연결 diff 기반 팔 식별, Preview/Apply/Verify 흐름 |
+| 모터 설정 | `lerobot_setup_motors` CLI 래핑 |
+| 캘리브레이션 | 캘리브레이션 실행/파일 관리/삭제 |
+| Preflight 사전 점검 | Teleop/Record/Train 시작 전 포트/캘리브레이션/카메라/CUDA 자동 검증 |
+| 원격 조작 (Teleop) | 멀티카메라 원격 조작, camera_patch를 통한 SHM 프레임 공유 |
+| 녹화 (Record) | 에피소드 녹화, stdin 브리지(키보드 명령), resume 지원 |
+| 데이터셋 관리 | 로컬 데이터셋 조회/상세/삭제, 품질 검사, Hub push(진행률 추적) |
+| 에피소드 비디오 리플레이어 | 멀티카메라 동기 재생, 타임라인 스크러빙 |
+| 에피소드 큐레이션 | 개별 에피소드 삭제/태그/필터 |
+| HF Hub 데이터셋 검색 | Hub API 기반 데이터셋 검색/다운로드 |
+| 학습 (Train) | 학습 실행, CUDA preflight, PyTorch 설치, 메트릭 파싱(step/loss/lr) |
+| 실시간 Loss 커브 차트 | Canvas 기반 Loss/LR 시각화 + ETA/진행률 |
+| 체크포인트 브라우저 | 체크포인트 스캔/목록/Eval 자동 연결 |
+| 학습 하이퍼파라미터 프리셋 | Quick Test / Standard / Full 프리셋 + Advanced 파라미터 노출 |
+| 평가 (Eval) | 정책 평가 실행, 에피소드별 성과 추적 |
+| 설정 프로필 | 저장/불러오기/가져오기/내보내기/삭제 |
+| 에러 번역 레이어 | 주요 CLI 에러 패턴 → 사용자 친화적 가이드 메시지 |
+| 시스템 리소스 대시보드 | CPU/RAM/Disk/GPU 실시간 모니터링 |
+| 세션 히스토리 | 실험 로그 타임라인 (녹화/학습/평가 이벤트 추적) |
+| 다크 모드 | CSS 변수 기반 라이트/다크 테마 전환 |
+| Guided/Advanced 모드 | Guided 기본(Data/ML 잠금) + Advanced 토글 |
+| 상태 배지 | RUNNING/ERROR/NEEDS_ROOT/MISSING_DEP/NEEDS_DEVICE |
+| 글로벌 단축키 | Space/Arrow/Esc 전역 바인딩 |
+| 데스크톱 알림 | 프로세스 완료/비정상 종료 Browser Notification |
+| 반응형 레이아웃 | 데스크톱 사이드바, 태블릿 아이콘 레일, 모바일 서랍 |
 
 ---
 
-## 1단계 (Phase 1) — 학습(Train) 탭
+## 구현 스냅샷
 
-**목표**: 워크플로우 루프를 완성합니다. 데이터셋 녹화 → 정책 학습 → 배포의 모든 과정을 하나의 GUI에서 수행합니다.
-
-**필요한 핵심 인프라**
-
-| 항목 (Item) | 파일 (File) | 비고 (Notes) |
-|------|------|-------|
-| `build_train_args()` | `command_builders.py` | `python -m lerobot.scripts.train` 래핑 |
-| `/api/train/start` | `server.py` | `/api/record/start`와 동일한 패턴 |
-| `/api/train/stop` | `server.py` | `ProcessManager.stop("train")`을 통해 실행 |
-| 학습 탭 UI | `index.html` + `main.js` | 새로운 `TrainTab` 클래스 |
-
-**MVP UI 컨트롤**
-
-- 정책(Policy) 유형 선택기: ACT / Diffusion / TDMPC2
-- 데이터셋 레포지토리 ID 입력 (녹화 탭 설정에서 미리 채워짐)
-- 학습 단계(steps) 수
-- 장치(Device) 선택기: cuda / cpu (로드 시 GPU 자동 감지)
-- 시작(Start) / 중지(Stop) 버튼 + 로그 출력 패널
-
-**+α (MVP 이후 추가 사항)**
-
-- 실시간 손실(loss) 곡선 차트 (stdout 파싱 → Chart.js 연동)
-- GPU 사용률 모니터 (`/api/gpu/status`를 통한 `nvidia-smi` 폴링)
-- 체크포인트 목록 및 체크포인트에서 재개
-- 완료 시 HuggingFace Hub 자동 업로드
-
-**알려진 제약 사항**
-
-- LeRobot 학습은 Hydra 설정을 사용합니다 — 20개 이상의 모든 파라미터가 아닌 핵심 파라미터만 노출합니다.
-- 감지된 GPU가 없으면 학습 탭을 숨기거나(또는 경고 표시) 합니다.
-- 장기 실행 프로세스(수 시간~수 일) → 서버 재시작 시 프로세스가 종료되므로, 이 제한 사항을 명확히 문서화해야 합니다.
+| 단계 | 상태 | 메모 |
+|---|---|---|
+| 1단계 (Train/Eval 고도화) | **완료** | Loss 차트, 체크포인트, 프리셋 등 모든 과제 구현 완료 |
+| 2단계 (데이터셋 심화) | **완료** | 리플레이어, 큐레이션, Hub 검색/다운로드 구현 완료 |
+| 2.5단계 (UI/UX 안정화 스프린트) | **완료** | 모바일 헤더/상태 피드백/접근성 + Dataset 액션 밀도 + Teleop/Record 고급 설정 분리 반영 |
+| 3단계 (OSS 준비) | **다음** | CONTRIBUTING.md, CI, Docker, 커뮤니티 공지 |
+| 4단계 (다중 로봇 & 플러그인) | 백로그 | 커뮤니티 수요 확인 후 |
+| 5단계 (원격 조작) | 백로그 | WebRTC/인증 미착수 |
 
 ---
 
-## 2단계 (Phase 2) — 오픈 소스(OSS) 준비
+## 3단계 — OSS 준비 (다음 단계)
 
-**목표**: LeRobot 커뮤니티에서 기여할 수 있는 프로젝트로 만듭니다.
+**목표**: LeRobot 커뮤니티에서 기여할 수 있는 프로젝트로 공개한다.
 
 - [ ] `CONTRIBUTING.md` — 설정 가이드, PR 흐름, 코드 스타일
-- [ ] GitHub Actions CI — pylint + 기본 임포트/시작 테스트
-- [ ] 이슈 템플릿 — 버그 리포트(Bug report), 기능 요청(Feature request)
-- [ ] Docker 이미지 — 단일 명령(`docker run`) 시작
-- [ ] LeRobot Discord / HuggingFace 포럼에 공지
+- [ ] GitHub Actions CI — lint + 기본 임포트/시작 테스트
+- [ ] 이슈 템플릿 — 버그 리포트, 기능 요청
+- [ ] Docker 이미지 — `docker run` 원커맨드 시작
+- [ ] 커뮤니티 공지 (LeRobot Discord / HuggingFace 포럼)
 
 ---
 
-## 3단계 (Phase 3) — 다중 로봇 & 플러그인 아키텍처
+## 2.5단계 — UI/UX 안정화 스프린트 (진행 중)
 
-**목표**: 하드코딩 없이 SO-100/SO-101 이외의 로봇을 지원합니다.
+**목표**: 실사용 중 마찰이 큰 UI/UX 이슈를 우선순위 기반으로 단기 개선한다.
 
-- 로봇 유형을 설정 스키마로 추상화 (현재 `ROBOT_TYPES` 목록에 하드코딩됨)
-- 플러그인 인터페이스: YAML 파일을 추가하여 새로운 로봇 유형 추가 지원
-- 커뮤니티 기여 로봇 프로필 (Koch v1.1, Moss v1, Aloha 등)
+- [x] 모바일 헤더 오버플로우 개선 (핵심 액션 접근성 확보)
+- [x] 연결 상태를 `Connected / Degraded / Disconnected`로 분리 표시
+- [x] 주요 폼 입력 label-for/aria 접근성 보강
+- [x] 반복 액션(예: Dataset 카드 버튼군) 밀도 최적화
+- [x] Teleop/Record 필수 설정과 고급 설정 분리
 
----
-
-## 4단계 (Phase 4) — 데이터셋 브라우저
-
-**목표**: GUI를 벗어나지 않고 녹화된 에피소드를 검토하고 큐레이션합니다.
-
-- `~/.cache/huggingface/lerobot/`의 로컬 데이터셋 목록 표시
-- 에피소드 재생 (카메라 프레임 + 모터 위치 리플레이)
-- 에피소드 삭제 / 태그 / 내보내기
-- 기본 통계: 에피소드 수, 태스크 분포, 녹화 시간
+**입력 문서**: `docs/uiux-audit.md`
 
 ---
 
-## 5단계 (Phase 5) — 원격 조작 (Remote Operation)
+## 4단계 — 다중 로봇 & 플러그인
 
-**목표**: 네트워크를 통해 다른 머신에서 로봇을 조작합니다.
+**목표**: SO-100/SO-101 이외의 로봇을 하드코딩 없이 지원한다.
 
-- WebRTC 카메라 스트리밍 (지연 시간 단축, MJPEG 대체)
-- WebSocket을 통한 원격 조작 (브라우저에서 관절 명령 전송)
-- 인증 레이어 (토큰 기반, 단일 사용자)
+- 로봇 유형을 설정 스키마로 추상화 (현재 `ROBOT_TYPES` 하드코딩)
+- 플러그인: YAML/JSON으로 로봇 프로필 정의
+- 커뮤니티 기여 프로필 (Koch v1.1, Moss v1, Aloha 등)
+
+**아키텍처 참고**: LeRobot 직접 결합은 현재 bridge 3파일(`teleop_bridge.py`, `record_bridge.py`, `camera_patch.py`)에 격리되어 있다. 범용화 시 이 파일들만 어댑터 인터페이스로 교체하면 된다. 그 전까지는 `lerobot.*` import가 이 3파일 밖으로 퍼지지 않도록 유지한다.
 
 ---
 
-## 의존성 맵 (Dependency Map)
+## 5단계 — 원격 조작 (Remote Operation)
+
+**목표**: 네트워크를 통해 다른 머신에서 로봇을 조작한다.
+
+- WebRTC 카메라 스트리밍 (MJPEG 대체)
+- WebSocket 원격 조작 (브라우저 → 관절 명령)
+- 인증 레이어 (토큰 기반)
+
+---
+
+## 의존성 맵
 
 ```
-1단계 (학습)        — 독립적, 지금 구축 가능
-2단계 (OSS)        — 독립적, 지금 구축 가능
-3단계 (플러그인)    — 2단계의 커뮤니티 검증 필요
-4단계 (데이터셋)    — 독립적, 1단계 이후 구축 가능
-5단계 (원격 조작)   — 3단계의 안정성 확보 이후 가능
+1단계 (Train/Eval 고도화)  ─── 완료
+2단계 (데이터셋 심화)      ─── 완료
+3단계 (OSS 준비)           ─── 다음 (즉시 착수 가능)
+4단계 (플러그인)           ─── 3단계 커뮤니티 검증 후
+5단계 (원격 조작)          ─── 4단계 안정성 확보 후
 ```
+
+---
+
+## 알려진 제약
+
+- LeRobot 학습은 Hydra 설정 — 핵심 파라미터만 노출
+- 장기 프로세스는 서버 재시작 시 종료됨
+- 카메라 SHM 공유는 LeRobot OpenCVCamera 내부를 런타임 패치하는 방식 — upstream 변경 시 호환성 확인 필요

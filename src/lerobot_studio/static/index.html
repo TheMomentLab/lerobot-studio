@@ -13,35 +13,45 @@
     <!-- ── Header ── -->
     <header>
       <div class="header-left">
-        <button id="sidebar-menu-btn" type="button" aria-label="Open navigation" onclick="SidebarNav.toggleDrawer()">☰</button>
+        <button id="sidebar-menu-btn" type="button" aria-label="Open navigation" aria-expanded="false" onclick="SidebarNav.toggleDrawer()">☰</button>
         <img src="/static/logo.svg" alt="Moment Lab Logo" class="logo" style="width: 32px; height: 32px;" />
         <h1>LeRobot <span style="color:var(--text2);font-weight:400">Studio</span></h1>
+        <span class="beta-badge" title="Developer Preview">BETA</span>
       </div>
       <div class="header-right">
-        <div style="display:flex; align-items:center; gap:6px; margin-right: 8px;">
-          <select id="profile-select" onchange="ProfileManager.applySelected()" style="min-width: 150px; height: 30px; font-size: 12px;">
+        <div class="header-profile-controls">
+          <select id="profile-select" onchange="ProfileManager.applySelected()" aria-label="Profile selector">
             <option>default</option>
           </select>
           <span id="profile-active-badge" class="profile-badge">Active: default</span>
           <button class="btn-xs" onclick="ProfileManager.saveCurrent()">Save</button>
-          <button class="btn-xs" onclick="ProfileManager.saveAs()">Save As</button>
-          <button class="btn-xs" onclick="ProfileManager.exportCurrent()">Export</button>
-          <button class="btn-xs" onclick="ProfileManager.triggerImport()">Import</button>
-          <button class="btn-xs" onclick="ProfileManager.deleteCurrent()" style="color:var(--red); border-color:rgba(248,81,73,0.35);">Delete</button>
+          <div class="profile-more-wrap" id="profile-more-wrap">
+            <button class="btn-xs profile-more-btn" onclick="ProfileManager.toggleMoreMenu()" title="More profile actions" aria-label="More profile actions">⋮</button>
+            <div class="profile-more-menu" id="profile-more-menu" style="display:none">
+              <button onclick="ProfileManager.saveAs(); ProfileManager.closeMoreMenu()">Save As…</button>
+              <button onclick="ProfileManager.exportCurrent(); ProfileManager.closeMoreMenu()">Export…</button>
+              <button onclick="ProfileManager.triggerImport(); ProfileManager.closeMoreMenu()">Import…</button>
+              <hr/>
+              <button class="danger" onclick="ProfileManager.deleteCurrent(); ProfileManager.closeMoreMenu()">Delete</button>
+            </div>
+          </div>
           <input id="profile-import-input" type="file" accept="application/json" style="display:none" onchange="ProfileManager.handleImportFile(this)" />
         </div>
-        <div id="profile-dropzone" class="profile-dropzone" title="Drop a .json profile file here">Drop Profile JSON</div>
+
         <div id="view-mode-toggle" class="view-mode-toggle" title="UI mode">
           <button id="mode-guided-btn" class="mode-btn" type="button" onclick="ModeManager.setMode('guided')">Guided</button>
           <button id="mode-advanced-btn" class="mode-btn" type="button" onclick="ModeManager.setMode('advanced')">Advanced</button>
         </div>
+        <button id="theme-toggle-btn" class="btn-xs" onclick="ThemeManager.toggle()" title="Toggle light/dark mode" aria-label="Toggle light or dark mode">🌙</button>
         <a href="https://github.com/TheMomentLab/lerobot-studio" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
           <svg height="24" viewBox="0 0 16 16" version="1.1" width="24" aria-hidden="true">
             <path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
           </svg>
         </a>
-        <span id="ws-dot" class="dot red" title="WebSocket disconnected"></span>
-        <span id="ws-label">Disconnected</span>
+        <div id="ws-status" class="ws-status" aria-live="polite">
+          <span id="ws-dot" class="dot red" title="Disconnected"></span>
+          <span id="ws-label">Disconnected</span>
+        </div>
       </div>
     </header>
 
@@ -50,41 +60,41 @@
       <aside id="sidebar-nav" aria-label="Workflow Navigation">
         <div id="sidebar-group-setup" class="sidebar-group">
           <div class="sidebar-group-title">Setup</div>
-          <button class="tab-btn active" data-tab="status" title="Status">
-            <span class="tab-icon">⬡</span><span class="tab-text">Status</span><span class="tab-state-badge"></span>
+          <button class="tab-btn active" data-tab="status" title="Status" role="tab" aria-selected="true">
+            <span class="tab-text">Status</span><span class="tab-state-badge"></span>
           </button>
-          <button class="tab-btn" data-tab="device-setup" title="Mapping">
-            <span class="tab-icon">🗺️</span><span class="tab-text">Mapping</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="device-setup" title="Mapping" role="tab" aria-selected="false">
+            <span class="tab-text">Mapping</span><span class="tab-state-badge"></span>
           </button>
-          <button class="tab-btn" data-tab="motor-setup" data-proc="motor_setup" title="Motor Setup">
-            <span class="tab-icon">⚙</span><span class="tab-text">Motor Setup</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="motor-setup" data-proc="motor_setup" title="Motor Setup" role="tab" aria-selected="false">
+            <span class="tab-text">Motor Setup</span><span class="tab-state-badge"></span>
           </button>
-          <button class="tab-btn" data-tab="calibrate" data-proc="calibrate" title="Calibration">
-            <span class="tab-icon">⚖</span><span class="tab-text">Calibration</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="calibrate" data-proc="calibrate" title="Calibration" role="tab" aria-selected="false">
+            <span class="tab-text">Calibration</span><span class="tab-state-badge"></span>
           </button>
         </div>
         <div id="sidebar-group-operate" class="sidebar-group">
           <div class="sidebar-group-title">Operate</div>
-          <button class="tab-btn" data-tab="teleop" data-proc="teleop" title="Teleop">
-            <span class="tab-icon">🕹</span><span class="tab-text">Teleop</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="teleop" data-proc="teleop" title="Teleop" role="tab" aria-selected="false">
+            <span class="tab-text">Teleop</span><span class="tab-state-badge"></span>
           </button>
-          <button class="tab-btn" data-tab="record" data-proc="record" title="Record">
-            <span class="tab-icon">⏺</span><span class="tab-text">Record</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="record" data-proc="record" title="Record" role="tab" aria-selected="false">
+            <span class="tab-text">Record</span><span class="tab-state-badge"></span>
           </button>
         </div>
         <div id="sidebar-group-data" class="sidebar-group">
           <div class="sidebar-group-title">Data</div>
-          <button class="tab-btn" data-tab="dataset" title="Dataset">
-            <span class="tab-icon">📂</span><span class="tab-text">Dataset</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="dataset" title="Dataset" role="tab" aria-selected="false">
+            <span class="tab-text">Dataset</span><span class="tab-state-badge"></span>
           </button>
         </div>
         <div id="sidebar-group-ml" class="sidebar-group">
           <div class="sidebar-group-title">ML</div>
-          <button class="tab-btn" data-tab="train" data-proc="train" title="Train">
-            <span class="tab-icon">🧠</span><span class="tab-text">Train</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="train" data-proc="train" title="Train" role="tab" aria-selected="false">
+            <span class="tab-text">Train</span><span class="tab-state-badge"></span>
           </button>
-          <button class="tab-btn" data-tab="eval" data-proc="eval" title="Eval">
-            <span class="tab-icon">🧪</span><span class="tab-text">Eval</span><span class="tab-state-badge"></span>
+          <button class="tab-btn" data-tab="eval" data-proc="eval" title="Eval" role="tab" aria-selected="false">
+            <span class="tab-text">Eval</span><span class="tab-state-badge"></span>
           </button>
         </div>
       </aside>
@@ -114,6 +124,17 @@
             <h3>⚡ Processes</h3>
             <div id="status-procs" class="device-list">—</div>
           </div>
+          <div class="card">
+            <h3>🖥️ System Resources</h3>
+            <div id="status-resources" class="device-list">Loading…</div>
+          </div>
+          <div class="card" style="grid-column: 1 / -1;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+              <h3 style="margin:0;">📋 Session History</h3>
+              <button class="btn-sm" onclick="StatusTab.clearHistory()" style="font-size:10px;">Clear</button>
+            </div>
+            <div id="status-history" class="device-list" style="max-height:220px; overflow-y:auto;">Loading…</div>
+          </div>
         </div>
       </section>
 
@@ -130,92 +151,86 @@
         </div>
 
         <div class="two-col">
-          <!-- Config -->
+          <!-- Step 1: Arm Connections -->
           <div class="card">
-            <h3>Step 1: Arm Connections</h3>
+            <h3>Step 1 — Arm Connections</h3>
             <div class="field-help">Single Arm controls one leader + one follower. Bi-Arm controls left/right pairs.</div>
             <div id="teleop-single-cfg">
               <label>Follower Arm Port</label>
-              <input id="teleop-follower-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
+              <select id="teleop-follower-port"><option value="/dev/follower_arm_1">/dev/follower_arm_1</option></select>
               <label>Follower Arm ID</label>
-              <input id="teleop-robot-id" type="text" value="my_so101_follower_1" placeholder="Example: my_so101_follower_1" />
+              <select id="teleop-robot-id"><option value="my_so101_follower_1">my_so101_follower_1</option></select>
               <label>Leader Arm Port</label>
-              <input id="teleop-leader-port" type="text" value="/dev/leader_arm_1" placeholder="Example: /dev/leader_arm_1" />
+              <select id="teleop-leader-port"><option value="/dev/leader_arm_1">/dev/leader_arm_1</option></select>
               <label>Leader Arm ID</label>
-              <input id="teleop-teleop-id" type="text" value="my_so101_leader_1" placeholder="Example: my_so101_leader_1" />
+              <select id="teleop-teleop-id"><option value="my_so101_leader_1">my_so101_leader_1</option></select>
             </div>
             <div id="teleop-bi-cfg" class="hidden">
               <label>Left Follower Arm Port</label>
-              <input id="teleop-left-follower" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
+              <select id="teleop-left-follower"><option value="/dev/follower_arm_1">/dev/follower_arm_1</option></select>
               <label>Right Follower Arm Port</label>
-              <input id="teleop-right-follower" type="text" value="/dev/follower_arm_2" placeholder="Example: /dev/follower_arm_2" />
+              <select id="teleop-right-follower"><option value="/dev/follower_arm_2">/dev/follower_arm_2</option></select>
               <label>Left Leader Arm Port</label>
-              <input id="teleop-left-leader" type="text" value="/dev/leader_arm_1" placeholder="Example: /dev/leader_arm_1" />
+              <select id="teleop-left-leader"><option value="/dev/leader_arm_1">/dev/leader_arm_1</option></select>
               <label>Right Leader Arm Port</label>
-              <input id="teleop-right-leader" type="text" value="/dev/leader_arm_2" placeholder="Example: /dev/leader_arm_2" />
-            </div>
-
-            <div class="spacer"></div>
-            <div class="safety-banner" style="background:rgba(248,81,73,0.12); border:1px solid rgba(248,81,73,0.35); border-radius:6px; padding:8px 12px; margin-bottom:8px; font-size:12px; color:var(--red); display:flex; align-items:center; gap:8px;">
-              <span style="font-size:16px;">⚠️</span>
-              <span>If the arm moves unexpectedly, press <b>Stop</b> immediately. Keep hands clear of the arm during operation.</span>
-            </div>
-
-            <div class="spacer"></div>
-            <div class="btn-row">
-              <button id="teleop-start-btn" class="btn-primary" onclick="TeleopTab.start()">▶ Start Teleop</button>
-              <button id="teleop-stop-btn"  class="btn-danger hidden" onclick="TeleopTab.stop()">■ Stop</button>
+              <select id="teleop-right-leader"><option value="/dev/leader_arm_2">/dev/leader_arm_2</option></select>
             </div>
           </div>
 
-          <!-- Camera Feeds -->
+          <!-- Step 2: Camera Feeds -->
           <div class="card">
-            <h3>Step 2: Camera Feeds</h3>
-            <div class="field-help">Set only cameras you need. Empty fields are ignored.</div>
-            <div class="settings-grid" style="margin-top:12px;">
-              <div class="setting-item">
-                <label>Codec</label>
-                <select class="cam-codec-sync">
-                  <option value="MJPG">MJPG (compressed)</option>
-                  <option value="YUYV">YUYV (raw)</option>
-                </select>
-              </div>
-              <div class="setting-item">
-                <label>Resolution</label>
-                <select class="cam-resolution-sync">
-                  <option value="1280x720">1280 × 720 (720p)</option>
-                  <option value="800x600">800 × 600</option>
-                  <option value="640x480">640 × 480 (480p)</option>
-                  <option value="320x240">320 × 240 (240p)</option>
-                </select>
-              </div>
-              <div class="setting-item">
-                <label>FPS</label>
-                <select class="cam-fps-sync">
-                  <option value="30">30</option>
-                </select>
-              </div>
-              <div class="setting-item">
-                <label>JPEG Quality <span class="cam-quality-val-sync muted">70</span></label>
-                <input type="range" class="cam-jpeg-quality-sync" min="30" max="95" step="5" value="70" />
-              </div>
-            </div>
+            <h3>Step 2 — Camera Feeds</h3>
+            <div class="field-help">Required: verify mapped camera paths first.</div>
             <div id="teleop-cameras" class="camera-cfg" style="margin-top:16px;">
-              <div class="cam-row">
-                <span>front_1</span>
-                <input id="tc-front1" type="text" value="/dev/follower_cam_1" placeholder="/dev/…" />
-              </div>
-              <div class="cam-row">
-                <span>top_1</span>
-                <input id="tc-top1" type="text" value="/dev/top_cam_1" placeholder="/dev/…" />
-              </div>
-              <div class="cam-row">
-                <span>top_2</span>
-                <input id="tc-top2" type="text" value="/dev/top_cam_2" placeholder="/dev/…" />
-              </div>
+              <div id="teleop-cam-rows"></div>
             </div>
-            <h3 style="margin-top:16px">Live Feeds</h3>
-            <div id="teleop-feeds" class="feed-grid"></div>
+            <details class="advanced-panel" style="margin-top:12px;">
+              <summary>Advanced Stream Settings</summary>
+              <div class="settings-grid" style="margin-top:10px;">
+                <div class="setting-item">
+                  <label>Codec</label>
+                  <select class="cam-codec-sync">
+                    <option value="MJPG">MJPG (compressed)</option>
+                    <option value="YUYV">YUYV (raw)</option>
+                  </select>
+                </div>
+                <div class="setting-item">
+                  <label>Resolution</label>
+                  <select class="cam-resolution-sync">
+                    <option value="1280x720">1280 × 720 (720p)</option>
+                    <option value="800x600">800 × 600</option>
+                    <option value="640x480">640 × 480 (480p)</option>
+                    <option value="320x240">320 × 240 (240p)</option>
+                  </select>
+                </div>
+                <div class="setting-item">
+                  <label>FPS</label>
+                  <select class="cam-fps-sync">
+                    <option value="30">30</option>
+                  </select>
+                </div>
+                <div class="setting-item">
+                  <label>JPEG Quality <span class="cam-quality-val-sync muted">70%</span></label>
+                  <input type="range" class="cam-jpeg-quality-sync" min="30" max="95" step="5" value="70" />
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <!-- Teleop Control -->
+        <div class="episode-progress-card">
+          <div class="ep-card-title">Teleop Control</div>
+
+          <div id="teleop-feeds" class="feed-grid"></div>
+          <div class="ep-actions-panel">
+            <div class="safety-banner" style="background:rgba(248,81,73,0.08); border:1px solid rgba(248,81,73,0.25); border-radius:4px; padding:6px 10px; margin-bottom:8px; font-size:11px; color:var(--red); display:flex; align-items:center; gap:6px; width:100%;">
+              <span style="font-size:13px;">⚠️</span>
+              <span>Unexpected movement → press <b>Stop</b> immediately. Keep hands clear.</span>
+            </div>
+            <div class="btn-row" style="width:100%;">
+              <button id="teleop-start-btn" class="btn-primary" onclick="TeleopTab.start()">▶ Start Teleop</button>
+              <button id="teleop-stop-btn"  class="btn-danger hidden" onclick="TeleopTab.stop()">■ Stop</button>
+            </div>
           </div>
         </div>
 
@@ -233,31 +248,29 @@
         </div>
 
         <div class="two-col">
-          <!-- Config -->
+          <!-- Step 1: Recording Plan -->
           <div class="card">
             <h3>Step 1: Recording Plan</h3>
-            <label>Task Description</label>
+            <label for="record-task">Task Description</label>
             <input id="record-task" type="text" placeholder="Example: Pick up red block and place in left bin" />
-            <label>Number of Episodes</label>
+            <label for="record-episodes">Number of Episodes</label>
             <input id="record-episodes" type="number" value="50" min="1" />
             <div class="field-help">Start with 20-50 for first test run.</div>
-            <label>Dataset Repo ID (Hugging Face)</label>
+            <label for="record-repo">Dataset Repo ID (Hugging Face)</label>
             <input id="record-repo" type="text" value="user/my-dataset" placeholder="Example: yourname/my-dataset" oninput="RecordTab.validateRepoId()" />
             <div id="record-repo-error" style="display:none; color:var(--red); font-size:11px; margin-top:4px; padding:4px 8px; background:rgba(248,81,73,0.1); border-radius:4px;"></div>
             <div class="field-help" style="margin-top:8px; margin-bottom:0;">
-              <label style="display:flex; align-items:center; gap:8px; margin:0; font-size:12px; color:var(--text);">
+              <label for="record-resume" style="display:flex; align-items:center; gap:8px; margin:0; font-size:12px; color:var(--text);">
                 <input id="record-resume" type="checkbox" style="width:auto; accent-color: var(--accent);" />
                 Resume existing dataset if it already exists
               </label>
               Prevents crash when the target dataset folder already exists.
             </div>
+          </div>
 
-            <h3 style="margin-top:16px">Step 2: Arm Ports</h3>
-            <label style="display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:12px; color:var(--text);">
-              <input id="record-use-mapped" type="checkbox" checked style="width:auto; accent-color: var(--accent);" onchange="RecordTab.onUseMappedToggle()" />
-              Use mapped devices from Mapping tab (recommended)
-            </label>
-            <div id="record-mapped-summary" class="info-box" style="margin-bottom:10px; display:none;"></div>
+          <!-- Step 2: Arm Ports -->
+          <div class="card">
+            <h3>Step 2: Arm Ports</h3>
             <div id="record-single-cfg">
               <label>Follower Arm Port</label>
               <select id="record-follower-port">
@@ -300,87 +313,71 @@
             </div>
           </div>
 
+          <!-- Step 3: Camera Feeds -->
           <div class="card">
-            <h3 style="margin-top:16px">Step 3: Camera Feeds</h3>
-            <div class="field-help">Set only cameras you want to save in the dataset.</div>
-            <div class="settings-grid" style="margin-top:12px;">
-              <div class="setting-item">
-                <label>Codec</label>
-                <select class="cam-codec-sync">
-                  <option value="MJPG">MJPG (compressed)</option>
-                  <option value="YUYV">YUYV (raw)</option>
-                </select>
+            <h3>Step 3: Camera Feeds</h3>
+            <div class="field-help">Required: confirm mapped camera set for this recording.</div>
+            <div id="record-cam-rows" style="margin-top:16px;"></div>
+            <details class="advanced-panel" style="margin-top:12px;">
+              <summary>Advanced Stream Settings</summary>
+              <div class="settings-grid" style="margin-top:10px;">
+                <div class="setting-item">
+                  <label>Codec</label>
+                  <select class="cam-codec-sync">
+                    <option value="MJPG">MJPG (compressed)</option>
+                    <option value="YUYV">YUYV (raw)</option>
+                  </select>
+                </div>
+                <div class="setting-item">
+                  <label>Resolution</label>
+                  <select class="cam-resolution-sync">
+                    <option value="1280x720">1280 × 720 (720p)</option>
+                    <option value="800x600">800 × 600</option>
+                    <option value="640x480">640 × 480 (480p)</option>
+                    <option value="320x240">320 × 240 (240p)</option>
+                  </select>
+                </div>
+                <div class="setting-item">
+                  <label>FPS</label>
+                  <select class="cam-fps-sync">
+                    <option value="30">30</option>
+                  </select>
+                </div>
+                <div class="setting-item">
+                  <label>JPEG Quality <span class="cam-quality-val-sync muted">70%</span></label>
+                  <input type="range" class="cam-jpeg-quality-sync" min="30" max="95" step="5" value="70" />
+                </div>
               </div>
-              <div class="setting-item">
-                <label>Resolution</label>
-                <select class="cam-resolution-sync">
-                  <option value="1280x720">1280 × 720 (720p)</option>
-                  <option value="800x600">800 × 600</option>
-                  <option value="640x480">640 × 480 (480p)</option>
-                  <option value="320x240">320 × 240 (240p)</option>
-                </select>
-              </div>
-              <div class="setting-item">
-                <label>FPS</label>
-                <select class="cam-fps-sync">
-                  <option value="30">30</option>
-                </select>
-              </div>
-              <div class="setting-item">
-                <label>JPEG Quality <span class="cam-quality-val-sync muted">70</span></label>
-                <input type="range" class="cam-jpeg-quality-sync" min="30" max="95" step="5" value="70" />
-              </div>
-            </div>
-            <div class="cam-row" style="margin-top:16px;">
-              <span>front_1</span>
-              <select id="rc-front1">
-                <option value="/dev/follower_cam_1">/dev/follower_cam_1</option>
-              </select>
-            </div>
-            <div class="cam-row">
-              <span>top_1</span>
-              <select id="rc-top1">
-                <option value="/dev/top_cam_1">/dev/top_cam_1</option>
-              </select>
-            </div>
-            <div class="cam-row">
-              <span>top_2</span>
-              <select id="rc-top2">
-                <option value="/dev/top_cam_2">/dev/top_cam_2</option>
-              </select>
-            </div>
-            <h3 style="margin-top:16px">Live Feeds</h3>
-            <div id="record-feeds" class="feed-grid"></div>
+            </details>
           </div>
-        </div>
-
+          <!-- Episode Progress -->
         <div class="episode-progress-card">
           <div class="ep-card-title">Episode Progress</div>
-          <div class="ep-layout-grid">
-            <div class="episode-status">
-              <div class="ep-label">Episodes</div>
-              <div class="ep-bar-wrap"><div class="ep-bar" id="record-ep-bar"></div></div>
-              <div class="ep-status-row">
-                <div class="ep-num">
-                  <span id="record-ep-current">—</span>
-                  <span class="ep-sep">/</span>
-                  <span id="record-ep-total">—</span>
-                </div>
-                <div id="record-state-pill" class="ep-state-pill idle">Idle</div>
+
+          <div id="record-feeds" class="feed-grid"></div>
+          <div class="episode-status">
+            <div class="ep-label">Episodes</div>
+            <div class="ep-bar-wrap"><div class="ep-bar" id="record-ep-bar"></div></div>
+            <div class="ep-status-row">
+              <div class="ep-num">
+                <span id="record-ep-current">—</span>
+                <span class="ep-sep">/</span>
+                <span id="record-ep-total">—</span>
               </div>
-            </div>
-            <div class="ep-actions-panel">
-               <div class="ep-controls-row" id="record-ep-controls">
-                 <button id="record-start-btn" class="btn-primary" onclick="RecordTab.start()">▶ Start Recording</button>
-                 <button class="btn-sm record-ep-action" onclick="RecordTab.sendKey('right')" disabled>✓ Save →</button>
-                 <button class="btn-sm record-ep-action record-ep-discard" onclick="RecordTab.sendKey('left')" disabled>✗ Discard ←</button>
-                 <button class="btn-sm record-ep-action record-ep-end" onclick="RecordTab.sendKey('escape')" disabled>⏹ End (Esc)</button>
-                 <button id="record-stop-btn" class="btn-danger hidden" onclick="RecordTab.stop()">■ Force Stop</button>
-               </div>
-               <div id="record-ep-guard" class="ep-guard-msg">Start recording first. During capture: Save (→), Discard (←), End (Esc).</div>
-              </div>
+              <div id="record-state-pill" class="ep-state-pill idle">Idle</div>
             </div>
           </div>
+          <div class="ep-actions-panel">
+            <div class="ep-controls-row" id="record-ep-controls">
+              <button id="record-start-btn" class="btn-primary" onclick="RecordTab.start()">▶ Start Recording</button>
+              <button class="btn-sm record-ep-action" onclick="RecordTab.sendKey('right')" disabled>✓ Save →</button>
+              <button class="btn-sm record-ep-action record-ep-discard" onclick="RecordTab.sendKey('left')" disabled>✗ Discard ←</button>
+              <button class="btn-sm record-ep-action record-ep-end" onclick="RecordTab.sendKey('escape')" disabled>⏹ End (Esc)</button>
+              <button id="record-stop-btn" class="btn-danger hidden" onclick="RecordTab.stop()">■ Force Stop</button>
+            </div>
+            <div id="record-ep-guard" class="ep-guard-msg">Start recording first. During capture: Save (→), Discard (←), End (Esc).</div>
+          </div>
+        </div>
 
       </section>
 
@@ -398,9 +395,9 @@
               <option value="so101_leader">Leader (SO101)</option>
               <option value="so100_leader">Leader (SO100)</option>
             </select>
-            <label>Arm ID</label>
+            <label for="cal-id">Arm ID</label>
             <input id="cal-id" type="text" value="my_so101_follower_1" placeholder="Example: my_so101_follower_1" onkeyup="CalibrateTab.checkFile()" />
-            <label>Arm Port</label>
+            <label for="cal-port">Arm Port</label>
             <input id="cal-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
 
             <div class="info-box" style="margin-top:12px; padding:8px 10px;">
@@ -435,7 +432,7 @@
                     <option value="so101_leader">Leader (SO101)</option>
                     <option value="so100_leader">Leader (SO100)</option>
                   </select>
-                  <button onclick="CalibrateTab.refreshFiles()" class="btn-xs" style="padding:4px 6px;">↺</button>
+                  <button onclick="CalibrateTab.refreshFiles()" class="btn-xs" style="padding:4px 6px;" aria-label="Refresh calibration files">↺</button>
                 </div>
               </div>
               <div id="cal-file-list" class="device-list" style="overflow-y: auto; flex: 1;">—</div>
@@ -444,7 +441,7 @@
         </div>
 
         <div style="display: flex; gap: 14px; align-items: stretch;">
-          <div class="card" id="cal-live-table" style="width: 480px; flex-shrink: 0; margin-bottom: 0; overflow-y: auto; display: flex; flex-direction: column;">
+          <div class="card" id="cal-live-table" style="max-width: 480px; width: 100%; flex-shrink: 0; margin-bottom: 0; overflow-y: auto; display: flex; flex-direction: column;">
             <h3 style="margin-bottom: 4px;">Live Motor Ranges</h3>
             <div id="cal-motor-placeholder" class="muted" style="flex:1; display:flex; align-items:center; justify-content:center; text-align:center;">
               Waiting for calibration...<br/>Start process to see live ranges.
@@ -464,37 +461,53 @@
 
 
 
-        <div class="card" style="border: 2px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-          
-          <div class="muted" style="margin-bottom:12px; font-size:12px;">Camera Setup previews run in bandwidth-safe mode (fixed 144p @ 5fps) to keep multi-camera mapping stable.</div>
+        <!-- Card 1: udev Rules (prerequisite — shown first) -->
+        <div class="card" id="rules-card">
+          <h3>udev Rules</h3>
+          <div id="rules-install-status" style="font-size: 13px; font-weight: 500;">Checking udev install status...</div>
+          <div id="rules-detail">
+            <div id="rules-install-hint"></div>
+          </div>
+          <div id="rules-advanced-panel" style="margin-top: 16px; padding: 0;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 8px; letter-spacing: .2px;">Current Active Rules</div>
+            <div id="rules-readable" class="rules-readable">
+              <div class="rules-empty">Loading rules...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: Camera Mapping -->
+        <div class="card">
+          <h3>Camera Mapping</h3>
+          <div style="background:color-mix(in srgb, var(--accent) 8%, transparent); border:1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius:6px; padding:8px 12px; font-size:12px; color:var(--accent); display:flex; gap:8px; align-items:center; line-height:1.5; margin-bottom:14px;">
+            <span style="flex-shrink:0;">ℹ️</span>
+            <span>Previews run in bandwidth-safe mode (fixed 144p @ 5fps) to keep multi-camera mapping stable.</span>
+          </div>
           <div id="device-cameras-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
+        </div>
 
-          <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 20px;">
-            <h3 style="margin-bottom: 10px;">Arm Port Mapping</h3>
-            <div class="muted" style="margin-bottom:10px; font-size:12px;">Assign stable symlink names to each detected arm by serial number.</div>
-            <div id="device-arms-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
+        <!-- Card 3: Arm Port Mapping -->
+        <div class="card">
+          <h3>Arm Port Mapping</h3>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <div class="field-help" style="margin-bottom:0;">Assign stable symlink names to each detected arm by serial number.</div>
+            <button class="btn-sm" onclick="document.getElementById('arm-identify-panel').style.display = document.getElementById('arm-identify-panel').style.display === 'none' ? 'block' : 'none'">🔍 Identify Arm</button>
           </div>
-
-          <div style="margin-top: 18px; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2);">
-            <div id="rules-install-status" style="font-size: 12px; margin-bottom: 8px; color: var(--text2);">Checking udev install status...</div>
-            <div id="rules-install-hint" style="font-size: 12px; color: var(--text2); white-space: pre-wrap;"></div>
-            <div style="margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
-              <button class="btn-sm" onclick="DeviceSetupTab.previewRules()">Preview Rules</button>
-              <button class="btn-primary" onclick="DeviceSetupTab.applyRules()">Apply Rules</button>
-              <button class="btn-sm" onclick="DeviceSetupTab.copyInstallCommands()">Copy CLI Install Commands</button>
-              <button class="btn-xs" onclick="DeviceSetupTab.refreshRulesStatus()">Refresh udev status</button>
-            </div>
-          </div>
-          
-          <div style="margin-top: 32px; text-align: left;">
-            <h3 style="margin-bottom: 12px; color: var(--text1); font-size: 16px;">Current Active Rules</h3>
-            <div id="rules-advanced-panel" style="margin-top: 12px; padding: 0;">
-              <div id="rules-readable" class="rules-readable">
-                <div class="rules-empty">Loading rules...</div>
+          <!-- Arm Identify Wizard -->
+          <div id="arm-identify-panel" style="display:none; margin-bottom:14px; padding:14px; background:color-mix(in srgb, var(--accent) 8%, transparent); border:1px solid color-mix(in srgb, var(--accent) 25%, transparent); border-radius:8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+              <div>
+                <div style="font-weight:600; font-size:14px; color:var(--text1);">🔍 Arm Identify Wizard</div>
+                <div id="arm-identify-msg" style="font-size:12px; color:var(--text2); margin-top:4px;">Disconnect one arm, then click Start to begin identification.</div>
               </div>
-
+              <div style="display:flex; gap:8px;">
+                <button id="arm-identify-start-btn" class="btn-primary" onclick="DeviceSetupTab.startArmIdentify()">Start Identify</button>
+                <button id="arm-identify-stop-btn" class="btn-sm" style="display:none;" onclick="DeviceSetupTab.stopArmIdentify()">Cancel</button>
+              </div>
             </div>
+            <div id="arm-identify-result" style="display:none;"></div>
           </div>
+          <div id="device-arms-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
         </div>
       </section>
 
@@ -512,7 +525,7 @@
               <option value="so101_leader">Leader (SO101)</option>
               <option value="so100_leader">Leader (SO100)</option>
             </select>
-            <label>Arm Port</label>
+            <label for="ms-port">Arm Port</label>
             <input id="ms-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
 
             <div class="info-box" style="margin-top:12px">
@@ -564,15 +577,37 @@
             </div>
 
             <div id="train-hf-wrap" class="hidden">
-              <label>Dataset Repo ID</label>
+              <label for="train-repo">Dataset Repo ID</label>
               <input id="train-repo" type="text" value="user/my-dataset" placeholder="Example: yourname/my-dataset" oninput="TrainTab.validateRepoId()" />
               <div class="field-help" style="margin-top:4px;">Type a Hugging Face Hub dataset ID (`username/dataset-name`).</div>
             </div>
             <div id="train-repo-error" style="display:none; color:var(--red); font-size:11px; margin-top:4px; padding:4px 8px; background:rgba(248,81,73,0.1); border-radius:4px;"></div>
             
-            <label>Training Steps</label>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; margin-bottom:4px;">
+              <label for="train-steps" style="margin:0;">Training Steps</label>
+              <div style="display:flex; gap:4px;">
+                <button class="btn-xs" onclick="TrainTab.applyPreset('quick')" title="1K steps — quick smoke test">Quick (1K)</button>
+                <button class="btn-xs" onclick="TrainTab.applyPreset('standard')" title="50K steps — typical run">Standard (50K)</button>
+                <button class="btn-xs" onclick="TrainTab.applyPreset('full')" title="100K steps — full training">Full (100K)</button>
+              </div>
+            </div>
             <input id="train-steps" type="number" value="100000" min="1000" step="1000" />
-            
+            <div id="train-advanced-params" class="advanced-only" style="margin-top:8px; padding:10px; border:1px solid var(--border); border-radius:6px; background:color-mix(in srgb, var(--bg3) 60%, transparent);">
+              <div style="font-size:11px; color:var(--text2); margin-bottom:8px; font-weight:600; letter-spacing:.2px;">ADVANCED PARAMS</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                <div>
+                  <label for="train-batch-size" style="margin-bottom:3px;">Batch Size</label>
+                  <input id="train-batch-size" type="number" placeholder="default (64)" min="1" step="1" />
+                  <div class="field-help">Samples per gradient step.</div>
+                </div>
+                <div>
+                  <label for="train-lr" style="margin-bottom:3px;">Learning Rate</label>
+                  <input id="train-lr" type="text" placeholder="default (1e-4)" />
+                  <div class="field-help">e.g. 1e-4, 0.0001</div>
+                </div>
+              </div>
+            </div>
+
             <label>Compute Device</label>
             <select id="train-device" onchange="TrainTab.onDeviceChange()">
               <option value="cuda">CUDA (GPU)</option>
@@ -581,7 +616,7 @@
             </select>
             <div id="train-device-warning" class="hidden" style="margin-top:6px; color:var(--red); font-size:12px; line-height:1.4; padding:6px 8px; background:rgba(248,81,73,0.12); border:1px solid rgba(248,81,73,0.35); border-radius:6px;"></div>
             <div id="train-device-actions" class="hidden" style="margin-top:6px;">
-              <button id="train-install-btn" class="btn-xs" onclick="TrainTab.installCudaTorch()">Install CUDA PyTorch (Nightly)</button>
+              <button id="train-install-btn" class="btn-sm" onclick="TrainTab.installCudaTorch()">Install CUDA PyTorch (Nightly)</button>
             </div>
 
             <div style="margin-top:10px; padding:10px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
@@ -599,7 +634,7 @@
               </div>
               <div style="margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg3);">
                 <div style="font-size:11px; color:var(--text2); margin-bottom:6px;">Loss Trend</div>
-                <canvas id="train-loss-canvas" width="560" height="120" style="width:100%; height:120px; display:block;"></canvas>
+                <canvas id="train-loss-canvas" width="560" height="200" style="width:100%; height:200px; display:block;"></canvas>
               </div>
             </div>
 
@@ -626,7 +661,16 @@
               <li>Check the terminal log below for real-time progress and loss values.</li>
             </ul>
           </div>
-        </div>
+
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h3 style="margin:0;">Checkpoints</h3>
+              <button onclick="TrainTab.refreshCheckpoints()" class="btn-xs">↺ Refresh</button>
+            </div>
+            <div id="train-checkpoints-list" class="device-list">
+              <div class="muted">No checkpoints found. Train a model first.</div>
+            </div>
+          </div>
 
       </section>
 
@@ -639,13 +683,18 @@
           <div class="card">
             <h3>Configuration</h3>
 
-            <label>Policy Path</label>
+
+            <label>Checkpoint</label>
+            <select id="eval-checkpoint-select" onchange="EvalTab.onCheckpointSelect(this.value)" style="margin-bottom:12px;">
+              <option value="">(manual path below)</option>
+            </select>
+            <label for="eval-policy-path">Policy Path</label>
             <input id="eval-policy-path" type="text" value="outputs/train/checkpoints/last/pretrained_model" placeholder="Path to trained policy/checkpoint" />
 
-            <label>Dataset Repo ID</label>
+            <label for="eval-repo-id">Dataset Repo ID</label>
             <input id="eval-repo-id" type="text" value="user/my-dataset" placeholder="username/dataset" />
 
-            <label>Episodes</label>
+            <label for="eval-episodes">Episodes</label>
             <input id="eval-episodes" type="number" value="10" min="1" step="1" />
 
             <label>Compute Device</label>
@@ -655,7 +704,7 @@
               <option value="mps">MPS (Apple Silicon)</option>
             </select>
 
-            <label>Task (Optional)</label>
+            <label for="eval-task">Task (Optional)</label>
             <input id="eval-task" type="text" value="" placeholder="Optional env task override" />
 
             <div style="margin-top:10px; padding:10px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
@@ -676,7 +725,7 @@
             <div style="margin-top:10px; padding:10px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
               <div style="font-size:12px; color:var(--text2); margin-bottom:8px;">Evaluation Summary</div>
               <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:11px; color:var(--text2);">
-                <span id="eval-summary-confidence" class="dbadge badge-idle">PARTIAL</span>
+                <span id="eval-summary-confidence" class="dbadge" style="display:none"></span>
                 <span id="eval-summary-time">Start -- · Elapsed -- · End --</span>
               </div>
               <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:12px; color:var(--text2);">
@@ -724,8 +773,10 @@
 
           <!-- Dataset Detail & Replay -->
           <div class="card" style="display: flex; flex-direction: column; gap: 16px;">
-            <div id="dataset-detail-empty" style="text-align:center; padding: 40px; color: var(--text2);">
-              Select a dataset to view details
+            <div id="dataset-detail-empty" class="dataset-empty-state">
+              <div class="dataset-empty-icon">📂</div>
+              <div class="dataset-empty-title">No dataset selected</div>
+              <div class="dataset-empty-hint">Select a dataset from the list to view details and replay episodes</div>
             </div>
             
             <div id="dataset-detail-view" style="display:none; flex-direction: column; gap: 16px;">
@@ -734,10 +785,7 @@
                   <h3 id="ds-title" style="margin-bottom: 4px;">Dataset ID</h3>
                   <div id="ds-stats" class="muted" style="font-size: 13px;">...</div>
                 </div>
-                <div style="display:flex; gap:8px; align-items:center;">
-                  <button class="btn-sm" onclick="DatasetTab.inspectQualityCurrent()">Quality Check</button>
-                  <button class="btn-sm" onclick="DatasetTab.pushCurrentToHub()">Push to Hub</button>
-                </div>
+                <div id="ds-detail-actions"></div>
               </div>
 
               <div id="ds-push-status" style="display:none; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--bg3);">
@@ -767,13 +815,57 @@
                 <!-- Videos will be injected here -->
               </div>
               
-              <div id="ds-video-controls" style="display:none; flex-direction: column; gap: 8px;">
-                <div style="display:flex; justify-content:center; gap: 8px;">
-                  <button class="btn-sm" onclick="DatasetTab.playAll()">▶ Play</button>
-                  <button class="btn-sm" onclick="DatasetTab.pauseAll()">⏸ Pause</button>
+              <div id="ds-video-controls" style="display:none; flex-direction: column; gap: 8px; padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--bg3);">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <span id="ds-time-current" style="font-family:var(--mono); font-size:11px; color:var(--text2); min-width:48px; text-align:right;">0:00.0</span>
+                  <input id="ds-scrubber" type="range" min="0" max="1000" value="0" step="1" style="flex:1; cursor:pointer; accent-color:var(--accent);" />
+                  <span id="ds-time-total" style="font-family:var(--mono); font-size:11px; color:var(--text2); min-width:48px;">0:00.0</span>
                 </div>
-              </div>
+                <div style="display:flex; justify-content:center; align-items:center; gap: 8px;">
+                  <button class="btn-sm" onclick="DatasetTab.stepFrame(-1)" title="Previous frame">⏮</button>
+                  <button id="ds-play-btn" class="btn-sm" onclick="DatasetTab.togglePlay()" style="min-width:74px;">▶ Play</button>
+                  <button class="btn-sm" onclick="DatasetTab.stepFrame(1)" title="Next frame">⏭</button>
+                  <select id="ds-speed-select" onchange="DatasetTab.setSpeed(this.value)" style="font-size:11px; padding:4px 6px; border-radius:4px; background:var(--bg3); color:var(--text); border:1px solid var(--border); cursor:pointer;">
+                    <option value="0.25">0.25×</option>
+                    <option value="0.5">0.5×</option>
+                    <option value="1" selected>1×</option>
+                    <option value="1.5">1.5×</option>
+                    <option value="2">2×</option>
+                  </select>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:2px;">
+                  <span style="font-size:11px; color:var(--text2); min-width:28px;">Tag:</span>
+                  <button id="ds-tag-good" class="btn-xs" onclick="DatasetTab.tagEpisode('good')">👍 Good</button>
+                  <button id="ds-tag-bad" class="btn-xs" onclick="DatasetTab.tagEpisode('bad')">👎 Bad</button>
+                  <button id="ds-tag-review" class="btn-xs" onclick="DatasetTab.tagEpisode('review')">🔍 Review</button>
+                  <button id="ds-tag-clear" class="btn-xs" style="color:var(--text2);" onclick="DatasetTab.tagEpisode('untagged')">✕ Clear</button>
+                  <span id="ds-tag-status" style="font-size:11px; color:var(--text2); margin-left:4px;"></span>
             </div>
+          </div>
+        </div>
+
+        <!-- HF Hub Dataset Search -->
+        <div class="card" style="margin-top:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h3 style="margin:0;">HuggingFace Hub</h3>
+            <span class="dbadge badge-idle" id="hub-search-status">Ready</span>
+          </div>
+          <div style="display:flex; gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+            <input id="hub-search-query" type="text" placeholder="Search datasets (e.g. so101, pick)" style="flex:1; min-width:160px;" onkeydown="if(event.key==='Enter') HubSearch.search()">
+            <input id="hub-search-tag" type="text" placeholder="tag (default: lerobot)" style="width:160px;">
+            <button class="btn-sm" onclick="HubSearch.search()">Search</button>
+          </div>
+          <div id="hub-search-results" class="device-list" style="max-height:260px; overflow-y:auto;">
+            <div class="device-item"><span class="muted">Enter a query and press Search to find LeRobot datasets on the Hub.</span></div>
+          </div>
+          <!-- Download progress panel -->
+          <div id="hub-download-panel" style="display:none; margin-top:10px; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--bg3);">
+            <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text2); margin-bottom:6px;">
+              <span id="hub-dl-label">Downloading...</span>
+              <span id="hub-dl-percent">0%</span>
+            </div>
+            <div class="usb-bus-bar-track"><div id="hub-dl-fill" class="usb-bar-fill good" style="width:0%"></div></div>
+            <div id="hub-dl-note" class="muted" style="font-size:11px; margin-top:6px;"></div>
           </div>
         </div>
       </section>
@@ -781,11 +873,12 @@
       </main>
     </div>
 
-    <section id="console-drawer" class="console-drawer" aria-label="Global Console Drawer">
+    <section id="console-drawer" class="console-drawer collapsed" aria-label="Global Console Drawer">
       <div class="console-drawer-header">
-        <div class="console-controls">
+        <div class="console-controls" onclick="GlobalConsole.toggleCollapse()" style="cursor:pointer;">
           <span class="console-title">Console</span>
-          <select id="console-process-select" class="console-process-select">
+          <span class="console-chevron">▼</span>
+          <select id="console-process-select" class="console-process-select" onclick="event.stopPropagation()">
             <option value="teleop">teleop</option>
             <option value="record">record</option>
             <option value="calibrate">calibrate</option>
@@ -796,19 +889,38 @@
           <span id="console-process-state" class="dbadge badge-idle">IDLE</span>
         </div>
         <div class="console-actions">
-          <button class="btn-xs" onclick="GlobalConsole.clearCurrent()">Clear</button>
+          <button class="btn-xs" onclick="event.stopPropagation(); GlobalConsole.clearCurrent()">Clear</button>
         </div>
       </div>
-      <div id="console-log" class="terminal"></div>
-      <div class="stdin-row">
-        <input id="console-stdin" type="text" placeholder="Send input to selected process" />
-        <button onclick="GlobalConsole.sendInput()" class="btn-sm">Send ↵</button>
+      <div class="console-drawer-body">
+        <div id="console-log" class="terminal"></div>
+        <div class="stdin-row">
+          <input id="console-stdin" type="text" placeholder="Send input to selected process" />
+          <button onclick="GlobalConsole.sendInput()" class="btn-sm">Send ↵</button>
+        </div>
       </div>
     </section>
   </div>
 
   <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 
+  <script src="/static/workbench_core.js"></script>
+  <script src="/static/workbench_helpers.js"></script>
+  <script src="/static/workbench_api.js"></script>
+  <script src="/static/workbench_feeds.js"></script>
+  <script src="/static/workbench_navigation.js"></script>
+  <script src="/static/workbench_mode_signals.js"></script>
+  <script src="/static/workbench_streams.js"></script>
+  <script src="/static/workbench_profile.js"></script>
+  <script src="/static/workbench_status.js"></script>
+  <script src="/static/workbench_teleop.js"></script>
+  <script src="/static/workbench_record.js"></script>
+  <script src="/static/workbench_calibrate.js"></script>
+  <script src="/static/workbench_device_setup.js"></script>
+  <script src="/static/workbench_motor_setup.js"></script>
+  <script src="/static/workbench_dataset.js"></script>
+  <script src="/static/workbench_train.js"></script>
+  <script src="/static/workbench_eval.js"></script>
   <script src="/static/main.js"></script>
 </body>
 </html>

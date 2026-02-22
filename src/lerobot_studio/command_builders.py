@@ -159,8 +159,7 @@ def build_train_args(python_exe: str, cfg: dict) -> list[str]:
     repo_id = cfg.get("train_repo_id", "user/dataset")
     steps = cfg.get("train_steps", 100000)
     device = cfg.get("train_device", "cuda")
-
-    return [
+    args = [
         python_exe,
         "-m",
         "lerobot.scripts.lerobot_train",
@@ -170,6 +169,16 @@ def build_train_args(python_exe: str, cfg: dict) -> list[str]:
         f"--policy.device={device}",
         "--policy.push_to_hub=false",
     ]
+
+    batch_size = cfg.get("train_batch_size")
+    if batch_size:
+        args.append(f"--training.batch_size={int(batch_size)}")
+
+    lr = cfg.get("train_lr")
+    if lr:
+        args.append(f"--training.lr={float(lr)}")
+
+    return args
 
 
 def build_eval_args(python_exe: str, cfg: dict) -> list[str]:

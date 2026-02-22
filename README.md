@@ -1,21 +1,33 @@
 # LeRobot Studio
 
-A comprehensive web-based GUI for setting up and operating [Hugging Face LeRobot](https://github.com/huggingface/lerobot) robot arms. This tool provides an interactive interface to replace the traditional CLI setup process, making it easier to configure cameras, calibrate motors, run teleoperation, and record datasets.
+A comprehensive web-based GUI for setting up and operating [Hugging Face LeRobot](https://github.com/huggingface/lerobot) robot arms. This tool replaces the traditional CLI-heavy flow with a guided workbench for setup, operation, dataset management, training, and evaluation.
 
 ## Features
 
-- **Status Dashboard**: See all connected cameras and robot arms at a glance.
-- **Camera Setup**: Configure udev rules, assign symlinks (e.g., `top_cam_1`), and adjust streaming quality (Resolution, FPS, JPEG Quality).
-- **Motor Setup**: Interactive motor calibration and configuration.
-- **Calibration**: Real-time visualization of motor ranges with interactive locking/unlocking and calibration file management.
-- **Teleop**: Live view of up to 3 cameras simultaneously while testing leader-follower teleoperation.
-- **Record**: Start and stop data collection with live visual feedback.
+- **Workbench Navigation**: Setup -> Operate -> Data -> ML flow with Guided/Advanced modes.
+- **Status**: Live device and process overview.
+- **Mapping**: Camera and arm udev assignment, rule preview/apply, and stream setting controls.
+- **Motor Setup**: Basic motor connectivity and setup commands.
+- **Calibration**: Real-time motor range visualization, lock/unlock, and calibration file actions.
+- **Teleop**: Multi-camera teleoperation with preflight checks and process logs.
+- **Record**: Dataset collection with episode controls, preflight checks, and keyboard shortcuts.
+- **Dataset**: Local dataset listing, details, cleanup, and Hub push workflows.
+- **Train**: `lerobot` training orchestration with preflight and metric/log streaming.
+- **Eval**: Policy evaluation run orchestration with live process output.
+- **Global Console Drawer**: Unified stdout/stderr stream and stdin input routing per process.
+- **Profiles**: Save/load/import/export/delete full configuration profiles.
 
 ## Requirements
 
 - Python 3.10+
 - Linux (for `udev` rules and `/dev/video*` access)
 - `huggingface/lerobot` installed in your environment
+
+### Optional Dependencies and Permissions
+
+- **udev apply**: non-interactive `sudo` is recommended for one-click rule installation. Without it, Studio provides manual commands.
+- **Hub push**: `huggingface-cli` login and valid token are required.
+- **GPU checks/monitoring**: CUDA-enabled environment and `nvidia-smi` are needed for full Train diagnostics.
 
 ## Installation
 
@@ -64,12 +76,15 @@ options:
 
 ## Setup Process Guide
 
-1. **Status**: Check if your OS recognizes the connected USB cameras and robot arms.
-2. **Camera Setup**: Bind your physical cameras to symlinks (`top_cam_1`, `follower_cam_1`, etc.) by applying udev rules. The tool will auto-reload the rules.
-3. **Motor Setup**: (If needed) Test basic motor connectivity.
-4. **Calibration**: Follow the on-screen steps to calibrate your follower and leader arms. You can see real-time range values for each motor.
-5. **Teleop**: Verify that the leader arm accurately controls the follower arm while streaming multiple camera angles.
-6. **Record**: Collect your episodic data.
+1. **Status**: Confirm cameras/arms are visible and process status is healthy.
+2. **Mapping**: Bind physical devices to stable symlinks (`top_cam_1`, `follower_arm_1`, etc.) and apply rules.
+3. **Motor Setup**: Run basic motor setup if needed for your hardware profile.
+4. **Calibration**: Perform follower/leader calibration and verify the generated files.
+5. **Teleop**: Validate motion control and camera feeds with preflight checks.
+6. **Record**: Capture episodes for your target task and dataset repo.
+7. **Dataset**: Inspect local datasets and optionally push to Hugging Face Hub.
+8. **Train**: Start training from recorded data and monitor logs/metrics.
+9. **Eval**: Run policy evaluation to close the setup -> data -> ML loop.
 
 ## License
 
