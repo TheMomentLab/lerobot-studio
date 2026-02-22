@@ -4,6 +4,15 @@ import time
 from pathlib import Path
 
 _patched = False
+_STATUS_PATH = "/dev/shm/lerobot_cam_patch_status.txt"
+
+
+def _write_status(text: str) -> None:
+    try:
+        with open(_STATUS_PATH, "w", encoding="utf-8") as f:
+            f.write(text)
+    except Exception:
+        pass
 
 
 def install_camera_patch():
@@ -12,12 +21,17 @@ def install_camera_patch():
         return
     _patched = True
 
+    _write_status("install_camera_patch: begin")
+
     try:
         from lerobot.cameras.opencv.camera_opencv import OpenCVCamera
+        _write_status("install_camera_patch: imported lerobot.cameras.opencv.camera_opencv.OpenCVCamera")
     except ImportError:
         try:
             from lerobot.common.robot_devices.cameras.opencv import OpenCVCamera
+            _write_status("install_camera_patch: imported lerobot.common.robot_devices.cameras.opencv.OpenCVCamera")
         except ImportError:
+            _write_status("install_camera_patch: FAILED to import OpenCVCamera")
             return
 
     orig_read = getattr(OpenCVCamera, "read", None)
@@ -45,6 +59,7 @@ def install_camera_patch():
 
     def jpeg_writer():
         import cv2
+        write_count = 0
 
         while True:
             time.sleep(0.01)
@@ -69,8 +84,11 @@ def install_camera_patch():
                     with open(tmp_path, "wb") as f:
                         f.write(jpg.tobytes())
                     os.replace(tmp_path, out_path)
+                    write_count += 1
+                    if write_count % 30 == 0:
+                        _write_status(f"writer: writes={write_count} last={name} ts={time.time():.3f}")
                 except Exception:
-                    pass
+                    _write_status(f"writer: encode/write exception for {name}")
 
     threading.Thread(target=jpeg_writer, daemon=True).start()
 
@@ -88,3 +106,5 @@ def install_camera_patch():
             return frame
 
         OpenCVCamera.async_read = patched_async_read
+
+    _write_status("install_camera_patch: patched read/async_read successfully")

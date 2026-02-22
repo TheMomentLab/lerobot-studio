@@ -50,6 +50,81 @@ header {
 .logo { font-size: 20px; }
 h1 { font-size: 16px; font-weight: 600; letter-spacing: .3px; }
 .header-right { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); }
+
+.profile-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg3));
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.profile-dropzone {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px dashed var(--border);
+  color: var(--text2);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.profile-dropzone:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--text);
+}
+
+.profile-dropzone.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.toast-root {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  min-width: 220px;
+  max-width: 360px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text);
+  padding: 10px 12px;
+  font-size: 12px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast.success {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  background: color-mix(in srgb, var(--green) 14%, var(--bg2));
+}
+
+.toast.error {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: color-mix(in srgb, var(--red) 14%, var(--bg2));
+}
 .github-link {
   color: var(--text2);
   display: flex;
@@ -305,6 +380,14 @@ button:active   { opacity: .7; }
 .terminal .line-stdout { color: #c9d1d9; }
 .terminal .line-error  { color: var(--red); }
 .terminal .line-info   { color: var(--yellow); }
+.terminal .line-translation {
+  color: #fef3c7;
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 4px 0;
+}
 .stdin-row {
   display: flex;
   gap: 8px;
@@ -704,6 +787,39 @@ button:active   { opacity: .7; }
   opacity: .88;
   color: color-mix(in srgb, var(--text2) 86%, var(--text));
   border-color: color-mix(in srgb, var(--text2) 22%, var(--border));
+}
+
+.episode-progress-card .record-ep-discard {
+  color: color-mix(in srgb, var(--red) 78%, var(--text));
+  border: 1px solid color-mix(in srgb, var(--red) 38%, var(--border));
+  background: color-mix(in srgb, var(--red) 11%, var(--bg3));
+  font-weight: 600;
+}
+
+.episode-progress-card .record-ep-discard:not(:disabled):hover {
+  background: color-mix(in srgb, var(--red) 16%, var(--bg3));
+  opacity: 1;
+}
+
+.episode-progress-card .record-ep-end {
+  margin-left: 2px;
+  border-left: 1px solid color-mix(in srgb, var(--text2) 40%, var(--border));
+  padding-left: 12px;
+}
+
+.episode-progress-card.ep-flash-save {
+  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--green) 22%, transparent), 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.episode-progress-card.ep-flash-discard {
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--red) 22%, transparent), 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.episode-progress-card.ep-flash-end {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 22px rgba(0, 0, 0, 0.22);
 }
 
 @media (max-width: 1180px) {

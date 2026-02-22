@@ -170,3 +170,29 @@ def build_train_args(python_exe: str, cfg: dict) -> list[str]:
         f"--policy.device={device}",
         "--policy.push_to_hub=false",
     ]
+
+
+def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
+    policy_path = str(cfg.get("eval_policy_path", "")).strip()
+    if not policy_path:
+        policy_path = "outputs/train/checkpoints/last/pretrained_model"
+
+    repo_id = str(cfg.get("eval_repo_id", cfg.get("train_repo_id", "user/dataset"))).strip() or "user/dataset"
+    episodes = int(cfg.get("eval_episodes", 10) or 10)
+    device = str(cfg.get("eval_device", cfg.get("train_device", "cuda"))).strip() or "cuda"
+
+    args = [
+        python_exe,
+        "-m",
+        "lerobot.scripts.lerobot_eval",
+        f"--policy.path={policy_path}",
+        f"--dataset.repo_id={repo_id}",
+        f"--eval.n_episodes={episodes}",
+        f"--device={device}",
+    ]
+
+    task = str(cfg.get("eval_task", "")).strip()
+    if task:
+        args.append(f"--env.task={task}")
+
+    return args

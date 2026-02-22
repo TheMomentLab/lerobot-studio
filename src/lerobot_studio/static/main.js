@@ -101,10 +101,42 @@ const api = {
   },
 };
 
+const NotificationManager = {
+  permissionAsked: false,
+  cooldownMs: 5000,
+  lastSent: new Map(),
+
+  async ensurePermission() {
+    if (!('Notification' in window)) return;
+    if (Notification.permission === 'granted' || Notification.permission === 'denied') return;
+    if (this.permissionAsked) return;
+    this.permissionAsked = true;
+    try {
+      await Notification.requestPermission();
+    } catch (_) {}
+  },
+
+  notify(title, body, tag = '') {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    const key = `${title}|${body}|${tag}`;
+    const now = Date.now();
+    const prev = this.lastSent.get(key) || 0;
+    if (now - prev < this.cooldownMs) return;
+    this.lastSent.set(key, now);
+    try {
+      const n = new Notification(title, { body, tag: tag || undefined, silent: false });
+      n.onclick = () => window.focus();
+    } catch (_) {}
+  },
+};
+
 /* ─── WebSocket ──────────────────────────────────────────────────────────────── */
 const WS = {
   ws: null,
   reconnectTimer: null,
+  lastErrorAtByProcess: {},
+  prevRunning: {},
 
   connect() {
     const url = `ws://${location.host}/ws`;
@@ -126,6 +158,7 @@ const WS = {
     this.ws.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'output') WS.onOutput(msg);
+      if (msg.type === 'metric') WS.onMetric(msg);
       if (msg.type === 'status') WS.onStatus(msg);
     };
   },
@@ -162,26 +195,70 @@ const WS = {
       calibrate:   'cal-log',
       motor_setup: 'ms-log',
       train:       'train-log',
+      train_install:'train-log',
+      eval:        'eval-log',
     };
     const el = document.getElementById(logMap[msg.process]);
     if (!el) return;
+    if (msg.kind === 'translation') {
+      const last = el.lastElementChild;
+      if (last && last.classList.contains('line-translation') && last.textContent === msg.line) {
+        return;
+      }
+    }
     const line = document.createElement('div');
     line.className = `line-${msg.kind}`;
     line.textContent = msg.line;
     el.appendChild(line);
     el.scrollTop = el.scrollHeight;
 
+    const isErrorLine = msg.kind === 'error' || /\[ERROR\]|Traceback|RuntimeError|Exception|failed/i.test(msg.line || '');
+    if (isErrorLine) {
+      this.lastErrorAtByProcess[msg.process] = Date.now();
+    }
+
     // Parse episode progress from record output
     if (msg.process === 'record') RecordTab.parseEpisode(msg.line);
+    if (msg.process === 'train') TrainTab.ingestLogLine(msg.line, msg.kind);
+    if (msg.process === 'train_install') TrainTab.ingestInstallerLog(msg.line, msg.kind);
+    if (msg.process === 'eval') EvalTab.ingestLogLine(msg.line, msg.kind);
+  },
+
+  onMetric(msg) {
+    if (msg.process === 'train') {
+      TrainTab.ingestMetric(msg.metric || {});
+    }
   },
 
   onStatus(msg) {
+    const now = Date.now();
+    const next = msg.processes || {};
+    const all = new Set([...Object.keys(this.prevRunning), ...Object.keys(next)]);
+
+    all.forEach((proc) => {
+      const was = !!this.prevRunning[proc];
+      const isNow = !!next[proc];
+      if (was && !isNow) {
+        const lastErr = this.lastErrorAtByProcess[proc] || 0;
+        const abnormal = now - lastErr < 120000;
+        if (abnormal) {
+          NotificationManager.notify('LeRobot Studio', `${proc} ended with error. Check logs.`, `proc-${proc}-error`);
+        } else if (proc === 'train') {
+          NotificationManager.notify('LeRobot Studio', 'Training completed.', 'proc-train-complete');
+        } else if (proc === 'record') {
+          NotificationManager.notify('LeRobot Studio', 'Recording session ended.', 'proc-record-end');
+        }
+      }
+    });
+
+    this.prevRunning = { ...next };
     state.procStatus = msg.processes;
     TeleopTab.syncBtn();
     RecordTab.syncBtn();
     CalibrateTab.syncBtn();
     MotorSetupTab.syncBtn();
     TrainTab.syncBtn();
+    EvalTab.syncBtn();
     StatusTab.updateProcs(msg.processes);
   },
 };
@@ -213,8 +290,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'calibrate')    { CalibrateTab.refreshArms(); CalibrateTab.checkFile(); CalibrateTab.refreshFiles(); }
     if (btn.dataset.tab === 'motor-setup')  MotorSetupTab.refreshArms();
     if (btn.dataset.tab === 'teleop')       { TeleopTab.showFeeds(); DeviceSetupTab.loadStreamSettings(); }
-    if (btn.dataset.tab === 'record')       { RecordTab.showFeeds(); DeviceSetupTab.loadStreamSettings(); }
-    if (btn.dataset.tab === 'train')        { TrainTab.refreshGpu(); TrainTab.refreshDatasets(); }
+    if (btn.dataset.tab === 'record')       { RecordTab.onTabOpen(); DeviceSetupTab.loadStreamSettings(); }
+    if (btn.dataset.tab === 'train')        { TrainTab.refreshGpu(); TrainTab.refreshDatasets(); TrainTab.refreshPreflight(); }
+    if (btn.dataset.tab === 'eval')         EvalTab.loadDefaults();
     if (btn.dataset.tab === 'dataset')      DatasetTab.refreshList();
   });
 });
@@ -225,11 +303,284 @@ async function loadConfig() {
   TeleopTab.applyConfig(state.config);
   RecordTab.applyConfig(state.config);
   TrainTab.applyConfig(state.config);
+  EvalTab.applyConfig(state.config);
 }
 
 function saveConfig() {
   api.post('/api/config', state.config);
 }
+
+const _toastState = {
+  lastKey: '',
+  lastTs: 0,
+  active: new Map(),
+};
+
+function showToast(message, kind = 'success') {
+  const root = document.getElementById('toast-root');
+  if (!root) return;
+  const key = `${kind}:${message}`;
+  const now = Date.now();
+
+  const existing = _toastState.active.get(key);
+  if (existing) {
+    clearTimeout(existing.hideTimer);
+    clearTimeout(existing.removeTimer);
+    existing.el.classList.add('show');
+    existing.hideTimer = setTimeout(() => {
+      existing.el.classList.remove('show');
+      existing.removeTimer = setTimeout(() => {
+        existing.el.remove();
+        _toastState.active.delete(key);
+      }, 180);
+    }, 2300);
+    _toastState.lastKey = key;
+    _toastState.lastTs = now;
+    return;
+  }
+
+  if (_toastState.lastKey === key && now - _toastState.lastTs < 1500) {
+    return;
+  }
+
+  _toastState.lastKey = key;
+  _toastState.lastTs = now;
+  const toast = document.createElement('div');
+  toast.className = `toast ${kind}`;
+  toast.textContent = message;
+  root.appendChild(toast);
+  const toastRef = { el: toast, hideTimer: 0, removeTimer: 0 };
+  _toastState.active.set(key, toastRef);
+
+  requestAnimationFrame(() => toast.classList.add('show'));
+
+  toastRef.hideTimer = setTimeout(() => {
+    toast.classList.remove('show');
+    toastRef.removeTimer = setTimeout(() => {
+      toast.remove();
+      _toastState.active.delete(key);
+    }, 180);
+  }, 2300);
+}
+
+function isJsonProfileFile(file) {
+  if (!file) return false;
+  const nameOk = /\.json$/i.test(file.name || '');
+  const type = (file.type || '').toLowerCase();
+  const typeOk = type === '' || type.includes('json') || type.includes('text/plain');
+  return nameOk && typeOk;
+}
+
+const ProfileManager = {
+  setActiveBadge(name) {
+    const badge = document.getElementById('profile-active-badge');
+    if (badge) badge.textContent = `Active: ${name || 'default'}`;
+  },
+
+  async refresh() {
+    const res = await api.get('/api/profiles');
+    const select = document.getElementById('profile-select');
+    if (!select) return;
+    const profiles = Array.isArray(res.profiles) ? res.profiles : [];
+    select.innerHTML = profiles.map((name) => `<option value="${name}">${name}</option>`).join('');
+    if (res.active && profiles.includes(res.active)) {
+      select.value = res.active;
+    } else if (profiles.length > 0) {
+      select.value = profiles[0];
+    }
+    this.setActiveBadge(select.value || res.active || 'default');
+  },
+
+  currentName() {
+    return document.getElementById('profile-select')?.value || 'default';
+  },
+
+  collectCurrentConfig() {
+    const teleopCfg = TeleopTab.buildConfig();
+    const recordCfg = RecordTab.buildConfig();
+    const evalCfg = EvalTab.buildConfig();
+    const cfg = {
+      ...state.config,
+      ...teleopCfg,
+      ...recordCfg,
+      ...evalCfg,
+      train_dataset_source: TrainTab.getDatasetSource(),
+      train_policy: getVal('train-policy') || 'act',
+      train_steps: parseInt(getVal('train-steps'), 10) || 100000,
+      train_device: getVal('train-device') || 'cuda',
+      train_repo_id: getVal('train-repo') || 'user/my-dataset',
+      profile_name: this.currentName(),
+    };
+    state.config = cfg;
+    return cfg;
+  },
+
+  async saveCurrent() {
+    const name = this.currentName();
+    const cfg = this.collectCurrentConfig();
+    const res = await api.post(`/api/profiles/${encodeURIComponent(name)}`, cfg);
+    if (res.ok) {
+      saveConfig();
+      await this.refresh();
+      this.setActiveBadge(name);
+    } else {
+      alert(`Failed to save profile: ${res.error || 'Unknown error'}`);
+    }
+  },
+
+  async saveAs() {
+    const raw = prompt('New profile name (letters, numbers, dot, dash, underscore):', this.currentName());
+    const name = (raw || '').trim();
+    if (!name) return;
+    const cfg = this.collectCurrentConfig();
+    cfg.profile_name = name;
+    const res = await api.post(`/api/profiles/${encodeURIComponent(name)}`, cfg);
+    if (!res.ok) {
+      alert(`Failed to save profile: ${res.error || 'Unknown error'}`);
+      return;
+    }
+    state.config.profile_name = name;
+    saveConfig();
+    await this.refresh();
+    this.setActiveBadge(name);
+  },
+
+  async applySelected() {
+    const name = this.currentName();
+    const res = await api.get(`/api/profiles/${encodeURIComponent(name)}`);
+    if (!res.ok || !res.config) {
+      alert(`Failed to load profile: ${res.error || 'Unknown error'}`);
+      return;
+    }
+    const cfg = { ...res.config, profile_name: name };
+    state.config = cfg;
+    TeleopTab.applyConfig(cfg);
+    RecordTab.applyConfig(cfg);
+    TrainTab.applyConfig(cfg);
+    EvalTab.applyConfig(cfg);
+    setVal('train-policy', cfg.train_policy || 'act');
+    setVal('train-steps', String(cfg.train_steps || 100000));
+    setVal('train-device', cfg.train_device || 'cuda');
+    setVal('train-repo', cfg.train_repo_id || 'user/my-dataset');
+    await TrainTab.refreshPreflight();
+    saveConfig();
+    this.setActiveBadge(name);
+  },
+
+  async deleteCurrent() {
+    const name = this.currentName();
+    if (!name || name === 'default') {
+      alert('Cannot delete default profile.');
+      return;
+    }
+    if (!confirm(`Delete profile '${name}'?`)) return;
+    const r = await fetch(`/api/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' });
+    const res = await r.json();
+    if (!res.ok) {
+      alert(`Failed to delete profile: ${res.error || 'Unknown error'}`);
+      return;
+    }
+    await this.refresh();
+    await this.applySelected();
+  },
+
+  async exportCurrent() {
+    const name = this.currentName();
+    const res = await api.get(`/api/profiles/${encodeURIComponent(name)}`);
+    if (!res.ok || !res.config) {
+      alert(`Failed to export profile: ${res.error || 'Unknown error'}`);
+      return;
+    }
+    const content = JSON.stringify(res.config, null, 2);
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
+  triggerImport() {
+    const input = document.getElementById('profile-import-input');
+    if (input) input.click();
+  },
+
+  async importFromFile(file, suggestedName = '') {
+    if (!file) return;
+    if (!isJsonProfileFile(file)) {
+      showToast('Only .json profile files are supported.', 'error');
+      return;
+    }
+    const text = await file.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (_) {
+      showToast('Invalid JSON file.', 'error');
+      return;
+    }
+
+    const baseName = suggestedName || file.name.replace(/\.json$/i, '') || 'imported-profile';
+    const raw = prompt('Profile name for import:', baseName);
+    const name = (raw || '').trim();
+    if (!name) return;
+
+    const res = await api.post('/api/profiles-import', { name, config: parsed });
+    if (!res.ok) {
+      showToast(`Import failed: ${res.error || 'Unknown error'}`, 'error');
+      return;
+    }
+
+    await this.refresh();
+    const select = document.getElementById('profile-select');
+    if (select) select.value = name;
+    await this.applySelected();
+    this.setActiveBadge(name);
+    showToast(`Profile imported: ${name}`, 'success');
+  },
+
+  async handleImportFile(input) {
+    const file = input?.files?.[0];
+    if (file) await this.importFromFile(file);
+    input.value = '';
+  },
+
+  bindDropzone() {
+    const zone = document.getElementById('profile-dropzone');
+    if (!zone) return;
+
+    zone.addEventListener('click', () => this.triggerImport());
+    const prevent = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach((evt) => {
+      zone.addEventListener(evt, prevent);
+    });
+
+    ['dragenter', 'dragover'].forEach((evt) => {
+      zone.addEventListener(evt, () => zone.classList.add('active'));
+    });
+    ['dragleave', 'drop'].forEach((evt) => {
+      zone.addEventListener(evt, () => zone.classList.remove('active'));
+    });
+
+    zone.addEventListener('drop', async (e) => {
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (!isJsonProfileFile(file)) {
+        showToast('Drop a .json profile file.', 'error');
+        return;
+      }
+      const suggested = file.name.replace(/\.json$/i, '') || 'imported-profile';
+      await this.importFromFile(file, suggested);
+    });
+  },
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    STATUS TAB
@@ -284,7 +635,7 @@ const StatusTab = {
 
   updateProcs(procs) {
     const el = document.getElementById('status-procs');
-    const allProcs = ['teleop', 'record', 'calibrate', 'motor_setup'];
+    const allProcs = ['teleop', 'record', 'calibrate', 'motor_setup', 'train', 'eval'];
     el.innerHTML = allProcs.map(name => {
       const running = !!procs[name];
       return `<div class="device-item">
@@ -300,6 +651,8 @@ const StatusTab = {
    TELEOP TAB
 ══════════════════════════════════════════════════════════════════════════════ */
 const TeleopTab = {
+  _lastRunning: false,
+
   mode: 'single',
 
   setMode(m) {
@@ -339,6 +692,11 @@ const TeleopTab = {
       right_follower_port: getVal('teleop-right-follower'),
       left_leader_port:    getVal('teleop-left-leader'),
       right_leader_port:   getVal('teleop-right-leader'),
+      cameras: {
+        front_1: getVal('tc-front1'),
+        top_1: getVal('tc-top1'),
+        top_2: getVal('tc-top2'),
+      },
     };
     Object.assign(state.config, cfg);
     saveConfig();
@@ -376,6 +734,7 @@ const TeleopTab = {
     }
 
     this.clearLog();
+    if (!(await runPreflight(cfg, 'teleop-log'))) return;
     const res = await api.post('/api/teleop/start', cfg);
     if (!res.ok) { appendLog('teleop-log', `[ERROR] ${res.error}`, 'error'); return; }
     this.showFeeds();
@@ -402,6 +761,11 @@ const TeleopTab = {
   clearLog() { clearProcessLog('teleop-log'); },
 
   syncBtn() {
+    const running = !!state.procStatus['teleop'];
+    if (running !== this._lastRunning) {
+      this.showFeeds();
+      this._lastRunning = running;
+    }
     syncProcessButtons('teleop', 'teleop-start-btn', 'teleop-stop-btn', () => {
       updateTeleopLoopPerf(null, null);
     });
@@ -417,6 +781,8 @@ document.getElementById('teleop-stdin').addEventListener('keydown', e => {
 ══════════════════════════════════════════════════════════════════════════════ */
 const RecordTab = {
   mode: 'single',
+  _lastRunning: false,
+  useMappedDevices: true,
 
   resetProgress() {
     const currentEl = document.getElementById('record-ep-current');
@@ -433,6 +799,178 @@ const RecordTab = {
     document.getElementById('record-mode-bi').classList.toggle('active',     m === 'bi');
     document.getElementById('record-single-cfg').classList.toggle('hidden',  m !== 'single');
     document.getElementById('record-bi-cfg').classList.toggle('hidden',      m !== 'bi');
+    this.applyMappedDevicePreference();
+  },
+
+  async onTabOpen() {
+    await this.refreshDeviceOptions();
+    this.applyMappedDevicePreference();
+    this.showFeeds();
+    await this.refreshCalibrationIdOptions();
+  },
+
+  onUseMappedToggle() {
+    const useMapped = !!document.getElementById('record-use-mapped')?.checked;
+    this.useMappedDevices = useMapped;
+    state.config.record_use_mapped_devices = useMapped;
+    saveConfig();
+    this.applyMappedDevicePreference();
+    this.showFeeds();
+  },
+
+  getMappedValues() {
+    const single = {
+      follower_port: '/dev/follower_arm_1',
+      leader_port: '/dev/leader_arm_1',
+    };
+    const bi = {
+      left_follower_port: '/dev/follower_arm_1',
+      right_follower_port: '/dev/follower_arm_2',
+      left_leader_port: '/dev/leader_arm_1',
+      right_leader_port: '/dev/leader_arm_2',
+    };
+    return {
+      ...(this.mode === 'single' ? single : bi),
+      cameras: {
+        front_1: '/dev/follower_cam_1',
+        top_1: '/dev/top_cam_1',
+        top_2: '/dev/top_cam_2',
+      },
+    };
+  },
+
+  _setSelectOptions(selectId, values, preferred = []) {
+    const select = document.getElementById(selectId);
+    if (!select) return;
+    const current = select.value || '';
+    const uniq = [];
+    const seen = new Set();
+    [...preferred, ...values, current].forEach((val) => {
+      const v = String(val || '').trim();
+      if (!v || seen.has(v)) return;
+      seen.add(v);
+      uniq.push(v);
+    });
+    const optionsHtml = uniq.map((v) => `<option value="${v}">${v}</option>`).join('');
+    select.innerHTML = optionsHtml;
+    if (current && uniq.includes(current)) {
+      select.value = current;
+    } else if (uniq.length > 0) {
+      select.value = uniq[0];
+    }
+  },
+
+  async refreshDeviceOptions() {
+    try {
+      const data = await api.get('/api/devices');
+      const arms = Array.isArray(data?.arms) ? data.arms : [];
+      const cams = Array.isArray(data?.cameras) ? data.cameras : [];
+
+      const armPaths = arms.flatMap((a) => {
+        const out = [];
+        if (a?.symlink) out.push(`/dev/${a.symlink}`);
+        if (a?.path) out.push(a.path);
+        return out;
+      });
+      const camPaths = cams.flatMap((c) => {
+        const out = [];
+        if (c?.symlink) out.push(`/dev/${c.symlink}`);
+        if (c?.path) out.push(c.path);
+        return out;
+      });
+
+      this._setSelectOptions('record-follower-port', armPaths, ['/dev/follower_arm_1', '/dev/follower_arm_2']);
+      this._setSelectOptions('record-leader-port', armPaths, ['/dev/leader_arm_1', '/dev/leader_arm_2']);
+      this._setSelectOptions('record-left-follower', armPaths, ['/dev/follower_arm_1', '/dev/follower_arm_2']);
+      this._setSelectOptions('record-right-follower', armPaths, ['/dev/follower_arm_2', '/dev/follower_arm_1']);
+      this._setSelectOptions('record-left-leader', armPaths, ['/dev/leader_arm_1', '/dev/leader_arm_2']);
+      this._setSelectOptions('record-right-leader', armPaths, ['/dev/leader_arm_2', '/dev/leader_arm_1']);
+      this._setSelectOptions('rc-front1', camPaths, ['/dev/follower_cam_1']);
+      this._setSelectOptions('rc-top1', camPaths, ['/dev/top_cam_1']);
+      this._setSelectOptions('rc-top2', camPaths, ['/dev/top_cam_2']);
+    } catch (_) {
+      this._setSelectOptions('record-follower-port', [], ['/dev/follower_arm_1', '/dev/follower_arm_2']);
+      this._setSelectOptions('record-leader-port', [], ['/dev/leader_arm_1', '/dev/leader_arm_2']);
+      this._setSelectOptions('record-left-follower', [], ['/dev/follower_arm_1', '/dev/follower_arm_2']);
+      this._setSelectOptions('record-right-follower', [], ['/dev/follower_arm_2', '/dev/follower_arm_1']);
+      this._setSelectOptions('record-left-leader', [], ['/dev/leader_arm_1', '/dev/leader_arm_2']);
+      this._setSelectOptions('record-right-leader', [], ['/dev/leader_arm_2', '/dev/leader_arm_1']);
+      this._setSelectOptions('rc-front1', [], ['/dev/follower_cam_1']);
+      this._setSelectOptions('rc-top1', [], ['/dev/top_cam_1']);
+      this._setSelectOptions('rc-top2', [], ['/dev/top_cam_2']);
+    }
+  },
+
+  applyMappedDevicePreference() {
+    const useMappedEl = document.getElementById('record-use-mapped');
+    const summaryEl = document.getElementById('record-mapped-summary');
+    const useMapped = useMappedEl ? !!useMappedEl.checked : (state.config.record_use_mapped_devices !== false);
+    this.useMappedDevices = useMapped;
+    if (useMappedEl) useMappedEl.checked = useMapped;
+
+    const mapped = this.getMappedValues();
+    if (useMapped) {
+      if (this.mode === 'single') {
+        setVal('record-follower-port', mapped.follower_port);
+        setVal('record-leader-port', mapped.leader_port);
+      } else {
+        setVal('record-left-follower', mapped.left_follower_port);
+        setVal('record-right-follower', mapped.right_follower_port);
+        setVal('record-left-leader', mapped.left_leader_port);
+        setVal('record-right-leader', mapped.right_leader_port);
+      }
+      setVal('rc-front1', mapped.cameras.front_1);
+      setVal('rc-top1', mapped.cameras.top_1);
+      setVal('rc-top2', mapped.cameras.top_2);
+    }
+
+    [
+      'record-follower-port', 'record-leader-port',
+      'record-left-follower', 'record-right-follower',
+      'record-left-leader', 'record-right-leader',
+      'rc-front1', 'rc-top1', 'rc-top2',
+    ].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = useMapped;
+    });
+
+    if (summaryEl) {
+      if (!useMapped) {
+        summaryEl.style.display = 'none';
+      } else if (this.mode === 'single') {
+        summaryEl.style.display = 'block';
+        summaryEl.innerHTML = `
+          <div><b>Mapped devices in use:</b></div>
+          <div style="margin-top:4px">Arms: <code>${mapped.follower_port}</code>, <code>${mapped.leader_port}</code></div>
+          <div style="margin-top:4px">Cameras: <code>${mapped.cameras.front_1}</code>, <code>${mapped.cameras.top_1}</code>, <code>${mapped.cameras.top_2}</code></div>
+        `;
+      } else {
+        summaryEl.style.display = 'block';
+        summaryEl.innerHTML = `
+          <div><b>Mapped devices in use:</b></div>
+          <div style="margin-top:4px">Followers: <code>${mapped.left_follower_port}</code>, <code>${mapped.right_follower_port}</code></div>
+          <div style="margin-top:4px">Leaders: <code>${mapped.left_leader_port}</code>, <code>${mapped.right_leader_port}</code></div>
+          <div style="margin-top:4px">Cameras: <code>${mapped.cameras.front_1}</code>, <code>${mapped.cameras.top_1}</code>, <code>${mapped.cameras.top_2}</code></div>
+        `;
+      }
+    }
+  },
+
+  async refreshCalibrationIdOptions() {
+    const followerSelect = document.getElementById('record-robot-id');
+    const leaderSelect = document.getElementById('record-teleop-id');
+    if (!followerSelect || !leaderSelect) return;
+    try {
+      const res = await api.get('/api/calibrate/list');
+      const files = Array.isArray(res?.files) ? res.files : [];
+      const followerIds = [...new Set(files.filter((f) => String(f.guessed_type || '').includes('follower')).map((f) => f.id))].sort();
+      const leaderIds = [...new Set(files.filter((f) => String(f.guessed_type || '').includes('leader')).map((f) => f.id))].sort();
+      this._setSelectOptions('record-robot-id', followerIds, ['my_so101_follower_1']);
+      this._setSelectOptions('record-teleop-id', leaderIds, ['my_so101_leader_1']);
+    } catch (_) {
+      this._setSelectOptions('record-robot-id', [], ['my_so101_follower_1']);
+      this._setSelectOptions('record-teleop-id', [], ['my_so101_leader_1']);
+    }
   },
 
   applyConfig(cfg) {
@@ -449,6 +987,10 @@ const RecordTab = {
     setVal('record-task',     cfg.record_task     || '');
     setVal('record-episodes', cfg.record_episodes || 50);
     setVal('record-repo',     cfg.record_repo_id  || 'user/my-dataset');
+    const useMappedEl = document.getElementById('record-use-mapped');
+    const useMapped = cfg.record_use_mapped_devices !== false;
+    if (useMappedEl) useMappedEl.checked = useMapped;
+    this.useMappedDevices = useMapped;
     const resumeEl = document.getElementById('record-resume');
     if (resumeEl) resumeEl.checked = !!cfg.record_resume;
     document.getElementById('record-ep-total').textContent = '—';
@@ -457,28 +999,34 @@ const RecordTab = {
       setVal('rc-top1',   cfg.cameras.top_1   || '');
       setVal('rc-top2',   cfg.cameras.top_2   || '');
     }
+    this.applyMappedDevicePreference();
+    this.refreshDeviceOptions();
+    this.refreshCalibrationIdOptions();
   },
 
   buildConfig() {
     const ep = parseInt(getVal('record-episodes')) || 50;
+    const useMapped = !!document.getElementById('record-use-mapped')?.checked;
+    const mapped = this.getMappedValues();
     const cfg = {
       robot_mode:    this.mode,
-      follower_port: getVal('record-follower-port'),
+      follower_port: useMapped ? mapped.follower_port : getVal('record-follower-port'),
       robot_id:      getVal('record-robot-id'),
-      leader_port:   getVal('record-leader-port'),
+      leader_port:   useMapped ? mapped.leader_port : getVal('record-leader-port'),
       teleop_id:     getVal('record-teleop-id'),
-      left_follower_port:  getVal('record-left-follower'),
-      right_follower_port: getVal('record-right-follower'),
-      left_leader_port:    getVal('record-left-leader'),
-      right_leader_port:   getVal('record-right-leader'),
+      left_follower_port:  useMapped ? mapped.left_follower_port : getVal('record-left-follower'),
+      right_follower_port: useMapped ? mapped.right_follower_port : getVal('record-right-follower'),
+      left_leader_port:    useMapped ? mapped.left_leader_port : getVal('record-left-leader'),
+      right_leader_port:   useMapped ? mapped.right_leader_port : getVal('record-right-leader'),
       record_task:         getVal('record-task'),
       record_episodes:     ep,
       record_repo_id:      getVal('record-repo'),
       record_resume:       !!document.getElementById('record-resume')?.checked,
+      record_use_mapped_devices: useMapped,
       cameras: {
-        front_1: getVal('rc-front1'),
-        top_1:   getVal('rc-top1'),
-        top_2:   getVal('rc-top2'),
+        front_1: useMapped ? mapped.cameras.front_1 : getVal('rc-front1'),
+        top_1:   useMapped ? mapped.cameras.top_1 : getVal('rc-top1'),
+        top_2:   useMapped ? mapped.cameras.top_2 : getVal('rc-top2'),
       },
     };
     document.getElementById('record-ep-total').textContent = ep;
@@ -494,6 +1042,7 @@ const RecordTab = {
     }
     const cfg = this.buildConfig();
     this.clearLog();
+    if (!(await runPreflight(cfg, 'record-log'))) return;
     const currentEl = document.getElementById('record-ep-current');
     if (currentEl) currentEl.textContent = '0';
     const bar = document.getElementById('record-ep-bar');
@@ -516,7 +1065,64 @@ const RecordTab = {
   },
 
   async sendKey(key) {
-    await api.post('/api/process/record/input', { text: key });
+    const res = await api.post('/api/process/record/input', { text: key });
+    if (!res?.ok) {
+      showToast('Failed to send capture control input.', 'error');
+      return;
+    }
+
+    const { current, total, label } = this.readEpisodeProgress();
+    const feedback = {
+      right: {
+        message: label
+          ? `Episode ${label} saved. Recording continues.`
+          : 'Episode saved. Recording continues.',
+        kind: 'success',
+        flash: 'save',
+      },
+      left: {
+        message: label
+          ? `Episode ${label} discarded. Re-record this attempt.`
+          : 'Episode discarded. Re-record this attempt.',
+        kind: 'error',
+        flash: 'discard',
+      },
+      escape: {
+        message: (Number.isInteger(current) && Number.isInteger(total) && total > 0)
+          ? `Recording ended at ${current}/${total} episodes.`
+          : 'Recording ended.',
+        kind: 'success',
+        flash: 'end',
+      },
+    };
+    const entry = feedback[key] || { message: 'Capture command sent', kind: 'success', flash: 'save' };
+    showToast(entry.message, entry.kind);
+    this.flashCaptureAction(entry.flash);
+  },
+
+  readEpisodeProgress() {
+    const currentText = document.getElementById('record-ep-current')?.textContent?.trim() || '';
+    const totalText = document.getElementById('record-ep-total')?.textContent?.trim() || '';
+    const current = parseInt(currentText, 10);
+    const total = parseInt(totalText, 10);
+    const hasCurrent = Number.isInteger(current) && current >= 0;
+    const hasTotal = Number.isInteger(total) && total > 0;
+    return {
+      current: hasCurrent ? current : null,
+      total: hasTotal ? total : null,
+      label: hasCurrent && hasTotal ? `${current}/${total}` : null,
+    };
+  },
+
+  flashCaptureAction(type) {
+    const card = document.querySelector('.episode-progress-card');
+    if (!card) return;
+    card.classList.remove('ep-flash-save', 'ep-flash-discard', 'ep-flash-end');
+    const className = `ep-flash-${type}`;
+    card.classList.add(className);
+    setTimeout(() => {
+      card.classList.remove(className);
+    }, 520);
   },
 
   validateRepoId() {
@@ -569,14 +1175,18 @@ const RecordTab = {
 
   syncBtn() {
     const running = !!state.procStatus['record'];
+    if (running !== this._lastRunning) {
+      this.showFeeds();
+      this._lastRunning = running;
+    }
     const progressCard = document.querySelector('.episode-progress-card');
     const startBtn = document.getElementById('record-start-btn');
     const stopBtn = document.getElementById('record-stop-btn');
     const statePill = document.getElementById('record-state-pill');
     if (startBtn) {
       startBtn.disabled = running;
-      startBtn.textContent = running ? '● Recording' : '▶ Start Recording';
-      startBtn.classList.toggle('recording', running);
+      startBtn.textContent = '▶ Start Recording';
+      startBtn.classList.remove('recording');
     }
     if (statePill) {
       statePill.textContent = running ? 'Recording' : 'Idle';
@@ -762,7 +1372,9 @@ document.getElementById('cal-stdin').addEventListener('keydown', e => {
 ══════════════════════════════════════════════════════════════════════════════ */
 const DeviceSetupTab = {
   cameras:     [],
+  arms:        [],
   assignments: {},   // kernels → role
+  armAssignments: {},
   streamApplyTimer: null,
   rulesApplyTimer: null,
 
@@ -770,12 +1382,19 @@ const DeviceSetupTab = {
     const data = await api.get('/api/devices');
     state.devices = data;
     this.cameras = data.cameras;
+    this.arms = data.arms;
     // Restore assignments from current symlinks
     this.assignments = {};
     for (const cam of data.cameras) {
       this.assignments[cam.kernels] = cam.symlink || '(none)';
     }
+    this.armAssignments = {};
+    for (const arm of data.arms) {
+      if (!arm.serial) continue;
+      this.armAssignments[arm.serial] = arm.symlink || '(none)';
+    }
     this.renderGrid();
+    this.renderArmsGrid();
     this.validateAssignments();
     this.showCurrent();
   },
@@ -823,6 +1442,41 @@ const DeviceSetupTab = {
     }).join('');
   },
 
+  renderArmsGrid() {
+    const el = document.getElementById('device-arms-grid');
+    if (!el) return;
+    if (!this.arms.length) {
+      el.innerHTML = '<div style="grid-column: 1/-1; padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; color: var(--text2);">No arm ports detected. Please connect them and refresh.</div>';
+      return;
+    }
+
+    const roles = {
+      '(none)': 'Not used (skip this arm)',
+      'follower_arm_1': 'Follower Arm 1',
+      'follower_arm_2': 'Follower Arm 2',
+      'leader_arm_1': 'Leader Arm 1',
+      'leader_arm_2': 'Leader Arm 2',
+    };
+
+    el.innerHTML = this.arms.map((arm) => {
+      const serial = arm.serial || '';
+      const currentRole = serial ? (this.armAssignments[serial] || '(none)') : '(none)';
+      const options = Object.entries(roles).map(([val, label]) => {
+        const selected = val === currentRole ? 'selected' : '';
+        return `<option value="${val}" ${selected}>${label}</option>`;
+      }).join('');
+
+      return `<div class="arm-card" style="box-shadow: 0 2px 8px rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: var(--bg-card);">
+        <div style="font-weight: 600; margin-bottom: 8px;">/dev/${arm.device}</div>
+        <div class="muted" style="font-size: 12px; margin-bottom: 10px;">Serial: <code>${serial || 'N/A'}</code></div>
+        <select ${serial ? '' : 'disabled'} style="width:100%;" onchange="DeviceSetupTab.assignArm('${serial}', this.value)">
+          ${options}
+        </select>
+        ${serial ? '' : '<div style="color: var(--red); font-size: 11px; margin-top: 8px;">Cannot map this arm: serial number not available.</div>'}
+      </div>`;
+    }).join('');
+  },
+
    togglePreview(idx, device) {
      const wrap = document.getElementById(`cam-wrap-${idx}`);
      const existing = wrap.querySelector('img');
@@ -841,6 +1495,13 @@ const DeviceSetupTab = {
 
   assign(kernels, role) {
     if (kernels) this.assignments[kernels] = role;
+    this.validateAssignments();
+    this.scheduleRulesApply();
+  },
+
+  assignArm(serial, role) {
+    if (!serial) return;
+    this.armAssignments[serial] = role;
     this.validateAssignments();
     this.scheduleRulesApply();
   },
@@ -886,13 +1547,52 @@ const DeviceSetupTab = {
         if (existingError) existingError.remove();
       }
     });
+
+    const armRoleCounts = {};
+    const armDuplicates = new Set();
+    for (const [serial, role] of Object.entries(this.armAssignments)) {
+      if (!role || role === '(none)') continue;
+      if (armRoleCounts[role]) {
+        armRoleCounts[role].push(serial);
+        armDuplicates.add(role);
+      } else {
+        armRoleCounts[role] = [serial];
+      }
+    }
+
+    const armCards = document.querySelectorAll('.arm-card');
+    armCards.forEach((card, idx) => {
+      const arm = this.arms[idx];
+      if (!arm || !arm.serial) return;
+      const select = card.querySelector('select');
+      if (!select) return;
+
+      const existingError = card.querySelector('.dup-error');
+      const role = this.armAssignments[arm.serial];
+      if (role && role !== '(none)' && armDuplicates.has(role)) {
+        select.style.borderColor = 'var(--red)';
+        select.style.background = 'rgba(248,81,73,0.1)';
+        if (!existingError) {
+          const errorDiv = document.createElement('div');
+          errorDiv.className = 'dup-error';
+          errorDiv.style.cssText = 'color:var(--red); font-size:11px; margin-top:6px; padding:4px 8px; background:rgba(248,81,73,0.1); border-radius:4px;';
+          errorDiv.textContent = `⚠️ "${role}" is assigned to multiple arms`;
+          card.appendChild(errorDiv);
+        }
+      } else {
+        select.style.borderColor = 'var(--border)';
+        select.style.background = 'var(--bg-app)';
+        if (existingError) existingError.remove();
+      }
+    });
     
-    return duplicates.size === 0;
+    return duplicates.size === 0 && armDuplicates.size === 0;
   },
 
   hasDuplicateAssignments() {
     const roles = Object.values(this.assignments).filter(r => r && r !== '(none)');
-    return new Set(roles).size !== roles.length;
+    const armRoles = Object.values(this.armAssignments).filter(r => r && r !== '(none)');
+    return new Set(roles).size !== roles.length || new Set(armRoles).size !== armRoles.length;
   },
 
   scheduleRulesApply(delay = 250) {
@@ -918,7 +1618,10 @@ const DeviceSetupTab = {
   },
 
   async previewRules() {
-    const res = await api.post('/api/rules/preview', { assignments: this.assignments });
+    const res = await api.post('/api/rules/preview', {
+      assignments: this.assignments,
+      arm_assignments: this.armAssignments,
+    });
     this.renderReadableRules(res.content);
   },
 
@@ -930,7 +1633,10 @@ const DeviceSetupTab = {
       return;
     }
 
-    const res = await api.post('/api/rules/apply', { assignments: this.assignments });
+    const res = await api.post('/api/rules/apply', {
+      assignments: this.assignments,
+      arm_assignments: this.armAssignments,
+    });
     if (!res.ok && !silent) {
       alert(`Failed to apply camera mapping: ${res.error}`);
     } else if (res.ok) {
@@ -1203,10 +1909,27 @@ document.getElementById('ms-stdin').addEventListener('keydown', e => {
 ══════════════════════════════════════════════════════════════════════════════ */
 const TrainTab = {
   datasetSource: 'local',
+  preflightOk: true,
+  preflightReason: '',
+  preflightAction: '',
+  preflightCommand: '',
+  progressRunning: false,
+  progressHadError: false,
+  progressTotalSteps: null,
+  progressCurrentStep: null,
+  progressLoss: null,
+  progressLr: null,
+  progressStartMs: null,
+  lossHistory: [],
+  lossHistoryMax: 180,
 
   applyConfig(cfg) {
     const savedSource = cfg && cfg.train_dataset_source === 'hf' ? 'hf' : 'local';
     this.setDatasetSource(savedSource, false);
+    setVal('train-policy', cfg.train_policy || 'act');
+    setVal('train-steps', String(cfg.train_steps || 100000));
+    setVal('train-device', cfg.train_device || 'cuda');
+    setVal('train-repo', cfg.train_repo_id || 'user/my-dataset');
   },
 
   getDatasetSource() {
@@ -1318,10 +2041,18 @@ const TrainTab = {
 
   async start() {
     this.clearLog();
+    this.resetProgress('starting');
 
     try {
+      if (!(await this.refreshPreflight())) {
+        appendLog('train-log', '[ERROR] Device compatibility check failed. See warning above.', 'error');
+        this.setProgressStatus('blocked');
+        return;
+      }
+
       if (!this.validateRepoId()) {
         appendLog('train-log', '[ERROR] Invalid dataset selection. Check Dataset Source and Repo ID.', 'error');
+        this.setProgressStatus('blocked');
         return;
       }
 
@@ -1335,31 +2066,375 @@ const TrainTab = {
         train_steps: parseInt(getVal('train-steps'), 10) || 100000,
         train_device: getVal('train-device'),
       };
+      this.progressTotalSteps = body.train_steps;
+      this.progressStartMs = Date.now();
+      this.setProgressStatus('starting');
+      this.updateProgressUI();
 
       appendLog('train-log', `[INFO] Starting training: ${body.train_policy} · ${body.train_repo_id} · ${body.train_device}`, 'info');
       const res = await api.post('/api/train/start', body);
 
       if (!res || !res.ok) {
         appendLog('train-log', `[ERROR] ${res?.error || 'Failed to start training process.'}`, 'error');
+        this.progressHadError = true;
+        this.setProgressStatus('error');
         return;
       }
 
       appendLog('train-log', '[INFO] Train process started. Waiting for logs...', 'info');
+      this.progressRunning = true;
+      this.setProgressStatus('running');
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       appendLog('train-log', `[ERROR] Start request failed: ${msg}`, 'error');
       console.error('Train start failed', e);
+      this.progressHadError = true;
+      this.setProgressStatus('error');
     }
   },
 
   async stop() {
     await api.post('/api/process/train/stop');
+    this.progressRunning = false;
+    this.setProgressStatus('stopped');
+  },
+
+  async onDeviceChange() {
+    await this.refreshPreflight();
+  },
+
+  applyPreflightResult(res) {
+    const startBtn = document.getElementById('train-start-btn');
+    const warn = document.getElementById('train-device-warning');
+    const actionWrap = document.getElementById('train-device-actions');
+    const actionBtn = document.getElementById('train-install-btn');
+    const ok = !!(res && res.ok);
+    const reason = (res && res.reason) ? String(res.reason) : '';
+    this.preflightOk = ok;
+    this.preflightReason = reason;
+    this.preflightAction = (res && res.action) ? String(res.action) : '';
+    this.preflightCommand = (res && res.command) ? String(res.command) : '';
+
+    if (startBtn) {
+      startBtn.disabled = !ok;
+      startBtn.title = ok ? '' : reason;
+    }
+
+    if (warn) {
+      if (ok) {
+        warn.classList.add('hidden');
+        warn.textContent = '';
+      } else {
+        warn.classList.remove('hidden');
+        warn.textContent = reason;
+      }
+    }
+
+    if (actionWrap) {
+      const canInstall = !ok && this.preflightAction === 'install_torch_cuda';
+      actionWrap.classList.toggle('hidden', !canInstall);
+      if (actionBtn) {
+        actionBtn.disabled = !canInstall;
+        actionBtn.title = canInstall && this.preflightCommand ? this.preflightCommand : '';
+      }
+    }
+
+    if (!ok && (getVal('train-device').trim() || 'cuda') === 'cuda') {
+      this.setProgressStatus('blocked');
+    }
+  },
+
+  async refreshPreflight() {
+    const device = getVal('train-device').trim() || 'cuda';
+    try {
+      const res = await api.get(`/api/train/preflight?device=${encodeURIComponent(device)}`);
+      this.applyPreflightResult(res);
+      return !!res.ok;
+    } catch (e) {
+      this.applyPreflightResult({ ok: false, reason: 'Failed to run device compatibility preflight. Check server status.' });
+      return false;
+    }
+  },
+
+  ingestInstallerLog(line, kind = 'stdout') {
+    if (!line) return;
+    if (/\[ERROR\]|Traceback|RuntimeError|Exception/i.test(line) || kind === 'error') {
+      this.setProgressStatus('error');
+    }
+    if (/\[train_install process ended\]/i.test(line)) {
+      appendLog('train-log', '[INFO] Installer finished. Re-checking CUDA compatibility...', 'info');
+      this.refreshPreflight();
+    }
+  },
+
+  ingestMetric(metric) {
+    if (!metric || typeof metric !== 'object') return;
+
+    const total = Number(metric.total_steps);
+    if (Number.isFinite(total) && total > 0) {
+      this.progressTotalSteps = Math.floor(total);
+    }
+
+    const step = Number(metric.step);
+    if (Number.isFinite(step) && step >= 0) {
+      this.progressCurrentStep = Math.floor(step);
+      if (!this.progressStartMs) this.progressStartMs = Date.now();
+      this.progressRunning = true;
+      if (!this.progressHadError) this.setProgressStatus('running');
+    }
+
+    const loss = Number(metric.loss);
+    if (Number.isFinite(loss)) {
+      this.progressLoss = loss;
+      this.lossHistory.push(loss);
+      if (this.lossHistory.length > this.lossHistoryMax) {
+        this.lossHistory = this.lossHistory.slice(-this.lossHistoryMax);
+      }
+      this.renderLossCanvas();
+    }
+
+    const lr = Number(metric.lr);
+    if (Number.isFinite(lr)) {
+      this.progressLr = lr;
+    }
+
+    this.updateProgressUI();
+  },
+
+  async installCudaTorch() {
+    if (this.preflightAction !== 'install_torch_cuda') return;
+    const ok = confirm('Install/upgrade PyTorch CUDA build in the current environment now? This may take several minutes.');
+    if (!ok) return;
+
+    appendLog('train-log', '[INFO] Starting PyTorch installer from GUI...', 'info');
+    if (this.preflightCommand) {
+      appendLog('train-log', `[INFO] Command: ${this.preflightCommand}`, 'info');
+    }
+
+    const res = await api.post('/api/train/install_pytorch', { nightly: true, cuda_tag: 'cu128' });
+    if (!res || !res.ok) {
+      appendLog('train-log', `[ERROR] ${res?.error || 'Failed to start installer process.'}`, 'error');
+      return;
+    }
+
+    appendLog('train-log', '[INFO] Installer process started. Follow logs below. Training is disabled until compatibility is restored.', 'info');
+  },
+
+  ingestLogLine(line, kind = 'stdout') {
+    if (!line) return;
+
+    if (/\[ERROR\]|Traceback|RuntimeError|CUDA error|Exception/i.test(line) || kind === 'error') {
+      this.progressHadError = true;
+      this.setProgressStatus('error');
+    }
+
+    const totalMatch = line.match(/cfg\.steps=([0-9_,]+)/);
+    if (totalMatch) {
+      const total = parseInt(totalMatch[1].replace(/[, _]/g, ''), 10);
+      if (Number.isFinite(total) && total > 0) this.progressTotalSteps = total;
+    }
+
+    const stepMatch = line.match(/step:([0-9]+(?:\.[0-9]+)?[KMBTQ]?)/i);
+    if (stepMatch) {
+      const parsed = this.parseCompactNumber(stepMatch[1]);
+      if (Number.isFinite(parsed)) {
+        this.progressCurrentStep = Math.max(0, Math.floor(parsed));
+        if (!this.progressStartMs) this.progressStartMs = Date.now();
+        this.progressRunning = true;
+        if (!this.progressHadError) this.setProgressStatus('running');
+      }
+    }
+
+    const lossMatch = line.match(/\bloss:([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i);
+    if (lossMatch) {
+      const loss = Number(lossMatch[1]);
+      if (Number.isFinite(loss)) this.progressLoss = loss;
+    }
+
+    if (/Start offline training/i.test(line)) {
+      this.progressRunning = true;
+      if (!this.progressHadError) this.setProgressStatus('running');
+    }
+    if (/End of training/i.test(line)) {
+      this.progressRunning = false;
+      if (!this.progressHadError) this.setProgressStatus('completed');
+    }
+    if (/\[train process ended\]/i.test(line)) {
+      this.progressRunning = false;
+      if (this.progressHadError) this.setProgressStatus('error');
+      else if (this.progressCurrentStep && this.progressTotalSteps && this.progressCurrentStep >= this.progressTotalSteps) this.setProgressStatus('completed');
+      else this.setProgressStatus('stopped');
+    }
+
+    this.updateProgressUI();
+  },
+
+  parseCompactNumber(token) {
+    if (!token) return NaN;
+    const raw = String(token).trim().toUpperCase();
+    const m = raw.match(/^([0-9]+(?:\.[0-9]+)?)([KMBTQ]?)$/);
+    if (!m) return Number(raw.replace(/,/g, ''));
+    const base = Number(m[1]);
+    const expMap = { '': 0, K: 1, M: 2, B: 3, T: 4, Q: 5 };
+    return base * (1000 ** (expMap[m[2]] ?? 0));
+  },
+
+  formatEta(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return '--';
+    const s = Math.floor(seconds);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m ${ss}s`;
+    return `${ss}s`;
+  },
+
+  setProgressStatus(status) {
+    const el = document.getElementById('train-progress-status');
+    if (!el) return;
+    const map = {
+      idle: { label: 'IDLE', bg: 'rgba(148,163,184,0.18)', color: 'var(--text2)' },
+      starting: { label: 'STARTING', bg: 'rgba(59,130,246,0.18)', color: '#93c5fd' },
+      running: { label: 'RUNNING', bg: 'rgba(34,197,94,0.18)', color: '#86efac' },
+      blocked: { label: 'BLOCKED', bg: 'rgba(245,158,11,0.20)', color: '#fcd34d' },
+      stopped: { label: 'STOPPED', bg: 'rgba(148,163,184,0.18)', color: 'var(--text2)' },
+      completed: { label: 'COMPLETED', bg: 'rgba(16,185,129,0.20)', color: '#6ee7b7' },
+      error: { label: 'ERROR', bg: 'rgba(248,81,73,0.20)', color: '#fca5a5' },
+    };
+    const preset = map[status] || map.idle;
+    el.textContent = preset.label;
+    el.style.background = preset.bg;
+    el.style.color = preset.color;
+  },
+
+  updateProgressUI() {
+    const fill = document.getElementById('train-progress-fill');
+    const stepEl = document.getElementById('train-progress-step');
+    const lossEl = document.getElementById('train-progress-loss');
+    const etaEl = document.getElementById('train-progress-eta');
+
+    let pct = 0;
+    const cur = Number.isFinite(this.progressCurrentStep) ? this.progressCurrentStep : null;
+    const total = Number.isFinite(this.progressTotalSteps) ? this.progressTotalSteps : null;
+    if (cur !== null && total && total > 0) {
+      pct = Math.max(0, Math.min(100, (cur / total) * 100));
+    }
+
+    if (fill) fill.style.width = `${pct}%`;
+    if (stepEl) {
+      stepEl.textContent = `Step: ${cur !== null ? cur.toLocaleString() : '--'} / ${total ? total.toLocaleString() : '--'}`;
+    }
+    if (lossEl) {
+      const lossTxt = Number.isFinite(this.progressLoss) ? this.progressLoss.toFixed(4) : '--';
+      const lrTxt = Number.isFinite(this.progressLr) ? this.progressLr.toExponential(2) : null;
+      lossEl.textContent = lrTxt ? `Loss: ${lossTxt} (lr ${lrTxt})` : `Loss: ${lossTxt}`;
+    }
+
+    if (etaEl) {
+      let eta = '--';
+      if (this.progressRunning && cur !== null && total && total > cur && this.progressStartMs) {
+        const elapsed = (Date.now() - this.progressStartMs) / 1000;
+        if (elapsed > 0 && cur > 0) {
+          const sps = cur / elapsed;
+          if (sps > 0) eta = this.formatEta((total - cur) / sps);
+        }
+      }
+      etaEl.textContent = `ETA: ${eta}`;
+    }
+  },
+
+  renderLossCanvas() {
+    const canvas = document.getElementById('train-loss-canvas');
+    if (!canvas || !(canvas instanceof HTMLCanvasElement)) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.floor(canvas.clientWidth || canvas.width));
+    const h = Math.max(1, Math.floor(canvas.clientHeight || canvas.height));
+    if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+    }
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    const data = this.lossHistory;
+    if (!data.length) {
+      ctx.fillStyle = 'rgba(148,163,184,0.7)';
+      ctx.font = '12px monospace';
+      ctx.fillText('No loss data yet', 10, 18);
+      return;
+    }
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (const v of data) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+    if (min === max) {
+      min -= 1;
+      max += 1;
+    }
+
+    const pad = 8;
+    const iw = w - pad * 2;
+    const ih = h - pad * 2;
+
+    ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(pad, pad, iw, ih);
+
+    ctx.beginPath();
+    for (let i = 0; i < data.length; i += 1) {
+      const x = pad + (i / Math.max(1, data.length - 1)) * iw;
+      const y = pad + ih - ((data[i] - min) / (max - min)) * ih;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = '#86efac';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    const last = data[data.length - 1];
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '11px monospace';
+    ctx.fillText(`min ${min.toFixed(4)}  max ${max.toFixed(4)}  last ${last.toFixed(4)}`, pad + 4, pad + 14);
+  },
+
+  resetProgress(status = 'idle') {
+    this.progressRunning = false;
+    this.progressHadError = false;
+    this.progressTotalSteps = null;
+    this.progressCurrentStep = null;
+    this.progressLoss = null;
+    this.progressLr = null;
+    this.progressStartMs = null;
+    this.lossHistory = [];
+    this.setProgressStatus(status);
+    this.updateProgressUI();
+    this.renderLossCanvas();
   },
 
   clearLog() { clearProcessLog('train-log'); },
 
   syncBtn() {
     syncProcessButtons('train', 'train-start-btn', 'train-stop-btn');
+    const running = !!state.procStatus.train;
+    if (running && !this.progressRunning) {
+      this.progressRunning = true;
+      if (!this.progressHadError) this.setProgressStatus('running');
+    }
+    if (!running && this.progressRunning) {
+      this.progressRunning = false;
+      if (this.progressHadError) this.setProgressStatus('error');
+      else if (this.progressCurrentStep && this.progressTotalSteps && this.progressCurrentStep >= this.progressTotalSteps) this.setProgressStatus('completed');
+      else this.setProgressStatus('stopped');
+    }
   },
 
   async refreshGpu() {
@@ -1399,6 +2474,217 @@ const TrainTab = {
   }
 };
 
+const EvalTab = {
+  runActive: false,
+  hadError: false,
+  targetEpisodes: null,
+  doneEpisodes: 0,
+  successRate: null,
+  meanReward: null,
+
+  applyConfig(cfg) {
+    if (!cfg) return;
+    setVal('eval-policy-path', cfg.eval_policy_path || 'outputs/train/checkpoints/last/pretrained_model');
+    setVal('eval-repo-id', cfg.eval_repo_id || cfg.train_repo_id || 'user/my-dataset');
+    setVal('eval-episodes', String(cfg.eval_episodes || 10));
+    setVal('eval-device', cfg.eval_device || cfg.train_device || 'cuda');
+    setVal('eval-task', cfg.eval_task || '');
+  },
+
+  loadDefaults() {
+    if (!getVal('eval-policy-path')) {
+      setVal('eval-policy-path', 'outputs/train/checkpoints/last/pretrained_model');
+    }
+    if (!getVal('eval-repo-id')) {
+      setVal('eval-repo-id', getVal('train-repo') || 'user/my-dataset');
+    }
+    this.resetProgress('idle');
+  },
+
+  buildConfig() {
+    return {
+      eval_policy_path: getVal('eval-policy-path').trim(),
+      eval_repo_id: getVal('eval-repo-id').trim(),
+      eval_episodes: parseInt(getVal('eval-episodes'), 10) || 10,
+      eval_device: getVal('eval-device').trim() || 'cuda',
+      eval_task: getVal('eval-task').trim(),
+      train_repo_id: getVal('train-repo').trim() || 'user/my-dataset',
+      train_device: getVal('train-device').trim() || 'cuda',
+    };
+  },
+
+  validate(cfg) {
+    if (!cfg.eval_policy_path) {
+      appendLog('eval-log', '[ERROR] Policy path is required.', 'error');
+      return false;
+    }
+    if (!cfg.eval_repo_id || !/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(cfg.eval_repo_id)) {
+      appendLog('eval-log', '[ERROR] Dataset Repo ID must be username/dataset format.', 'error');
+      return false;
+    }
+    if (!Number.isFinite(cfg.eval_episodes) || cfg.eval_episodes < 1) {
+      appendLog('eval-log', '[ERROR] Episodes must be >= 1.', 'error');
+      return false;
+    }
+    return true;
+  },
+
+  async start() {
+    this.clearLog();
+    const cfg = this.buildConfig();
+    if (!this.validate(cfg)) return;
+    this.targetEpisodes = cfg.eval_episodes;
+    this.resetProgress('starting');
+
+    state.config.eval_policy_path = cfg.eval_policy_path;
+    state.config.eval_repo_id = cfg.eval_repo_id;
+    state.config.eval_episodes = cfg.eval_episodes;
+    state.config.eval_device = cfg.eval_device;
+    state.config.eval_task = cfg.eval_task;
+    saveConfig();
+
+    appendLog('eval-log', `[INFO] Starting eval: ${cfg.eval_repo_id} · ${cfg.eval_device} · ${cfg.eval_episodes} episodes`, 'info');
+    const res = await api.post('/api/eval/start', cfg);
+    if (!res.ok) {
+      appendLog('eval-log', `[ERROR] ${res.error || 'Failed to start eval process.'}`, 'error');
+      this.hadError = true;
+      this.setProgressStatus('error');
+      return;
+    }
+    appendLog('eval-log', '[INFO] Eval process started.', 'info');
+    this.runActive = true;
+    this.setProgressStatus('running');
+  },
+
+  async stop() {
+    await api.post('/api/process/eval/stop');
+    this.runActive = false;
+    if (this.hadError) this.setProgressStatus('error');
+    else this.setProgressStatus('stopped');
+  },
+
+  clearLog() {
+    clearProcessLog('eval-log');
+  },
+
+  ingestLogLine(line, kind = 'stdout') {
+    if (!line) return;
+
+    if (kind === 'error' || /\[ERROR\]|Traceback|RuntimeError|Exception|failed/i.test(line)) {
+      this.hadError = true;
+      this.setProgressStatus('error');
+    }
+
+    const epTotalMatch = line.match(/(?:episodes|n_episodes)\s*[:=]\s*([0-9]+)/i);
+    if (epTotalMatch) {
+      const total = parseInt(epTotalMatch[1], 10);
+      if (Number.isFinite(total) && total > 0) this.targetEpisodes = total;
+    }
+
+    const doneMatch = line.match(/episode\s*([0-9]+)\s*\/\s*([0-9]+)/i)
+      || line.match(/episode\s*([0-9]+)\b/i);
+    if (doneMatch) {
+      const done = parseInt(doneMatch[1], 10);
+      if (Number.isFinite(done) && done >= 0) {
+        this.doneEpisodes = done;
+        this.runActive = true;
+        if (!this.hadError) this.setProgressStatus('running');
+      }
+      if (doneMatch[2]) {
+        const total = parseInt(doneMatch[2], 10);
+        if (Number.isFinite(total) && total > 0) this.targetEpisodes = total;
+      }
+    }
+
+    const successMatch = line.match(/success(?:[_\s-]?rate)?\s*[:=]\s*([0-9]*\.?[0-9]+)/i);
+    if (successMatch) {
+      const raw = Number(successMatch[1]);
+      if (Number.isFinite(raw)) {
+        this.successRate = raw > 1 ? Math.min(100, raw) : Math.max(0, raw * 100);
+      }
+    }
+
+    const rewardMatch = line.match(/(?:mean[_\s-]?reward|avg[_\s-]?reward|reward)\s*[:=]\s*([+-]?[0-9]*\.?[0-9]+(?:e[+-]?[0-9]+)?)/i);
+    if (rewardMatch) {
+      const reward = Number(rewardMatch[1]);
+      if (Number.isFinite(reward)) this.meanReward = reward;
+    }
+
+    if (/evaluation complete|end of evaluation|eval complete/i.test(line)) {
+      this.runActive = false;
+      if (this.hadError) this.setProgressStatus('error');
+      else this.setProgressStatus('completed');
+    }
+
+    if (/\[eval process ended\]/i.test(line)) {
+      this.runActive = false;
+      if (this.hadError) this.setProgressStatus('error');
+      else if (this.targetEpisodes && this.doneEpisodes >= this.targetEpisodes) this.setProgressStatus('completed');
+      else this.setProgressStatus('stopped');
+    }
+
+    this.updateProgressUI();
+  },
+
+  setProgressStatus(status) {
+    const el = document.getElementById('eval-progress-status');
+    if (!el) return;
+    const map = {
+      idle: { label: 'IDLE', bg: 'rgba(148,163,184,0.18)', color: 'var(--text2)' },
+      starting: { label: 'STARTING', bg: 'rgba(59,130,246,0.18)', color: '#93c5fd' },
+      running: { label: 'RUNNING', bg: 'rgba(34,197,94,0.18)', color: '#86efac' },
+      stopped: { label: 'STOPPED', bg: 'rgba(148,163,184,0.18)', color: 'var(--text2)' },
+      completed: { label: 'COMPLETED', bg: 'rgba(16,185,129,0.20)', color: '#6ee7b7' },
+      error: { label: 'ERROR', bg: 'rgba(248,81,73,0.20)', color: '#fca5a5' },
+    };
+    const preset = map[status] || map.idle;
+    el.textContent = preset.label;
+    el.style.background = preset.bg;
+    el.style.color = preset.color;
+  },
+
+  updateProgressUI() {
+    const fill = document.getElementById('eval-progress-fill');
+    const epEl = document.getElementById('eval-progress-episodes');
+    const rewardEl = document.getElementById('eval-progress-reward');
+    const successEl = document.getElementById('eval-progress-success');
+
+    const done = Number.isFinite(this.doneEpisodes) ? this.doneEpisodes : 0;
+    const total = Number.isFinite(this.targetEpisodes) && this.targetEpisodes > 0 ? this.targetEpisodes : null;
+    const pct = total ? Math.max(0, Math.min(100, (done / total) * 100)) : 0;
+
+    if (fill) fill.style.width = `${pct}%`;
+    if (epEl) epEl.textContent = `Episodes: ${done || '--'} / ${total || '--'}`;
+    if (rewardEl) rewardEl.textContent = `Reward: ${Number.isFinite(this.meanReward) ? this.meanReward.toFixed(4) : '--'}`;
+    if (successEl) successEl.textContent = `Success: ${Number.isFinite(this.successRate) ? `${this.successRate.toFixed(1)}%` : '--'}`;
+  },
+
+  resetProgress(status = 'idle') {
+    this.runActive = false;
+    this.hadError = false;
+    this.doneEpisodes = 0;
+    this.successRate = null;
+    this.meanReward = null;
+    this.setProgressStatus(status);
+    this.updateProgressUI();
+  },
+
+  syncBtn() {
+    syncProcessButtons('eval', 'eval-start-btn', 'eval-stop-btn');
+    const running = !!state.procStatus.eval;
+    if (running && !this.runActive) {
+      this.runActive = true;
+      if (!this.hadError) this.setProgressStatus('running');
+    }
+    if (!running && this.runActive) {
+      this.runActive = false;
+      if (this.hadError) this.setProgressStatus('error');
+      else if (this.targetEpisodes && this.doneEpisodes >= this.targetEpisodes) this.setProgressStatus('completed');
+      else this.setProgressStatus('stopped');
+    }
+  },
+};
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    DATASET VIEWER TAB
 ══════════════════════════════════════════════════════════════════════════════ */
@@ -1406,6 +2692,8 @@ const DatasetTab = {
   datasets: [],
   currentDataset: null,
   currentEpisode: 0,
+  pushJobId: '',
+  pushPollTimer: null,
   
   async refreshList() {
     const el = document.getElementById('dataset-list');
@@ -1434,9 +2722,153 @@ const DatasetTab = {
           </div>
           <div style="font-size:11px; color:var(--text2)">Modified: ${ds.modified}</div>
         </div>
-        <button class="btn-xs" style="color:var(--red); border:1px solid rgba(248,81,73,0.3); margin-top:2px;" onclick="event.stopPropagation(); DatasetTab.deleteDataset('${ds.id}')">Delete</button>
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:2px;">
+          <button class="btn-xs" onclick="event.stopPropagation(); DatasetTab.inspectQuality('${ds.id}')">Quality</button>
+          <button class="btn-xs" onclick="event.stopPropagation(); DatasetTab.pushToHub('${ds.id}')">Push</button>
+          <button class="btn-xs" style="color:var(--red); border:1px solid rgba(248,81,73,0.3);" onclick="event.stopPropagation(); DatasetTab.deleteDataset('${ds.id}')">Delete</button>
+        </div>
       </div>
     `).join('');
+  },
+
+  parseId(id) {
+    const parts = String(id || '').split('/');
+    if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+    return { user: parts[0], repo: parts[1] };
+  },
+
+  showPushStatus(visible) {
+    const wrap = document.getElementById('ds-push-status');
+    if (!wrap) return;
+    wrap.style.display = visible ? 'block' : 'none';
+  },
+
+  updatePushStatus(status, progress, note = '') {
+    const label = document.getElementById('ds-push-label');
+    const pct = document.getElementById('ds-push-percent');
+    const fill = document.getElementById('ds-push-fill');
+    const msg = document.getElementById('ds-push-note');
+    if (label) label.textContent = `Hub Upload · ${status}`;
+    if (pct) pct.textContent = `${Math.max(0, Math.min(100, progress || 0))}%`;
+    if (fill) fill.style.width = `${Math.max(0, Math.min(100, progress || 0))}%`;
+    if (msg) msg.textContent = note || '';
+  },
+
+  startPushPolling(jobId) {
+    if (this.pushPollTimer) {
+      clearInterval(this.pushPollTimer);
+      this.pushPollTimer = null;
+    }
+    this.pushJobId = jobId;
+    this.pushPollTimer = setInterval(async () => {
+      if (!this.pushJobId) return;
+      const res = await api.get(`/api/datasets/push/status/${encodeURIComponent(this.pushJobId)}`);
+      if (!res.ok) {
+        this.updatePushStatus('error', 0, res.error || 'Unknown push status error');
+        if (this.pushPollTimer) clearInterval(this.pushPollTimer);
+        this.pushPollTimer = null;
+        return;
+      }
+      const status = String(res.status || 'running');
+      const progress = Number(res.progress || 0);
+      const tail = Array.isArray(res.logs) && res.logs.length ? res.logs[res.logs.length - 1] : '';
+      const note = status === 'error' ? (res.error || tail || 'Upload failed') : tail;
+      this.updatePushStatus(status, progress, note);
+
+      if (status === 'success') {
+        showToast(`Dataset pushed to Hub: ${res.repo_id}`, 'success');
+        if (this.pushPollTimer) clearInterval(this.pushPollTimer);
+        this.pushPollTimer = null;
+      }
+      if (status === 'error') {
+        showToast(`Hub push failed: ${res.error || 'Unknown error'}`, 'error');
+        if (this.pushPollTimer) clearInterval(this.pushPollTimer);
+        this.pushPollTimer = null;
+      }
+    }, 1200);
+  },
+
+  async pushToHub(id) {
+    const parsed = this.parseId(id);
+    if (!parsed) {
+      showToast('Invalid dataset id format.', 'error');
+      return;
+    }
+
+    const targetRaw = prompt('Target Hub repo (username/dataset). Leave empty to use same id:', id);
+    if (targetRaw === null) return;
+    const target = targetRaw.trim() || id;
+    if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(target)) {
+      showToast('Target repo must be username/dataset format.', 'error');
+      return;
+    }
+
+    this.showPushStatus(true);
+    this.updatePushStatus('starting', 2, 'Preparing upload job...');
+    const res = await api.post(`/api/datasets/${parsed.user}/${parsed.repo}/push`, { target_repo_id: target });
+    if (!res.ok) {
+      this.updatePushStatus('error', 0, res.error || 'Failed to create upload job');
+      showToast(`Hub push failed: ${res.error || 'Unknown error'}`, 'error');
+      return;
+    }
+    this.updatePushStatus('queued', 5, 'Upload job queued...');
+    this.startPushPolling(res.job_id);
+  },
+
+  async pushCurrentToHub() {
+    if (!this.currentDataset?.dataset_id) {
+      showToast('Select a dataset first.', 'error');
+      return;
+    }
+    await this.pushToHub(this.currentDataset.dataset_id);
+  },
+
+  renderQualityResult(res) {
+    const panel = document.getElementById('ds-quality-panel');
+    const scoreEl = document.getElementById('ds-quality-score');
+    const checksEl = document.getElementById('ds-quality-checks');
+    if (!panel || !scoreEl || !checksEl) return;
+
+    panel.style.display = 'block';
+    const score = Number(res.score || 0);
+    scoreEl.textContent = `Score: ${score}`;
+    scoreEl.className = `dbadge ${score >= 80 ? 'badge-ok' : score >= 60 ? 'badge-warn' : 'badge-err'}`;
+
+    const checks = Array.isArray(res.checks) ? res.checks : [];
+    checksEl.innerHTML = checks.map((c) => {
+      const level = c.level || 'ok';
+      const cls = level === 'error' ? 'badge-err' : level === 'warn' ? 'badge-warn' : 'badge-ok';
+      return `<div class="device-item" style="align-items:flex-start;">
+        <span class="dbadge ${cls}" style="margin-top:2px;">${String(level).toUpperCase()}</span>
+        <div style="flex:1; min-width:0;">
+          <div class="dname">${c.name || 'check'}</div>
+          <div class="dsub" style="white-space:normal; line-height:1.45;">${c.message || ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+  },
+
+  async inspectQuality(id) {
+    const parsed = this.parseId(id);
+    if (!parsed) {
+      showToast('Invalid dataset id format.', 'error');
+      return;
+    }
+    const res = await api.get(`/api/datasets/${parsed.user}/${parsed.repo}/quality`);
+    if (!res.ok) {
+      showToast(`Quality check failed: ${res.error || 'Unknown error'}`, 'error');
+      return;
+    }
+    this.renderQualityResult(res);
+    showToast('Quality check complete.', 'success');
+  },
+
+  async inspectQualityCurrent() {
+    if (!this.currentDataset?.dataset_id) {
+      showToast('Select a dataset first.', 'error');
+      return;
+    }
+    await this.inspectQuality(this.currentDataset.dataset_id);
   },
 
   async loadDataset(id) {
@@ -1455,6 +2887,9 @@ const DatasetTab = {
       if (!ds.dataset_id) throw new Error(ds.detail || 'Failed to load dataset');
       
       this.currentDataset = ds;
+      this.showPushStatus(false);
+      const panel = document.getElementById('ds-quality-panel');
+      if (panel) panel.style.display = 'none';
       document.getElementById('ds-title').textContent = ds.dataset_id;
       document.getElementById('ds-stats').textContent = 
         `${ds.total_episodes} episodes · ${ds.total_frames} frames · ${ds.fps} FPS · Cameras: ${ds.cameras.join(', ') || 'None'}`;
@@ -1616,6 +3051,70 @@ function updateTeleopLoopPerf(ms, hz) {
   }
 }
 
+async function runPreflight(cfg, logId) {
+  const res = await api.post('/api/preflight', cfg);
+  const checks = Array.isArray(res.checks) ? res.checks : [];
+
+  checks.forEach((c) => {
+    const icon = c.status === 'ok' ? 'OK' : c.status === 'warn' ? 'WARN' : 'ERROR';
+    const kind = c.status === 'error' ? 'error' : c.status === 'warn' ? 'info' : 'stdout';
+    appendLog(logId, `[${icon}] ${c.label}: ${c.msg}`, kind);
+  });
+
+  if (!res.ok) {
+    appendLog(logId, '[ERROR] Preflight failed. Fix errors before starting.', 'error');
+    return false;
+  }
+
+  const hasWarn = checks.some((c) => c.status === 'warn');
+  if (hasWarn) {
+    appendLog(logId, '[INFO] Preflight passed with warnings.', 'info');
+  } else {
+    appendLog(logId, '[INFO] Preflight passed.', 'info');
+  }
+  return true;
+}
+
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (!t) return;
+  const tag = (t.tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) {
+    return;
+  }
+
+  const activeTab = document.querySelector('.tab-btn.active')?.dataset?.tab;
+  if (!activeTab) return;
+
+  if (e.code === 'Space') {
+    if (activeTab === 'teleop') {
+      e.preventDefault();
+      if (state.procStatus.teleop) TeleopTab.stop();
+      else TeleopTab.start();
+      return;
+    }
+    if (activeTab === 'record') {
+      e.preventDefault();
+      if (state.procStatus.record) RecordTab.stop();
+      else RecordTab.start();
+      return;
+    }
+  }
+
+  if (activeTab !== 'record' || !state.procStatus.record) return;
+
+  if (e.code === 'ArrowRight') {
+    e.preventDefault();
+    RecordTab.sendKey('right');
+  } else if (e.code === 'ArrowLeft') {
+    e.preventDefault();
+    RecordTab.sendKey('left');
+  } else if (e.code === 'Escape') {
+    e.preventDefault();
+    RecordTab.sendKey('escape');
+  }
+});
+
 function appendLog(logId, text, kind = 'stdout') {
   const el = document.getElementById(logId);
   if (!el) return;
@@ -1730,6 +3229,9 @@ const FeedManager = {
       if (!img || !img.complete || img.naturalWidth === 0) {
         const ws = this._watcherState.get(vid);
         if (ws && img && img.naturalWidth === 0) {
+          if (this.isStallSuppressed() || state.procStatus.record || state.procStatus.teleop) {
+            return;
+          }
           ws.noFrameTicks += 1;
           if (ws.noFrameTicks >= NO_FRAME_TICKS) {
             this._onError(img);
@@ -1762,6 +3264,12 @@ const FeedManager = {
         } else {
           if (!ws.stalledAt) ws.stalledAt = now;
           if (now - ws.stalledAt > STALL_MS) {
+            if (state.procStatus.record || state.procStatus.teleop) {
+              const stallEl = document.getElementById(`fstall-${vid}`);
+              if (stallEl) stallEl.style.display = 'none';
+              document.getElementById(`flive-${vid}`)?.classList.add('visible');
+              return;
+            }
             if (this.isStallSuppressed()) {
               const stallEl = document.getElementById(`fstall-${vid}`);
               if (stallEl) stallEl.style.display = 'none';
@@ -1915,7 +3423,10 @@ function renderArmList(el, arms) {
 /* ─── Init ───────────────────────────────────────────────────────────────────── */
 (async () => {
   DeviceSetupTab.initStreamControls();
+  ProfileManager.bindDropzone();
+  NotificationManager.ensurePermission();
   WS.connect();
   await loadConfig();
+  await ProfileManager.refresh();
   StatusTab.refresh();
 })();

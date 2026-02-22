@@ -17,6 +17,19 @@
         <h1>LeRobot <span style="color:var(--text2);font-weight:400">Studio</span></h1>
       </div>
       <div class="header-right">
+        <div style="display:flex; align-items:center; gap:6px; margin-right: 8px;">
+          <select id="profile-select" onchange="ProfileManager.applySelected()" style="min-width: 150px; height: 30px; font-size: 12px;">
+            <option>default</option>
+          </select>
+          <span id="profile-active-badge" class="profile-badge">Active: default</span>
+          <button class="btn-xs" onclick="ProfileManager.saveCurrent()">Save</button>
+          <button class="btn-xs" onclick="ProfileManager.saveAs()">Save As</button>
+          <button class="btn-xs" onclick="ProfileManager.exportCurrent()">Export</button>
+          <button class="btn-xs" onclick="ProfileManager.triggerImport()">Import</button>
+          <button class="btn-xs" onclick="ProfileManager.deleteCurrent()" style="color:var(--red); border-color:rgba(248,81,73,0.35);">Delete</button>
+          <input id="profile-import-input" type="file" accept="application/json" style="display:none" onchange="ProfileManager.handleImportFile(this)" />
+        </div>
+        <div id="profile-dropzone" class="profile-dropzone" title="Drop a .json profile file here">Drop Profile JSON</div>
         <a href="https://github.com/TheMomentLab/lerobot-studio" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
           <svg height="24" viewBox="0 0 16 16" version="1.1" width="24" aria-hidden="true">
             <path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
@@ -36,6 +49,7 @@
       <button class="tab-btn" data-tab="teleop">🕹 Teleop</button>
       <button class="tab-btn" data-tab="record">⏺ Record</button>
       <button class="tab-btn" data-tab="train">🧠 Train</button>
+      <button class="tab-btn" data-tab="eval">🧪 Eval</button>
       <button class="tab-btn" data-tab="dataset">📂 Dataset</button>
     </nav>
 
@@ -214,25 +228,50 @@
             </div>
 
             <h3 style="margin-top:16px">Step 2: Arm Ports</h3>
+            <label style="display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:12px; color:var(--text);">
+              <input id="record-use-mapped" type="checkbox" checked style="width:auto; accent-color: var(--accent);" onchange="RecordTab.onUseMappedToggle()" />
+              Use mapped devices from Mapping tab (recommended)
+            </label>
+            <div id="record-mapped-summary" class="info-box" style="margin-bottom:10px; display:none;"></div>
             <div id="record-single-cfg">
               <label>Follower Arm Port</label>
-              <input id="record-follower-port" type="text" value="/dev/follower_arm_1" placeholder="Example: /dev/follower_arm_1" />
+              <select id="record-follower-port">
+                <option value="/dev/follower_arm_1">/dev/follower_arm_1</option>
+                <option value="/dev/follower_arm_2">/dev/follower_arm_2</option>
+              </select>
               <label>Follower Arm ID</label>
-              <input id="record-robot-id" type="text" value="my_so101_follower_1" placeholder="Example: my_so101_follower_1" />
+              <select id="record-robot-id">
+                <option value="my_so101_follower_1">my_so101_follower_1</option>
+              </select>
+              <div class="field-help">Arm ID selects the calibration profile file name (without <code>.json</code>).</div>
               <label>Leader Arm Port</label>
-              <input id="record-leader-port" type="text" value="/dev/leader_arm_1" placeholder="Example: /dev/leader_arm_1" />
+              <select id="record-leader-port">
+                <option value="/dev/leader_arm_1">/dev/leader_arm_1</option>
+                <option value="/dev/leader_arm_2">/dev/leader_arm_2</option>
+              </select>
               <label>Leader Arm ID</label>
-              <input id="record-teleop-id" type="text" value="my_so101_leader_1" placeholder="Example: my_so101_leader_1" />
+              <select id="record-teleop-id">
+                <option value="my_so101_leader_1">my_so101_leader_1</option>
+              </select>
+              <div class="field-help">Suggestions come from existing calibration files.</div>
             </div>
             <div id="record-bi-cfg" class="hidden">
               <label>Left Follower</label>
-              <input id="record-left-follower" type="text" value="/dev/follower_arm_1" />
+              <select id="record-left-follower">
+                <option value="/dev/follower_arm_1">/dev/follower_arm_1</option>
+              </select>
               <label>Right Follower</label>
-              <input id="record-right-follower" type="text" value="/dev/follower_arm_2" />
+              <select id="record-right-follower">
+                <option value="/dev/follower_arm_2">/dev/follower_arm_2</option>
+              </select>
               <label>Left Leader</label>
-              <input id="record-left-leader" type="text" value="/dev/leader_arm_1" />
+              <select id="record-left-leader">
+                <option value="/dev/leader_arm_1">/dev/leader_arm_1</option>
+              </select>
               <label>Right Leader</label>
-              <input id="record-right-leader" type="text" value="/dev/leader_arm_2" />
+              <select id="record-right-leader">
+                <option value="/dev/leader_arm_2">/dev/leader_arm_2</option>
+              </select>
             </div>
           </div>
 
@@ -269,15 +308,21 @@
             </div>
             <div class="cam-row" style="margin-top:16px;">
               <span>front_1</span>
-              <input id="rc-front1" type="text" value="/dev/follower_cam_1" placeholder="/dev/…" />
+              <select id="rc-front1">
+                <option value="/dev/follower_cam_1">/dev/follower_cam_1</option>
+              </select>
             </div>
             <div class="cam-row">
               <span>top_1</span>
-              <input id="rc-top1" type="text" value="/dev/top_cam_1" placeholder="/dev/…" />
+              <select id="rc-top1">
+                <option value="/dev/top_cam_1">/dev/top_cam_1</option>
+              </select>
             </div>
             <div class="cam-row">
               <span>top_2</span>
-              <input id="rc-top2" type="text" value="/dev/top_cam_2" placeholder="/dev/…" />
+              <select id="rc-top2">
+                <option value="/dev/top_cam_2">/dev/top_cam_2</option>
+              </select>
             </div>
             <h3 style="margin-top:16px">Live Feeds</h3>
             <div id="record-feeds" class="feed-grid"></div>
@@ -300,17 +345,17 @@
               <div class="ep-bar-wrap"><div class="ep-bar" id="record-ep-bar"></div></div>
             </div>
             <div class="ep-actions-panel">
-              <div class="ep-controls-row" id="record-ep-controls">
+               <div class="ep-controls-row" id="record-ep-controls">
                  <button id="record-start-btn" class="btn-primary" onclick="RecordTab.start()">▶ Start Recording</button>
                  <button class="btn-sm record-ep-action" onclick="RecordTab.sendKey('right')" disabled>✓ Save →</button>
-                 <button class="btn-sm btn-warn record-ep-action" onclick="RecordTab.sendKey('left')" disabled>✗ Discard ←</button>
-                 <button class="btn-sm record-ep-action" onclick="RecordTab.sendKey('escape')" disabled>⏹ End</button>
+                 <button class="btn-sm record-ep-action record-ep-discard" onclick="RecordTab.sendKey('left')" disabled>✗ Discard ←</button>
+                 <button class="btn-sm record-ep-action record-ep-end" onclick="RecordTab.sendKey('escape')" disabled>⏹ End (Esc)</button>
                  <button id="record-stop-btn" class="btn-danger hidden" onclick="RecordTab.stop()">■ Force Stop</button>
+               </div>
+               <div id="record-ep-guard" class="ep-guard-msg">Start recording first. During capture: Save (→), Discard (←), End (Esc).</div>
               </div>
-              <div id="record-ep-guard" class="ep-guard-msg">Start recording to enable controls</div>
             </div>
           </div>
-        </div>
 
         <div class="card terminal-card">
           <div class="terminal-header">
@@ -416,6 +461,12 @@
           
           <div class="muted" style="margin-bottom:12px; font-size:12px;">Camera Setup previews run in bandwidth-safe mode (fixed 144p @ 5fps) to keep multi-camera mapping stable.</div>
           <div id="device-cameras-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
+
+          <div style="margin-top: 28px; border-top: 1px solid var(--border); padding-top: 20px;">
+            <h3 style="margin-bottom: 10px;">Arm Port Mapping</h3>
+            <div class="muted" style="margin-bottom:10px; font-size:12px;">Assign stable symlink names to each detected arm by serial number.</div>
+            <div id="device-arms-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px;">Loading…</div>
+          </div>
           
           <div style="margin-top: 32px; text-align: left;">
             <h3 style="margin-bottom: 12px; color: var(--text1); font-size: 16px;">Current Active Rules</h3>
@@ -516,11 +567,34 @@
             <input id="train-steps" type="number" value="100000" min="1000" step="1000" />
             
             <label>Compute Device</label>
-            <select id="train-device">
+            <select id="train-device" onchange="TrainTab.onDeviceChange()">
               <option value="cuda">CUDA (GPU)</option>
               <option value="cpu">CPU</option>
               <option value="mps">MPS (Apple Silicon)</option>
             </select>
+            <div id="train-device-warning" class="hidden" style="margin-top:6px; color:var(--red); font-size:12px; line-height:1.4; padding:6px 8px; background:rgba(248,81,73,0.12); border:1px solid rgba(248,81,73,0.35); border-radius:6px;"></div>
+            <div id="train-device-actions" class="hidden" style="margin-top:6px;">
+              <button id="train-install-btn" class="btn-xs" onclick="TrainTab.installCudaTorch()">Install CUDA PyTorch (Nightly)</button>
+            </div>
+
+            <div style="margin-top:10px; padding:10px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:12px; color:var(--text2);">Training Progress</span>
+                <span id="train-progress-status" style="font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; background:rgba(148,163,184,0.18); color:var(--text2);">IDLE</span>
+              </div>
+              <div class="usb-bus-bar-track">
+                <div id="train-progress-fill" class="usb-bar-fill good" style="width:0%"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:12px; color:var(--text2); gap:10px; flex-wrap:wrap;">
+                <span id="train-progress-step">Step: -- / --</span>
+                <span id="train-progress-loss">Loss: --</span>
+                <span id="train-progress-eta">ETA: --</span>
+              </div>
+              <div style="margin-top:8px; border:1px solid var(--border); border-radius:6px; padding:8px; background:var(--bg3);">
+                <div style="font-size:11px; color:var(--text2); margin-bottom:6px;">Loss Trend</div>
+                <canvas id="train-loss-canvas" width="560" height="120" style="width:100%; height:120px; display:block;"></canvas>
+              </div>
+            </div>
 
             <div class="spacer"></div>
             <div class="btn-row">
@@ -556,6 +630,75 @@
         </div>
       </section>
 
+      <section id="tab-eval" class="tab">
+        <div class="section-header">
+          <h2>Evaluate Policy</h2>
+        </div>
+
+        <div class="two-col">
+          <div class="card">
+            <h3>Configuration</h3>
+
+            <label>Policy Path</label>
+            <input id="eval-policy-path" type="text" value="outputs/train/checkpoints/last/pretrained_model" placeholder="Path to trained policy/checkpoint" />
+
+            <label>Dataset Repo ID</label>
+            <input id="eval-repo-id" type="text" value="user/my-dataset" placeholder="username/dataset" />
+
+            <label>Episodes</label>
+            <input id="eval-episodes" type="number" value="10" min="1" step="1" />
+
+            <label>Compute Device</label>
+            <select id="eval-device">
+              <option value="cuda">CUDA (GPU)</option>
+              <option value="cpu">CPU</option>
+              <option value="mps">MPS (Apple Silicon)</option>
+            </select>
+
+            <label>Task (Optional)</label>
+            <input id="eval-task" type="text" value="" placeholder="Optional env task override" />
+
+            <div style="margin-top:10px; padding:10px; border:1px solid var(--border); border-radius:8px; background:rgba(255,255,255,0.02);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:12px; color:var(--text2);">Evaluation Progress</span>
+                <span id="eval-progress-status" style="font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; background:rgba(148,163,184,0.18); color:var(--text2);">IDLE</span>
+              </div>
+              <div class="usb-bus-bar-track">
+                <div id="eval-progress-fill" class="usb-bar-fill good" style="width:0%"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:12px; color:var(--text2); gap:10px; flex-wrap:wrap;">
+                <span id="eval-progress-episodes">Episodes: -- / --</span>
+                <span id="eval-progress-reward">Reward: --</span>
+                <span id="eval-progress-success">Success: --</span>
+              </div>
+            </div>
+
+            <div class="spacer"></div>
+            <div class="btn-row">
+              <button id="eval-start-btn" class="btn-primary" onclick="EvalTab.start()">▶ Start Eval</button>
+              <button id="eval-stop-btn" class="btn-danger hidden" onclick="EvalTab.stop()">■ Stop</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3>Notes</h3>
+            <ul style="font-size:13px; color:var(--text2); padding-left:20px; margin-top:8px; line-height:1.5;">
+              <li>Use a trained checkpoint path from your training output directory.</li>
+              <li>If CUDA is unavailable, switch Eval device to CPU or MPS.</li>
+              <li>Eval logs and metrics are streamed below.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card terminal-card">
+          <div class="terminal-header">
+            <span>Advanced Log — eval</span>
+            <button onclick="EvalTab.clearLog()" class="btn-xs">Clear</button>
+          </div>
+          <div id="eval-log" class="terminal"></div>
+        </div>
+      </section>
+
       <!-- ━━━━ DATASET VIEWER ━━━━ -->
       <section id="tab-dataset" class="tab">
         <div class="section-header">
@@ -584,6 +727,28 @@
                   <h3 id="ds-title" style="margin-bottom: 4px;">Dataset ID</h3>
                   <div id="ds-stats" class="muted" style="font-size: 13px;">...</div>
                 </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <button class="btn-sm" onclick="DatasetTab.inspectQualityCurrent()">Quality Check</button>
+                  <button class="btn-sm" onclick="DatasetTab.pushCurrentToHub()">Push to Hub</button>
+                </div>
+              </div>
+
+              <div id="ds-push-status" style="display:none; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--bg3);">
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text2); margin-bottom:6px;">
+                  <span id="ds-push-label">Hub Upload</span>
+                  <span id="ds-push-percent">0%</span>
+                </div>
+                <div class="usb-bus-bar-track"><div id="ds-push-fill" class="usb-bar-fill good" style="width:0%"></div></div>
+                <div id="ds-push-note" class="muted" style="font-size:11px; margin-top:6px;"></div>
+              </div>
+
+              <div id="ds-quality-panel" style="display:none; border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--bg3);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                  <strong>Quality Inspector</strong>
+                  <span id="ds-quality-score" class="dbadge badge-idle">Score: --</span>
+                </div>
+                <div id="ds-quality-stats" class="muted" style="font-size:11px; margin-bottom:8px;"></div>
+                <div id="ds-quality-checks" class="device-list"></div>
               </div>
 
               <div style="display: flex; gap: 12px; align-items: center;">
@@ -608,6 +773,8 @@
 
     </main>
   </div>
+
+  <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
 
   <script src="/static/main.js"></script>
 </body>
