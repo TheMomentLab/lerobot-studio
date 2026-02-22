@@ -27,7 +27,7 @@
 - [x] 3단계 일부: Guided/Advanced + 배지 기본 적용
   - Guided 기본, Advanced 토글 제공
   - Guided에서 Data/ML unlock(데이터셋 존재, train preflight) 적용
-  - RUNNING/ERROR 배지 적용(`/ws` status + 최근 error line)
+  - RUNNING/ERROR/NEEDS_ROOT/MISSING_DEP/NEEDS_DEVICE 배지 적용
 - [ ] 후속
   - NEEDS ROOT / MISSING DEP / NEEDS DEVICE 배지 정교화
   - Mobile에서 콘솔 fullscreen overlay 옵션 검토

@@ -318,12 +318,20 @@ const SidebarNav = {
 
   _setBadgeState(btn, stateName) {
     const badge = btn.querySelector('.tab-state-badge');
-    btn.classList.remove('has-running', 'has-error', 'has-needs-root', 'has-missing-dep', 'has-needs-device');
+    btn.classList.remove(
+      'has-running',
+      'has-error',
+      'has-needs-root',
+      'has-needs-udev',
+      'has-missing-dep',
+      'has-needs-device'
+    );
 
     const stateMap = {
       running: { className: 'has-running', label: 'RUNNING' },
       error: { className: 'has-error', label: 'ERROR' },
       needs_root: { className: 'has-needs-root', label: 'NEEDS_ROOT' },
+      needs_udev: { className: 'has-needs-udev', label: 'UDEV_SETUP' },
       missing_dep: { className: 'has-missing-dep', label: 'MISSING_DEP' },
       needs_device: { className: 'has-needs-device', label: 'NEEDS_DEVICE' },
     };
@@ -397,6 +405,7 @@ const ModeManager = {
     this.mode = nextMode === 'advanced' ? 'advanced' : 'guided';
     localStorage.setItem('lerobot-studio.ui-mode', this.mode);
     this.applyMode();
+    SidebarSignals.scheduleRefresh(0);
     if (this.mode === 'guided') this.scheduleReadinessRefresh(0);
   },
 
@@ -460,6 +469,7 @@ const ModeManager = {
 
 const SidebarSignals = {
   rulesNeedsRoot: false,
+  rulesNeedsInstall: false,
   hasCameras: true,
   hasArms: true,
   trainMissingDep: false,
@@ -490,8 +500,11 @@ const SidebarSignals = {
       api.get('/api/deps/status').catch(() => null),
     ]);
 
-    if (rulesRes && typeof rulesRes.sudo_noninteractive === 'boolean') {
-      this.rulesNeedsRoot = !rulesRes.sudo_noninteractive;
+    if (rulesRes) {
+      const rulesInstalled = !!rulesRes.rules_installed;
+      const sudoNoninteractive = !!rulesRes.sudo_noninteractive;
+      this.rulesNeedsInstall = !rulesInstalled;
+      this.rulesNeedsRoot = this.rulesNeedsInstall && !sudoNoninteractive;
     }
 
     if (devicesRes) {
@@ -513,6 +526,7 @@ const SidebarSignals = {
   getHealthState(tabName) {
     if (tabName === 'device-setup') {
       if (this.rulesNeedsRoot) return 'needs_root';
+      if (this.rulesNeedsInstall) return 'needs_udev';
       if (!this.hasCameras || !this.hasArms) return 'needs_device';
       return '';
     }
@@ -690,6 +704,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
     GlobalConsole.syncProcessFromTab(btn.dataset.tab);
     SidebarNav.onTabActivated();
+    SidebarSignals.scheduleRefresh(0);
 
     // Lazy-load on tab open
     if (btn.dataset.tab === 'status')       StatusTab.refresh();
@@ -2061,12 +2076,18 @@ const DeviceSetupTab = {
       const res = await api.get('/api/rules/status');
       this.rulesStatus = res;
       this.installCommands = Array.isArray(res.manual_commands) ? res.manual_commands : [];
+      const rulesInstalled = !!res.rules_installed;
+      const sudoNoninteractive = !!res.sudo_noninteractive;
+      const needsRootForInstall = !rulesInstalled && !sudoNoninteractive;
 
-      if (res.rules_installed) {
-        statusEl.textContent = `udev rules installed at ${res.rules_path}`;
+      if (rulesInstalled) {
+        statusEl.textContent = `udev rules installed at ${res.rules_path} (install-udev not required now)`;
         statusEl.style.color = 'var(--green)';
+      } else if (needsRootForInstall) {
+        statusEl.textContent = 'udev rules are not installed. Root permission is required. Run: lerobot-studio install-udev';
+        statusEl.style.color = 'var(--yellow)';
       } else {
-        statusEl.textContent = `udev rules not installed (${res.rules_path})`;
+        statusEl.textContent = `udev rules are not installed (${res.rules_path}). Apply Rules or run: lerobot-studio install-udev`;
         statusEl.style.color = 'var(--yellow)';
       }
 
@@ -2074,13 +2095,16 @@ const DeviceSetupTab = {
         ? this.installCommands.join('\n')
         : 'No manual commands available.';
       hintEl.textContent =
-        `CLI helper: lerobot-studio install-udev\n` +
+        `Recommended command: lerobot-studio install-udev\n` +
         `Fallback rules file: ${res.fallback_rules_path}\n\n` +
+        `Note: [MISSING] symlink entries are normal for devices that are not currently connected.\n\n` +
         `Manual commands:\n${cmdText}`;
+      SidebarSignals.scheduleRefresh(0);
     } catch (err) {
       statusEl.textContent = 'Failed to read udev install status';
       statusEl.style.color = 'var(--red)';
       hintEl.textContent = String(err || 'Unknown error');
+      SidebarSignals.scheduleRefresh(0);
     }
   },
 
@@ -2599,6 +2623,7 @@ const TrainTab = {
     if (!ok && (getVal('train-device').trim() || 'cuda') === 'cuda') {
       this.setProgressStatus('blocked');
     }
+    SidebarSignals.scheduleRefresh(0);
   },
 
   async refreshPreflight() {
@@ -4028,6 +4053,7 @@ function renderArmList(el, arms) {
   DeviceSetupTab.initStreamControls();
   ProfileManager.bindDropzone();
   SidebarNav.init();
+  SidebarSignals.init();
   ModeManager.init();
   GlobalConsole.init();
   SidebarNav.syncBadges();
