@@ -39,3 +39,6 @@ venv.bak/
 config.json
 *.log
 src/lerobot/
+
+# AGENTS.md
+AGENTS.md

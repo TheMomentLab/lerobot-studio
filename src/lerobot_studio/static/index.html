@@ -13,6 +13,7 @@
     <!-- ── Header ── -->
     <header>
       <div class="header-left">
+        <button id="sidebar-menu-btn" type="button" aria-label="Open navigation" onclick="SidebarNav.toggleDrawer()">☰</button>
         <img src="/static/logo.svg" alt="Moment Lab Logo" class="logo" style="width: 32px; height: 32px;" />
         <h1>LeRobot <span style="color:var(--text2);font-weight:400">Studio</span></h1>
       </div>
@@ -30,6 +31,10 @@
           <input id="profile-import-input" type="file" accept="application/json" style="display:none" onchange="ProfileManager.handleImportFile(this)" />
         </div>
         <div id="profile-dropzone" class="profile-dropzone" title="Drop a .json profile file here">Drop Profile JSON</div>
+        <div id="view-mode-toggle" class="view-mode-toggle" title="UI mode">
+          <button id="mode-guided-btn" class="mode-btn" type="button" onclick="ModeManager.setMode('guided')">Guided</button>
+          <button id="mode-advanced-btn" class="mode-btn" type="button" onclick="ModeManager.setMode('advanced')">Advanced</button>
+        </div>
         <a href="https://github.com/TheMomentLab/lerobot-studio" target="_blank" rel="noopener noreferrer" class="github-link" title="View on GitHub">
           <svg height="24" viewBox="0 0 16 16" version="1.1" width="24" aria-hidden="true">
             <path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
@@ -40,21 +45,53 @@
       </div>
     </header>
 
-    <!-- ── Tabs ── -->
-    <nav id="tab-nav">
-      <button class="tab-btn active" data-tab="status">⬡ Status</button>
-      <button class="tab-btn" data-tab="device-setup">🗺️ Mapping</button>
-      <button class="tab-btn" data-tab="motor-setup">⚙ Motor Setup</button>
-      <button class="tab-btn" data-tab="calibrate">⚖ Calibration</button>
-      <button class="tab-btn" data-tab="teleop">🕹 Teleop</button>
-      <button class="tab-btn" data-tab="record">⏺ Record</button>
-      <button class="tab-btn" data-tab="train">🧠 Train</button>
-      <button class="tab-btn" data-tab="eval">🧪 Eval</button>
-      <button class="tab-btn" data-tab="dataset">📂 Dataset</button>
-    </nav>
+    <div class="workbench-shell">
+      <!-- ── Sidebar ── -->
+      <aside id="sidebar-nav" aria-label="Workflow Navigation">
+        <div id="sidebar-group-setup" class="sidebar-group">
+          <div class="sidebar-group-title">Setup</div>
+          <button class="tab-btn active" data-tab="status" title="Status">
+            <span class="tab-icon">⬡</span><span class="tab-text">Status</span><span class="tab-state-badge"></span>
+          </button>
+          <button class="tab-btn" data-tab="device-setup" title="Mapping">
+            <span class="tab-icon">🗺️</span><span class="tab-text">Mapping</span><span class="tab-state-badge"></span>
+          </button>
+          <button class="tab-btn" data-tab="motor-setup" data-proc="motor_setup" title="Motor Setup">
+            <span class="tab-icon">⚙</span><span class="tab-text">Motor Setup</span><span class="tab-state-badge"></span>
+          </button>
+          <button class="tab-btn" data-tab="calibrate" data-proc="calibrate" title="Calibration">
+            <span class="tab-icon">⚖</span><span class="tab-text">Calibration</span><span class="tab-state-badge"></span>
+          </button>
+        </div>
+        <div id="sidebar-group-operate" class="sidebar-group">
+          <div class="sidebar-group-title">Operate</div>
+          <button class="tab-btn" data-tab="teleop" data-proc="teleop" title="Teleop">
+            <span class="tab-icon">🕹</span><span class="tab-text">Teleop</span><span class="tab-state-badge"></span>
+          </button>
+          <button class="tab-btn" data-tab="record" data-proc="record" title="Record">
+            <span class="tab-icon">⏺</span><span class="tab-text">Record</span><span class="tab-state-badge"></span>
+          </button>
+        </div>
+        <div id="sidebar-group-data" class="sidebar-group">
+          <div class="sidebar-group-title">Data</div>
+          <button class="tab-btn" data-tab="dataset" title="Dataset">
+            <span class="tab-icon">📂</span><span class="tab-text">Dataset</span><span class="tab-state-badge"></span>
+          </button>
+        </div>
+        <div id="sidebar-group-ml" class="sidebar-group">
+          <div class="sidebar-group-title">ML</div>
+          <button class="tab-btn" data-tab="train" data-proc="train" title="Train">
+            <span class="tab-icon">🧠</span><span class="tab-text">Train</span><span class="tab-state-badge"></span>
+          </button>
+          <button class="tab-btn" data-tab="eval" data-proc="eval" title="Eval">
+            <span class="tab-icon">🧪</span><span class="tab-text">Eval</span><span class="tab-state-badge"></span>
+          </button>
+        </div>
+      </aside>
+      <div id="sidebar-backdrop" aria-hidden="true"></div>
 
-    <!-- ── Tab Contents ── -->
-    <main>
+      <!-- ── Tab Contents ── -->
+      <main>
 
       <!-- ━━━━ STATUS ━━━━ -->
       <section id="tab-status" class="tab active">
@@ -182,18 +219,6 @@
           </div>
         </div>
 
-        <!-- Terminal -->
-        <div class="card terminal-card">
-          <div class="terminal-header">
-            <span>Advanced Log — teleop</span>
-            <button onclick="TeleopTab.clearLog()" class="btn-xs">Clear</button>
-          </div>
-          <div id="teleop-log" class="terminal"></div>
-          <div class="stdin-row">
-            <input id="teleop-stdin" type="text" placeholder="Optional: type only if teleop asks for input" />
-            <button onclick="TeleopTab.sendInput()" class="btn-sm">Send ↵</button>
-          </div>
-        </div>
       </section>
 
       <!-- ━━━━ RECORD ━━━━ -->
@@ -333,6 +358,8 @@
           <div class="ep-card-title">Episode Progress</div>
           <div class="ep-layout-grid">
             <div class="episode-status">
+              <div class="ep-label">Episodes</div>
+              <div class="ep-bar-wrap"><div class="ep-bar" id="record-ep-bar"></div></div>
               <div class="ep-status-row">
                 <div class="ep-num">
                   <span id="record-ep-current">—</span>
@@ -341,8 +368,6 @@
                 </div>
                 <div id="record-state-pill" class="ep-state-pill idle">Idle</div>
               </div>
-              <div class="ep-label">Episodes</div>
-              <div class="ep-bar-wrap"><div class="ep-bar" id="record-ep-bar"></div></div>
             </div>
             <div class="ep-actions-panel">
                <div class="ep-controls-row" id="record-ep-controls">
@@ -357,13 +382,6 @@
             </div>
           </div>
 
-        <div class="card terminal-card">
-          <div class="terminal-header">
-            <span>Advanced Log — record</span>
-            <button onclick="RecordTab.clearLog()" class="btn-xs">Clear</button>
-          </div>
-          <div id="record-log" class="terminal"></div>
-        </div>
       </section>
 
       <!-- ━━━━ CALIBRATE ━━━━ -->
@@ -434,17 +452,6 @@
             <div id="cal-motor-list" class="motor-list" style="margin-top: 0;"></div>
           </div>
 
-          <div class="card terminal-card" style="flex: 1; margin-bottom: 0; display: flex; flex-direction: column;">
-            <div class="terminal-header">
-              <span>Advanced Log — calibrate</span>
-              <button onclick="CalibrateTab.clearLog()" class="btn-xs">Clear</button>
-            </div>
-            <div id="cal-log" class="terminal" style="flex: 1; height: 320px;"></div>
-            <div class="stdin-row">
-              <input id="cal-stdin" type="text" placeholder="Optional: type only if calibration asks for input" />
-              <button onclick="CalibrateTab.sendInput()" class="btn-sm">Send ↵</button>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -526,17 +533,6 @@
           </div>
         </div>
 
-        <div class="card terminal-card">
-          <div class="terminal-header">
-            <span>Advanced Log — motor_setup</span>
-            <button onclick="MotorSetupTab.clearLog()" class="btn-xs">Clear</button>
-          </div>
-          <div id="ms-log" class="terminal"></div>
-          <div class="stdin-row">
-            <input id="ms-stdin" type="text" placeholder="Optional: type only if setup asks for input" />
-            <button onclick="MotorSetupTab.sendInput()" class="btn-sm">Send ↵</button>
-          </div>
-        </div>
       </section>
 
       <!-- ━━━━ TRAIN ━━━━ -->
@@ -632,13 +628,6 @@
           </div>
         </div>
 
-        <div class="card terminal-card">
-          <div class="terminal-header">
-            <span>Advanced Log — train</span>
-            <button onclick="TrainTab.clearLog()" class="btn-xs">Clear</button>
-          </div>
-          <div id="train-log" class="terminal"></div>
-        </div>
       </section>
 
       <section id="tab-eval" class="tab">
@@ -715,13 +704,6 @@
           </div>
         </div>
 
-        <div class="card terminal-card">
-          <div class="terminal-header">
-            <span>Advanced Log — eval</span>
-            <button onclick="EvalTab.clearLog()" class="btn-xs">Clear</button>
-          </div>
-          <div id="eval-log" class="terminal"></div>
-        </div>
       </section>
 
       <!-- ━━━━ DATASET VIEWER ━━━━ -->
@@ -796,7 +778,33 @@
         </div>
       </section>
 
-    </main>
+      </main>
+    </div>
+
+    <section id="console-drawer" class="console-drawer" aria-label="Global Console Drawer">
+      <div class="console-drawer-header">
+        <div class="console-controls">
+          <span class="console-title">Console</span>
+          <select id="console-process-select" class="console-process-select">
+            <option value="teleop">teleop</option>
+            <option value="record">record</option>
+            <option value="calibrate">calibrate</option>
+            <option value="motor_setup">motor_setup</option>
+            <option value="train">train</option>
+            <option value="eval">eval</option>
+          </select>
+          <span id="console-process-state" class="dbadge badge-idle">IDLE</span>
+        </div>
+        <div class="console-actions">
+          <button class="btn-xs" onclick="GlobalConsole.clearCurrent()">Clear</button>
+        </div>
+      </div>
+      <div id="console-log" class="terminal"></div>
+      <div class="stdin-row">
+        <input id="console-stdin" type="text" placeholder="Send input to selected process" />
+        <button onclick="GlobalConsole.sendInput()" class="btn-sm">Send ↵</button>
+      </div>
+    </section>
   </div>
 
   <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>

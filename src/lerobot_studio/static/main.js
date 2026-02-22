@@ -6,6 +6,36 @@ const state = {
   wsReady: false,
 };
 
+const PROCESS_TO_LOG_ID = {
+  teleop: 'teleop-log',
+  record: 'record-log',
+  calibrate: 'cal-log',
+  motor_setup: 'ms-log',
+  train: 'train-log',
+  train_install: 'train-log',
+  eval: 'eval-log',
+};
+
+const LOG_ID_TO_PROCESS = Object.fromEntries(
+  Object.entries(PROCESS_TO_LOG_ID).map(([processName, logId]) => [logId, processName])
+);
+
+const CONSOLE_PROCESSES = ['teleop', 'record', 'calibrate', 'motor_setup', 'train', 'eval'];
+const TAB_TO_PROCESS = {
+  teleop: 'teleop',
+  record: 'record',
+  calibrate: 'calibrate',
+  'motor-setup': 'motor_setup',
+  train: 'train',
+  eval: 'eval',
+};
+const SIDEBAR_ERROR_WINDOW_MS = 120000;
+
+function normalizeProcessName(processName) {
+  if (!processName) return '';
+  return processName === 'train_install' ? 'train' : processName;
+}
+
 /* ─── Camera FPS capability map (per codec + resolution) ─────────────────── */
 const CAMERA_FPS_MAP = {
   MJPG: { '1280x720': [30], '800x600': [30], '640x480': [30], '320x240': [30] },
@@ -131,6 +161,377 @@ const NotificationManager = {
   },
 };
 
+const GlobalConsole = {
+  buffers: {},
+  maxLines: 1200,
+
+  init() {
+    CONSOLE_PROCESSES.forEach((p) => this._ensureBuffer(p));
+    const sel = document.getElementById('console-process-select');
+    if (sel) {
+      sel.addEventListener('change', () => {
+        this.renderCurrent();
+        this.updateInputPlaceholder();
+        this.syncStatus(state.procStatus);
+      });
+    }
+    const input = document.getElementById('console-stdin');
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') this.sendInput();
+      });
+    }
+    this.renderCurrent();
+    this.updateInputPlaceholder();
+    this.syncStatus(state.procStatus);
+  },
+
+  currentProcess() {
+    const sel = document.getElementById('console-process-select');
+    return normalizeProcessName(sel?.value || 'teleop');
+  },
+
+  updateInputPlaceholder() {
+    const input = document.getElementById('console-stdin');
+    if (!input) return;
+    input.placeholder = `Send input to ${this.currentProcess()} process`;
+  },
+
+  _ensureBuffer(processName) {
+    const key = normalizeProcessName(processName);
+    if (!this.buffers[key]) this.buffers[key] = [];
+    return this.buffers[key];
+  },
+
+  _appendLine(el, text, kind = 'stdout') {
+    const line = document.createElement('div');
+    line.className = `line-${kind}`;
+    line.textContent = text;
+    el.appendChild(line);
+  },
+
+  _renderProcess(processName) {
+    const el = document.getElementById('console-log');
+    if (!el) return;
+    el.innerHTML = '';
+    const key = normalizeProcessName(processName);
+    const lines = this._ensureBuffer(key);
+    lines.forEach((entry) => this._appendLine(el, entry.text, entry.kind));
+    el.scrollTop = el.scrollHeight;
+  },
+
+  renderCurrent() {
+    this._renderProcess(this.currentProcess());
+  },
+
+  append(processName, text, kind = 'stdout') {
+    const key = normalizeProcessName(processName);
+    if (!key) return;
+    const lines = this._ensureBuffer(key);
+    if (kind === 'translation') {
+      const last = lines[lines.length - 1];
+      if (last && last.kind === 'translation' && last.text === text) return;
+    }
+    lines.push({ text, kind });
+    if (lines.length > this.maxLines) lines.splice(0, lines.length - this.maxLines);
+
+    if (this.currentProcess() !== key) return;
+    const el = document.getElementById('console-log');
+    if (!el) return;
+    if (kind === 'translation') {
+      const last = el.lastElementChild;
+      if (last && last.classList.contains('line-translation') && last.textContent === text) return;
+    }
+    this._appendLine(el, text, kind);
+    el.scrollTop = el.scrollHeight;
+  },
+
+  clearProcess(processName) {
+    const key = normalizeProcessName(processName);
+    if (!key) return;
+    this.buffers[key] = [];
+    if (this.currentProcess() === key) {
+      const el = document.getElementById('console-log');
+      if (el) el.innerHTML = '';
+    }
+  },
+
+  clearCurrent() {
+    this.clearProcess(this.currentProcess());
+  },
+
+  async sendInput() {
+    const processName = this.currentProcess();
+    const input = document.getElementById('console-stdin');
+    if (!input) return;
+    const text = input.value ?? '';
+    try {
+      await api.post(`/api/process/${processName}/input`, { text });
+      this.append(processName, text === '' ? '> [ENTER]' : `> ${text}`, 'info');
+      input.value = '';
+    } catch (e) {
+      const msg = e?.message || String(e);
+      this.append(processName, `[ERROR] Failed to send input: ${msg}`, 'error');
+    }
+  },
+
+  syncStatus(procs) {
+    const badge = document.getElementById('console-process-state');
+    if (!badge) return;
+    const processName = this.currentProcess();
+    const running = processName === 'train'
+      ? !!(procs?.train || procs?.train_install)
+      : !!procs?.[processName];
+    badge.textContent = running ? 'RUNNING' : 'IDLE';
+    badge.className = `dbadge ${running ? 'badge-run' : 'badge-idle'}`;
+  },
+
+  syncProcessFromTab(tabName) {
+    const processName = TAB_TO_PROCESS[tabName];
+    if (!processName) return;
+    const sel = document.getElementById('console-process-select');
+    if (!sel) return;
+    if (sel.value !== processName) sel.value = processName;
+    this.renderCurrent();
+    this.updateInputPlaceholder();
+    this.syncStatus(state.procStatus);
+  },
+};
+
+const SidebarNav = {
+  _isRunning(processName, procs) {
+    const key = normalizeProcessName(processName);
+    if (!key) return false;
+    if (key === 'train') return !!(procs?.train || procs?.train_install);
+    return !!procs?.[key];
+  },
+
+  _hasRecentError(processName) {
+    const key = normalizeProcessName(processName);
+    if (!key) return false;
+    const now = Date.now();
+    const primary = WS.lastErrorAtByProcess[key] || 0;
+    const trainInstall = key === 'train' ? (WS.lastErrorAtByProcess.train_install || 0) : 0;
+    const lastErrAt = Math.max(primary, trainInstall);
+    return now - lastErrAt < SIDEBAR_ERROR_WINDOW_MS;
+  },
+
+  _setBadgeState(btn, stateName) {
+    const badge = btn.querySelector('.tab-state-badge');
+    btn.classList.remove('has-running', 'has-error', 'has-needs-root', 'has-missing-dep', 'has-needs-device');
+
+    const stateMap = {
+      running: { className: 'has-running', label: 'RUNNING' },
+      error: { className: 'has-error', label: 'ERROR' },
+      needs_root: { className: 'has-needs-root', label: 'NEEDS_ROOT' },
+      missing_dep: { className: 'has-missing-dep', label: 'MISSING_DEP' },
+      needs_device: { className: 'has-needs-device', label: 'NEEDS_DEVICE' },
+    };
+    const target = stateMap[stateName];
+    if (!target) {
+      if (badge) badge.textContent = '';
+      return;
+    }
+    btn.classList.add(target.className);
+    if (badge) badge.textContent = target.label;
+  },
+
+  syncBadges(procs = state.procStatus) {
+    document.querySelectorAll('#sidebar-nav .tab-btn').forEach((btn) => {
+      const tabName = btn.dataset.tab || '';
+      const processName = btn.dataset.proc || '';
+      const running = this._isRunning(processName, procs);
+      const hasError = !running && this._hasRecentError(processName);
+      let nextState = '';
+      if (running) {
+        nextState = 'running';
+      } else if (hasError) {
+        nextState = 'error';
+      } else {
+        nextState = SidebarSignals.getHealthState(tabName);
+      }
+      this._setBadgeState(btn, nextState);
+    });
+  },
+
+  isMobileLayout() {
+    return window.matchMedia('(max-width: 799px)').matches;
+  },
+
+  toggleDrawer() {
+    const app = document.getElementById('app');
+    if (!app || !this.isMobileLayout()) return;
+    app.classList.toggle('sidebar-open');
+  },
+
+  closeDrawer() {
+    document.getElementById('app')?.classList.remove('sidebar-open');
+  },
+
+  onTabActivated() {
+    if (this.isMobileLayout()) this.closeDrawer();
+  },
+
+  init() {
+    const backdrop = document.getElementById('sidebar-backdrop');
+    if (backdrop) backdrop.addEventListener('click', () => this.closeDrawer());
+    window.addEventListener('resize', () => {
+      if (!this.isMobileLayout()) this.closeDrawer();
+    });
+  },
+};
+
+const ModeManager = {
+  mode: 'guided',
+  dataReady: false,
+  mlReady: false,
+  _refreshTimer: null,
+
+  init() {
+    const saved = localStorage.getItem('lerobot-studio.ui-mode');
+    this.mode = saved === 'advanced' ? 'advanced' : 'guided';
+    this.applyMode();
+  },
+
+  setMode(nextMode) {
+    this.mode = nextMode === 'advanced' ? 'advanced' : 'guided';
+    localStorage.setItem('lerobot-studio.ui-mode', this.mode);
+    this.applyMode();
+    if (this.mode === 'guided') this.scheduleReadinessRefresh(0);
+  },
+
+  scheduleReadinessRefresh(delayMs = 250) {
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    this._refreshTimer = setTimeout(() => {
+      this._refreshTimer = null;
+      this.refreshReadiness();
+    }, delayMs);
+  },
+
+  async refreshReadiness() {
+    try {
+      const ds = await api.get('/api/datasets');
+      this.dataReady = Array.isArray(ds?.datasets) && ds.datasets.length > 0;
+    } catch (_) {
+      this.dataReady = false;
+    }
+
+    const trainDevice = getVal('train-device').trim() || 'cuda';
+    try {
+      const res = await api.get(`/api/train/preflight?device=${encodeURIComponent(trainDevice)}`);
+      this.mlReady = !!res?.ok;
+    } catch (_) {
+      this.mlReady = false;
+    }
+
+    this.applyMode();
+    SidebarSignals.scheduleRefresh(0);
+  },
+
+  _isTabAllowed(tabName) {
+    if (!tabName || this.mode === 'advanced') return true;
+    if (tabName === 'dataset') return this.dataReady;
+    if (tabName === 'train' || tabName === 'eval') return this.mlReady;
+    return true;
+  },
+
+  _ensureAllowedActiveTab() {
+    const activeTab = document.querySelector('#sidebar-nav .tab-btn.active')?.dataset?.tab;
+    if (this._isTabAllowed(activeTab)) return;
+    document.querySelector('#sidebar-nav .tab-btn[data-tab="status"]')?.click();
+  },
+
+  applyMode() {
+    const guidedBtn = document.getElementById('mode-guided-btn');
+    const advancedBtn = document.getElementById('mode-advanced-btn');
+    if (guidedBtn) guidedBtn.classList.toggle('active', this.mode === 'guided');
+    if (advancedBtn) advancedBtn.classList.toggle('active', this.mode === 'advanced');
+
+    const dataGroup = document.getElementById('sidebar-group-data');
+    const mlGroup = document.getElementById('sidebar-group-ml');
+    const hideData = this.mode === 'guided' && !this.dataReady;
+    const hideMl = this.mode === 'guided' && !this.mlReady;
+    if (dataGroup) dataGroup.classList.toggle('hidden', hideData);
+    if (mlGroup) mlGroup.classList.toggle('hidden', hideMl);
+
+    this._ensureAllowedActiveTab();
+  },
+};
+
+const SidebarSignals = {
+  rulesNeedsRoot: false,
+  hasCameras: true,
+  hasArms: true,
+  trainMissingDep: false,
+  datasetMissingDep: false,
+  _timer: null,
+  _poller: null,
+
+  init() {
+    this.scheduleRefresh(0);
+    if (this._poller) clearInterval(this._poller);
+    this._poller = setInterval(() => this.scheduleRefresh(0), 15000);
+  },
+
+  scheduleRefresh(delayMs = 250) {
+    if (this._timer) clearTimeout(this._timer);
+    this._timer = setTimeout(() => {
+      this._timer = null;
+      this.refresh();
+    }, delayMs);
+  },
+
+  async refresh() {
+    const trainDevice = getVal('train-device').trim() || 'cuda';
+    const [rulesRes, devicesRes, trainRes, depsRes] = await Promise.all([
+      api.get('/api/rules/status').catch(() => null),
+      api.get('/api/devices').catch(() => null),
+      api.get(`/api/train/preflight?device=${encodeURIComponent(trainDevice)}`).catch(() => null),
+      api.get('/api/deps/status').catch(() => null),
+    ]);
+
+    if (rulesRes && typeof rulesRes.sudo_noninteractive === 'boolean') {
+      this.rulesNeedsRoot = !rulesRes.sudo_noninteractive;
+    }
+
+    if (devicesRes) {
+      this.hasCameras = Array.isArray(devicesRes.cameras) && devicesRes.cameras.length > 0;
+      this.hasArms = Array.isArray(devicesRes.arms) && devicesRes.arms.length > 0;
+    }
+
+    if (trainRes && typeof trainRes.ok === 'boolean') {
+      this.trainMissingDep = !trainRes.ok;
+    }
+
+    if (depsRes && depsRes.ok) {
+      this.datasetMissingDep = !depsRes.huggingface_cli;
+    }
+
+    SidebarNav.syncBadges(state.procStatus);
+  },
+
+  getHealthState(tabName) {
+    if (tabName === 'device-setup') {
+      if (this.rulesNeedsRoot) return 'needs_root';
+      if (!this.hasCameras || !this.hasArms) return 'needs_device';
+      return '';
+    }
+    if (tabName === 'teleop' || tabName === 'record') {
+      return (!this.hasCameras || !this.hasArms) ? 'needs_device' : '';
+    }
+    if (tabName === 'calibrate' || tabName === 'motor-setup') {
+      return this.hasArms ? '' : 'needs_device';
+    }
+    if (tabName === 'dataset') {
+      return this.datasetMissingDep ? 'missing_dep' : '';
+    }
+    if (tabName === 'train' || tabName === 'eval') {
+      return this.trainMissingDep ? 'missing_dep' : '';
+    }
+    return '';
+  },
+};
+
 /* ─── WebSocket ──────────────────────────────────────────────────────────────── */
 const WS = {
   ws: null,
@@ -189,32 +590,27 @@ const WS = {
       return;
     }
 
-    const logMap = {
-      teleop:      'teleop-log',
-      record:      'record-log',
-      calibrate:   'cal-log',
-      motor_setup: 'ms-log',
-      train:       'train-log',
-      train_install:'train-log',
-      eval:        'eval-log',
-    };
-    const el = document.getElementById(logMap[msg.process]);
-    if (!el) return;
-    if (msg.kind === 'translation') {
-      const last = el.lastElementChild;
-      if (last && last.classList.contains('line-translation') && last.textContent === msg.line) {
-        return;
+    const legacyLogId = PROCESS_TO_LOG_ID[msg.process];
+    const el = legacyLogId ? document.getElementById(legacyLogId) : null;
+    if (el) {
+      if (msg.kind === 'translation') {
+        const last = el.lastElementChild;
+        if (last && last.classList.contains('line-translation') && last.textContent === msg.line) {
+          return;
+        }
       }
+      const line = document.createElement('div');
+      line.className = `line-${msg.kind}`;
+      line.textContent = msg.line;
+      el.appendChild(line);
+      el.scrollTop = el.scrollHeight;
     }
-    const line = document.createElement('div');
-    line.className = `line-${msg.kind}`;
-    line.textContent = msg.line;
-    el.appendChild(line);
-    el.scrollTop = el.scrollHeight;
+    GlobalConsole.append(msg.process, msg.line, msg.kind);
 
     const isErrorLine = msg.kind === 'error' || /\[ERROR\]|Traceback|RuntimeError|Exception|failed/i.test(msg.line || '');
     if (isErrorLine) {
       this.lastErrorAtByProcess[msg.process] = Date.now();
+      SidebarNav.syncBadges(state.procStatus);
     }
 
     // Parse episode progress from record output
@@ -234,11 +630,15 @@ const WS = {
     const now = Date.now();
     const next = msg.processes || {};
     const all = new Set([...Object.keys(this.prevRunning), ...Object.keys(next)]);
+    let refreshGuidedReadiness = false;
 
     all.forEach((proc) => {
       const was = !!this.prevRunning[proc];
       const isNow = !!next[proc];
       if (was && !isNow) {
+        if (proc === 'record' || proc === 'train' || proc === 'train_install') {
+          refreshGuidedReadiness = true;
+        }
         const lastErr = this.lastErrorAtByProcess[proc] || 0;
         const abnormal = now - lastErr < 120000;
         if (abnormal) {
@@ -260,6 +660,11 @@ const WS = {
     TrainTab.syncBtn();
     EvalTab.syncBtn();
     StatusTab.updateProcs(msg.processes);
+    GlobalConsole.syncStatus(msg.processes);
+    SidebarNav.syncBadges(msg.processes);
+    if (refreshGuidedReadiness && ModeManager.mode === 'guided') {
+      ModeManager.scheduleReadinessRefresh(400);
+    }
   },
 };
 
@@ -283,6 +688,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    GlobalConsole.syncProcessFromTab(btn.dataset.tab);
+    SidebarNav.onTabActivated();
 
     // Lazy-load on tab open
     if (btn.dataset.tab === 'status')       StatusTab.refresh();
@@ -771,10 +1178,6 @@ const TeleopTab = {
     });
   },
 };
-
-document.getElementById('teleop-stdin').addEventListener('keydown', e => {
-  if (e.key === 'Enter') TeleopTab.sendInput();
-});
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    RECORD TAB
@@ -1362,10 +1765,6 @@ const CalibrateTab = {
     }
   }
 };
-
-document.getElementById('cal-stdin').addEventListener('keydown', e => {
-  if (e.key === 'Enter') CalibrateTab.sendInput();
-});
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    DEVICE SETUP TAB
@@ -1958,10 +2357,6 @@ const MotorSetupTab = {
   }
 };
 
-document.getElementById('ms-stdin').addEventListener('keydown', e => {
-  if (e.key === 'Enter') MotorSetupTab.sendInput();
-});
-
 /* ═══════════════════════════════════════════════════════════════════════════════
    TRAIN TAB
 ══════════════════════════════════════════════════════════════════════════════ */
@@ -2172,6 +2567,10 @@ const TrainTab = {
     this.preflightReason = reason;
     this.preflightAction = (res && res.action) ? String(res.action) : '';
     this.preflightCommand = (res && res.command) ? String(res.command) : '';
+    if (ModeManager.mode === 'guided') {
+      ModeManager.mlReady = ok;
+      ModeManager.applyMode();
+    }
 
     if (startBtn) {
       startBtn.disabled = !ok;
@@ -2885,8 +3284,10 @@ const DatasetTab = {
       const res = await api.get('/api/datasets');
       this.datasets = res.datasets || [];
       this.renderList();
+      if (ModeManager.mode === 'guided') ModeManager.scheduleReadinessRefresh(0);
     } catch (e) {
       el.innerHTML = `<div class="device-item"><span style="color:var(--red)">Failed to load datasets: ${e}</span></div>`;
+      if (ModeManager.mode === 'guided') ModeManager.scheduleReadinessRefresh(0);
     }
   },
 
@@ -3207,6 +3608,8 @@ function setVal(id, val) {
 function clearProcessLog(logId, afterClear) {
   const el = document.getElementById(logId);
   if (el) el.innerHTML = '';
+  const processName = LOG_ID_TO_PROCESS[logId];
+  if (processName) GlobalConsole.clearProcess(processName);
   if (afterClear) afterClear();
 }
 
@@ -3224,7 +3627,8 @@ async function sendProcessInput(processName, inputId, logId, options = {}) {
   const text = input.value ?? '';
   if (!allowEmpty && text.trim() === '') return;
   await api.post(`/api/process/${processName}/input`, { text });
-  appendLog(logId, text === '' ? '> [ENTER]' : `> ${text}`, 'info');
+  const lineText = text === '' ? '> [ENTER]' : `> ${text}`;
+  appendLog(logId, lineText, 'info');
   input.value = '';
 }
 
@@ -3312,13 +3716,16 @@ document.addEventListener('keydown', (e) => {
 });
 
 function appendLog(logId, text, kind = 'stdout') {
+  const processName = LOG_ID_TO_PROCESS[logId];
   const el = document.getElementById(logId);
-  if (!el) return;
-  const line = document.createElement('div');
-  line.className  = `line-${kind}`;
-  line.textContent = text;
-  el.appendChild(line);
-  el.scrollTop = el.scrollHeight;
+  if (el) {
+    const line = document.createElement('div');
+    line.className  = `line-${kind}`;
+    line.textContent = text;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+  if (processName) GlobalConsole.append(processName, text, kind);
 }
 
 /* ─── Feed Manager ───────────────────────────────────────────────────────────── */
@@ -3620,9 +4027,14 @@ function renderArmList(el, arms) {
 (async () => {
   DeviceSetupTab.initStreamControls();
   ProfileManager.bindDropzone();
+  SidebarNav.init();
+  ModeManager.init();
+  GlobalConsole.init();
+  SidebarNav.syncBadges();
   NotificationManager.ensurePermission();
   WS.connect();
   await loadConfig();
+  await ModeManager.refreshReadiness();
   await ProfileManager.refresh();
   StatusTab.refresh();
 })();

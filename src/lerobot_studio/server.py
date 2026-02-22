@@ -1030,6 +1030,13 @@ def create_app(
             "command": _format_cmd(install_args),
         }
 
+    @app.get("/api/deps/status")
+    def api_deps_status():
+        return {
+            "ok": True,
+            "huggingface_cli": bool(shutil.which("huggingface-cli")),
+        }
+
     @app.post("/api/train/install_pytorch")
     async def api_train_install_pytorch(data: dict | None = None):
         if proc_mgr.is_running("train"):
