@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LeRobot Studio — Web GUI server (packaged version)."""
+"""LeStudio — Web GUI server (packaged version)."""
 
 import asyncio
 import datetime
@@ -24,7 +24,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from lerobot_studio.command_builders import (
+from lestudio.command_builders import (
     build_calibrate_args,
     build_eval_args,
     build_motor_setup_args,
@@ -33,7 +33,8 @@ from lerobot_studio.command_builders import (
     build_train_args,
     resolve_record_resume,
 )
-from lerobot_studio.process_manager import ProcessManager
+from lestudio.process_manager import ProcessManager
+from lestudio import device_registry
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -41,10 +42,9 @@ CAMERA_ROLES = [
     "(none)", "top_cam_1", "top_cam_2", "top_cam_3",
     "wrist_cam_1", "wrist_cam_2",
 ]
-ROBOT_TYPES = [
-    "so101_follower", "so100_follower",
-    "so101_leader",   "so100_leader",
-]
+# ROBOT_TYPES는 device_registry에서 동적으로 탐색합니다 (Phase 0 마이그레이션).
+# 하드코딩 폴백은 device_registry 내부에 있습니다.
+ROBOT_TYPES = device_registry.get_robot_types()
 
 DEFAULT_CONFIG = {
     "robot_mode":          "single",
@@ -347,7 +347,7 @@ def ensure_rerun_web_server(python_exe: str, web_port: int = 9090, grpc_port: in
             (
                 "import time;"
                 "import rerun as rr;"
-                "rr.init('lerobot_studio_view', spawn=False);"
+                "rr.init('lestudio_view', spawn=False);"
                 f"rr.serve_grpc(grpc_port={grpc_port});"
                 f"rr.serve_web_viewer(web_port={web_port}, open_browser=False, connect_to='rerun+http://127.0.0.1:{grpc_port}/proxy');"
                 "\nwhile True:\n    time.sleep(3600)"
@@ -666,7 +666,7 @@ def create_app(
     HISTORY_MAX = 200
     PYTHON = sys.executable
 
-    app = FastAPI(title="LeRobot Studio")
+    app = FastAPI(title="LeStudio")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
@@ -821,7 +821,51 @@ def create_app(
 
     @app.get("/api/robot_types")
     def api_robot_types():
-        return ROBOT_TYPES
+        """[Deprecated] /api/robots 사용 권장. 하위 호환용으로 유지."""
+        return device_registry.get_robot_types()
+
+    # ─── API: Ecosystem Registry (Phase 0) ────────────────────────────────
+    @app.get("/api/robots")
+    def api_robots():
+        """등록된 모든 Robot 타입 목록 + capabilities + 호환 teleop 반환."""
+        robot_types = device_registry.get_robot_types()
+        return {
+            "types": robot_types,
+            "details": {
+                t: {
+                    "capabilities": device_registry.get_capabilities(t),
+                    "compatible_teleops": device_registry.get_compatible_teleops(t),
+                }
+                for t in robot_types
+            },
+            "lerobot_available": device_registry.is_lerobot_available(),
+        }
+
+    @app.get("/api/robots/{robot_type}/schema")
+    def api_robot_schema(robot_type: str):
+        """특정 Robot 타입의 config 스키마 반환 (핵심 필드만)."""
+        return device_registry.get_config_schema("robots", robot_type)
+
+    @app.get("/api/teleops")
+    def api_teleops(robot_type: str | None = None):
+        """등록된 Teleoperator 타입 목록 반환. robot_type 지정 시 호환 목록만."""
+        return {
+            "types": device_registry.get_teleop_types(robot_type),
+            "lerobot_available": device_registry.is_lerobot_available(),
+        }
+
+    @app.get("/api/cameras")
+    def api_cameras():
+        """등록된 Camera 타입 목록 반환."""
+        return {
+            "types": device_registry.get_camera_types(),
+            "lerobot_available": device_registry.is_lerobot_available(),
+        }
+
+    @app.get("/api/ecosystem/status")
+    def api_ecosystem_status():
+        """LeRobot 생태계 연결 상태 및 전체 디바이스 목록 반환."""
+        return device_registry.list_all_devices()
 
     # ─── API: udev Rules ───────────────────────────────────────────────────
     def _current_rules_payload() -> dict[str, str | list[dict[str, str | bool]]]:
@@ -942,15 +986,14 @@ def create_app(
                 return
             add("ok", label, f"{path} is accessible")
 
-        def check_calibration(robot_type: str, robot_id: str, label: str):
-            if not robot_id:
-                add("warn", label, "Missing robot id")
+        def check_calibration(device_type: str, device_id: str, label: str):
+            """캘리브레이션 파일 존재 여부를 확인합니다 (동적 경로)."""
+            if not device_id:
+                add("warn", label, "Missing device id")
                 return
             base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
-            if "follower" in robot_type:
-                path = base / "robots" / "so_follower" / f"{robot_id}.json"
-            else:
-                path = base / "teleoperators" / "so_leader" / f"{robot_id}.json"
+            category, dir_name = device_registry.get_calibration_path_prefix(device_type)
+            path = base / category / dir_name / f"{device_id}.json"
             if path.exists():
                 add("ok", label, f"Found calibration file ({path.name})")
             else:
@@ -983,20 +1026,23 @@ def create_app(
                     cap.release()
 
         mode = data.get("robot_mode", "single")
+        # robot_type/teleop_type가 config에 있으면 사용, 없으면 SO-101 기본값 (하위 호환)
+        robot_type = data.get("robot_type", "so101_follower")
+        teleop_type = data.get("teleop_type", "so101_leader")
         if mode == "single":
             check_port(data.get("follower_port", ""), "Follower arm port")
             check_port(data.get("leader_port", ""), "Leader arm port")
-            check_calibration("follower", data.get("robot_id", ""), "Follower calibration")
-            check_calibration("leader", data.get("teleop_id", ""), "Leader calibration")
+            check_calibration(robot_type, data.get("robot_id", ""), "Follower calibration")
+            check_calibration(teleop_type, data.get("teleop_id", ""), "Leader calibration")
         else:
             check_port(data.get("left_follower_port", ""), "Left follower arm port")
             check_port(data.get("right_follower_port", ""), "Right follower arm port")
             check_port(data.get("left_leader_port", ""), "Left leader arm port")
             check_port(data.get("right_leader_port", ""), "Right leader arm port")
-            check_calibration("follower", data.get("left_robot_id", ""), "Left follower calibration")
-            check_calibration("follower", data.get("right_robot_id", ""), "Right follower calibration")
-            check_calibration("leader", data.get("left_teleop_id", ""), "Left leader calibration")
-            check_calibration("leader", data.get("right_teleop_id", ""), "Right leader calibration")
+            check_calibration(robot_type, data.get("left_robot_id", ""), "Left follower calibration")
+            check_calibration(robot_type, data.get("right_robot_id", ""), "Right follower calibration")
+            check_calibration(teleop_type, data.get("left_teleop_id", ""), "Left leader calibration")
+            check_calibration(teleop_type, data.get("right_teleop_id", ""), "Right leader calibration")
 
         cameras = data.get("cameras", {}) or {}
         for name, path in cameras.items():
@@ -1409,12 +1455,8 @@ def create_app(
     @app.get("/api/calibrate/file")
     def api_calibrate_file(robot_type: str, robot_id: str):
         base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
-        if "follower" in robot_type:
-            path = base / "robots" / "so_follower" / f"{robot_id}.json"
-        elif "leader" in robot_type:
-            path = base / "teleoperators" / "so_leader" / f"{robot_id}.json"
-        else:
-            return {"exists": False, "error": "Unknown robot_type"}
+        category, dir_name = device_registry.get_calibration_path_prefix(robot_type)
+        path = base / category / dir_name / f"{robot_id}.json"
         if path.exists():
             mtime = path.stat().st_mtime
             mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
@@ -1457,12 +1499,11 @@ def create_app(
     @app.delete("/api/calibrate/file")
     def api_calibrate_delete(robot_type: str, robot_id: str):
         base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
-        if "follower" in robot_type:
-            path = base / "robots" / "so_follower" / f"{robot_id}.json"
-        elif "leader" in robot_type:
-            path = base / "teleoperators" / "so_leader" / f"{robot_id}.json"
-        else:
-            return {"ok": False, "error": "Unknown robot_type"}
+        try:
+            category, dir_name = device_registry.get_calibration_path_prefix(robot_type)
+        except Exception as e:
+            return {"ok": False, "error": f"Unknown robot_type '{robot_type}': {e}"}
+        path = base / category / dir_name / f"{robot_id}.json"
         if path.exists():
             try:
                 path.unlink()

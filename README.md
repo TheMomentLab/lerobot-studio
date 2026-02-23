@@ -1,4 +1,4 @@
-# LeRobot Studio
+# LeStudio
 
 A comprehensive web-based GUI for setting up and operating [Hugging Face LeRobot](https://github.com/huggingface/lerobot) robot arms. This tool replaces the traditional CLI-heavy flow with a guided workbench for setup, operation, dataset management, training, and evaluation.
 
@@ -34,14 +34,14 @@ A comprehensive web-based GUI for setting up and operating [Hugging Face LeRobot
 You can install this tool directly via pip:
 
 ```bash
-pip install lerobot-studio
+pip install lestudio
 ```
 
 Or from source:
 
 ```bash
-git clone https://github.com/TheMomentLab/lerobot-studio.git
-cd lerobot-studio
+git clone https://github.com/TheMomentLab/lestudio.git
+cd lestudio
 pip install -e .
 ```
 
@@ -50,7 +50,7 @@ pip install -e .
 Once installed, simply run the setup command from your terminal. Make sure your `lerobot` conda environment (or equivalent) is activated so the tool can detect the `lerobot` package.
 
 ```bash
-lerobot-studio
+lestudio
 ```
 
 By default, the server will start at `http://localhost:7860`. Open this URL in your web browser.
@@ -58,9 +58,9 @@ By default, the server will start at `http://localhost:7860`. Open this URL in y
 ### Command Line Options
 
 ```text
-usage: lerobot-studio [-h] [--port PORT] [--host HOST] [--lerobot-path LEROBOT_PATH] [--config-dir CONFIG_DIR] [--rules-path RULES_PATH]
+usage: lestudio [-h] [--port PORT] [--host HOST] [--lerobot-path LEROBOT_PATH] [--config-dir CONFIG_DIR] [--rules-path RULES_PATH]
 
-LeRobot Studio
+LeStudio
 
 options:
   -h, --help            show this help message and exit
@@ -69,7 +69,7 @@ options:
   --lerobot-path LEROBOT_PATH
                         Path to lerobot source (auto-detected if installed)
   --config-dir CONFIG_DIR
-                        Config directory (default: ~/.config/lerobot-studio)
+                        Config directory (default: ~/.config/lestudio)
   --rules-path RULES_PATH
                         Path to udev rules file (default: /etc/udev/rules.d/99-lerobot.rules)
 ```

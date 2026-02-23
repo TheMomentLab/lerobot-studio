@@ -33,6 +33,22 @@ const TeleopTab = {
     }
   },
 
+  async refreshRobotTypeOptions() {
+    try {
+      const [robotsData, teleopsData] = await Promise.all([
+        api.get('/api/robots'),
+        api.get('/api/teleops'),
+      ]);
+      const robotTypes = Array.isArray(robotsData?.types) ? robotsData.types : [];
+      const teleopTypes = Array.isArray(teleopsData?.types) ? teleopsData.types : [];
+      this._setSelectOptions('teleop-robot-type', robotTypes, ['so101_follower']);
+      this._setSelectOptions('teleop-teleop-type', teleopTypes, ['so101_leader']);
+    } catch (_) {
+      this._setSelectOptions('teleop-robot-type', [], ['so101_follower']);
+      this._setSelectOptions('teleop-teleop-type', [], ['so101_leader']);
+    }
+  },
+
   async refreshDeviceOptions() {
     try {
       const data = await api.get('/api/devices');
@@ -79,6 +95,8 @@ const TeleopTab = {
   applyConfig(cfg) {
     this.mode = cfg.robot_mode || 'single';
     this.setMode(this.mode);
+    setVal('teleop-robot-type',     cfg.robot_type);
+    setVal('teleop-teleop-type',    cfg.teleop_type);
     setVal('teleop-follower-port',  cfg.follower_port);
     setVal('teleop-robot-id',       cfg.robot_id);
     setVal('teleop-leader-port',    cfg.leader_port);
@@ -93,6 +111,8 @@ const TeleopTab = {
   buildConfig() {
     const cfg = {
       robot_mode:          this.mode,
+      robot_type:          getVal('teleop-robot-type') || 'so101_follower',
+      teleop_type:         getVal('teleop-teleop-type') || 'so101_leader',
       follower_port:       getVal('teleop-follower-port'),
       robot_id:            getVal('teleop-robot-id'),
       leader_port:         getVal('teleop-leader-port'),
@@ -171,6 +191,14 @@ const TeleopTab = {
   },
 
   clearLog() { clearProcessLog('teleop-log'); },
+
+  async onTabOpen() {
+    await this.refreshRobotTypeOptions();
+    await this.refreshDeviceOptions();
+    this.renderCameraRows();
+    this.showFeeds();
+    await this.refreshCalibrationIdOptions();
+  },
 
   syncBtn() {
     const running = !!state.procStatus['teleop'];

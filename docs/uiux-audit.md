@@ -1,4 +1,4 @@
-# LeRobot Studio UI/UX 감사 리포트
+# LeStudio UI/UX 감사 리포트
 
 감사일: 2026-02-23
 감사 범위: 전체 9개 탭 + 라이트/다크 모드 + 반응형(768px)

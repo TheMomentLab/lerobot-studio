@@ -57,7 +57,7 @@ def _install_stdin_bridge():
 
 
 def main():
-    from lerobot_studio.camera_patch import install_camera_patch
+    from lestudio.camera_patch import install_camera_patch
     install_camera_patch()
     record_mod = _install_stdin_bridge()
     record_mod.main()

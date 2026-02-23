@@ -54,9 +54,16 @@ def resolve_config_dir(config_dir_arg: Path | None) -> Path:
     if config_dir_arg is not None:
         config_dir = config_dir_arg
     else:
-        new_default = Path.home() / ".config" / "lerobot-studio"
-        moment_default = Path.home() / ".config" / "moment-lerobot-studio"
+        new_default = Path.home() / ".config" / "lestudio"
+        # Migration: auto-rename old config dirs to new name
+        old_default = Path.home() / ".config" / "lerobot-studio"
+        old_moment = Path.home() / ".config" / "moment-lerobot-studio"
+        moment_default = Path.home() / ".config" / "moment-lestudio"
         legacy_default = Path.home() / ".config" / "lerobot-setup"
+        if old_default.exists() and not new_default.exists():
+            old_default.rename(new_default)
+        if old_moment.exists() and not moment_default.exists():
+            old_moment.rename(moment_default)
         if new_default.exists():
             config_dir = new_default
         elif moment_default.exists():
@@ -122,7 +129,7 @@ def command_serve(args):
     lerobot_src = resolve_lerobot_src(args.lerobot_path)
     config_dir = resolve_config_dir(args.config_dir)
 
-    from lerobot_studio.server import create_app
+    from lestudio.server import create_app
     import uvicorn
 
     app = create_app(
@@ -131,7 +138,7 @@ def command_serve(args):
         rules_path=args.rules_path,
     )
 
-    print(f"🤖  LeRobot Studio v{_version()}")
+    print(f"🤖  LeStudio v{_version()}")
     print(f"    lerobot: {lerobot_src}")
     print(f"    config:  {config_dir}")
     print(f"    Open (Local):   http://localhost:{args.port}")
@@ -201,23 +208,23 @@ def command_install_udev(args):
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="lerobot-studio",
-        description="LeRobot Studio",
+        prog="lestudio",
+        description="LeStudio",
     )
     sub = parser.add_subparsers(dest="command")
 
-    serve = sub.add_parser("serve", help="Run LeRobot Studio web server")
+    serve = sub.add_parser("serve", help="Run LeStudio web server")
     serve.add_argument("--port", type=int, default=7860, help="Server port (default: 7860)")
     serve.add_argument("--host", default="0.0.0.0", help="Server host (default: 0.0.0.0)")
     serve.add_argument("--lerobot-path", type=Path, default=None, help="Path to lerobot source (auto-detected if installed)")
-    serve.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lerobot-studio)")
+    serve.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lestudio)")
     serve.add_argument("--rules-path", type=Path, default=DEFAULT_RULES_PATH, help="Path to udev rules file")
     serve.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
     serve.add_argument("--headless", action="store_true", help="Alias for --no-browser")
     serve.set_defaults(handler=command_serve)
 
     install = sub.add_parser("install-udev", help="Install udev rules with sudo (separate from web UI)")
-    install.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lerobot-studio)")
+    install.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lestudio)")
     install.add_argument("--source-rules", type=Path, default=None, help="Source rules file (default: <config-dir>/99-lerobot.rules)")
     install.add_argument("--rules-path", type=Path, default=DEFAULT_RULES_PATH, help="Target rules file (default: /etc/udev/rules.d/99-lerobot.rules)")
     install.add_argument("--dry-run", action="store_true", help="Print commands only without applying")
@@ -241,6 +248,6 @@ def main():
 
 
 def _version() -> str:
-    from lerobot_studio import __version__
+    from lestudio import __version__
 
     return __version__

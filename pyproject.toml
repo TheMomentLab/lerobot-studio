@@ -3,16 +3,16 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "lerobot-studio"
+name = "lestudio"
 version = "0.1.0"
-description = "LeRobot Studio: Web-based GUI for LeRobot robot arm operations"
+description = "LeStudio: Web-based GUI for LeRobot robot arm operations"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
     {name = "TheMomentLab"},
 ]
-keywords = ["lerobot", "robotics", "gui", "calibration", "teleop"]
+keywords = ["lerobot", "lestudio", "robotics", "gui", "calibration", "teleop"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -31,18 +31,18 @@ dependencies = [
 ]
 
 [project.scripts]
-lerobot-studio = "lerobot_studio.cli:main"
+lestudio = "lestudio.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/TheMomentLab/lerobot-studio"
-Repository = "https://github.com/TheMomentLab/lerobot-studio"
-Issues = "https://github.com/TheMomentLab/lerobot-studio/issues"
+Homepage = "https://github.com/TheMomentLab/lestudio"
+Repository = "https://github.com/TheMomentLab/lestudio"
+Issues = "https://github.com/TheMomentLab/lestudio/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-lerobot_studio = ["static/**"]
+lestudio = ["static/**"]
 
 [tool.pytest.ini_options]
 addopts = "--ignore=src/lerobot"

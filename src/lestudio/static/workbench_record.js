@@ -20,6 +20,7 @@ const RecordTab = {
   },
 
   async onTabOpen() {
+    await this.refreshRobotTypeOptions();
     await this.refreshDeviceOptions();
     this.renderCameraRows();
     this.showFeeds();
@@ -44,6 +45,22 @@ const RecordTab = {
       select.value = current;
     } else if (uniq.length > 0) {
       select.value = uniq[0];
+    }
+  },
+
+  async refreshRobotTypeOptions() {
+    try {
+      const [robotsData, teleopsData] = await Promise.all([
+        api.get('/api/robots'),
+        api.get('/api/teleops'),
+      ]);
+      const robotTypes = Array.isArray(robotsData?.types) ? robotsData.types : [];
+      const teleopTypes = Array.isArray(teleopsData?.types) ? teleopsData.types : [];
+      this._setSelectOptions('record-robot-type', robotTypes, ['so101_follower']);
+      this._setSelectOptions('record-teleop-type', teleopTypes, ['so101_leader']);
+    } catch (_) {
+      this._setSelectOptions('record-robot-type', [], ['so101_follower']);
+      this._setSelectOptions('record-teleop-type', [], ['so101_leader']);
     }
   },
 
@@ -95,6 +112,8 @@ const RecordTab = {
   applyConfig(cfg) {
     this.mode = cfg.robot_mode || 'single';
     this.setMode(this.mode);
+    setVal('record-robot-type',     cfg.robot_type);
+    setVal('record-teleop-type',    cfg.teleop_type);
     setVal('record-follower-port',  cfg.follower_port);
     setVal('record-robot-id',       cfg.robot_id);
     setVal('record-leader-port',    cfg.leader_port);
@@ -118,6 +137,8 @@ const RecordTab = {
     const ep = parseInt(getVal('record-episodes')) || 50;
     const cfg = {
       robot_mode:    this.mode,
+      robot_type:    getVal('record-robot-type') || 'so101_follower',
+      teleop_type:   getVal('record-teleop-type') || 'so101_leader',
       follower_port: getVal('record-follower-port'),
       robot_id:      getVal('record-robot-id'),
       leader_port:   getVal('record-leader-port'),

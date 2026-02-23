@@ -309,11 +309,11 @@ const WS = {
         const lastErr = this.lastErrorAtByProcess[proc] || 0;
         const abnormal = now - lastErr < 120000;
         if (abnormal) {
-          NotificationManager.notify('LeRobot Studio', `${proc} ended with error. Check logs.`, `proc-${proc}-error`);
+          NotificationManager.notify('LeStudio', `${proc} ended with error. Check logs.`, `proc-${proc}-error`);
         } else if (proc === 'train') {
-          NotificationManager.notify('LeRobot Studio', 'Training completed.', 'proc-train-complete');
+          NotificationManager.notify('LeStudio', 'Training completed.', 'proc-train-complete');
         } else if (proc === 'record') {
-          NotificationManager.notify('LeRobot Studio', 'Recording session ended.', 'proc-record-end');
+          NotificationManager.notify('LeStudio', 'Recording session ended.', 'proc-record-end');
         }
       }
     });

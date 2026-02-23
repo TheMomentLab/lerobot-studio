@@ -286,7 +286,7 @@ const DeviceSetupTab = {
         statusEl.innerHTML = `<span style="color:var(--green); font-weight:600;">✓</span> udev rules installed at <code style="font-family:var(--mono); font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:1px 6px;">${esc(res.rules_path)}</code>`;
         statusEl.style.color = 'var(--text)';
       } else if (needsRootForInstall) {
-        statusEl.innerHTML = `<span style="color:var(--yellow); font-weight:600;">⚠</span> udev rules are not installed. Root permission required. Run: <code style="font-family:var(--mono); font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:1px 6px;">lerobot-studio install-udev</code>`;
+        statusEl.innerHTML = `<span style="color:var(--yellow); font-weight:600;">⚠</span> udev rules are not installed. Root permission required. Run: <code style="font-family:var(--mono); font-size:11px; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:1px 6px;">lestudio install-udev</code>`;
         statusEl.style.color = 'var(--text)';
       } else {
         statusEl.innerHTML = `<span style="color:var(--text2);">⏳</span> Installing udev rules…`;
@@ -300,7 +300,7 @@ const DeviceSetupTab = {
       hintEl.innerHTML = `
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:8px;">
           <span style="font-size:11px; color:var(--text2); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; flex-shrink:0;">Recommended</span>
-          <code style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:2px 10px; font-size:12px; color:var(--text); font-family:var(--mono);">lerobot-studio install-udev</code>
+          <code style="background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:2px 10px; font-size:12px; color:var(--text); font-family:var(--mono);">lestudio install-udev</code>
         </div>
       `;
       SidebarSignals.scheduleRefresh(0);

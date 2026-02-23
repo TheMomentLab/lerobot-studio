@@ -5,14 +5,14 @@ const ModeManager = {
   _refreshTimer: null,
 
   init() {
-    const saved = localStorage.getItem('lerobot-studio.ui-mode');
+    const saved = localStorage.getItem('lestudio.ui-mode');
     this.mode = saved === 'advanced' ? 'advanced' : 'guided';
     this.applyMode();
   },
 
   setMode(nextMode) {
     this.mode = nextMode === 'advanced' ? 'advanced' : 'guided';
-    localStorage.setItem('lerobot-studio.ui-mode', this.mode);
+    localStorage.setItem('lestudio.ui-mode', this.mode);
     this.applyMode();
     SidebarSignals.scheduleRefresh(0);
     if (this.mode === 'guided') this.scheduleReadinessRefresh(0);

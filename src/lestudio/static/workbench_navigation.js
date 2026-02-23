@@ -30,9 +30,9 @@ function _clearTabScopedMedia() {
 function _runTabLazyLoad(tabName) {
   if (tabName === 'status') StatusTab.refresh();
   if (tabName === 'device-setup') { DeviceSetupTab.refresh(); FeedManager.startStatPolling(); }
-  if (tabName === 'calibrate') { CalibrateTab.refreshArms(); CalibrateTab.checkFile(); CalibrateTab.refreshFiles(); }
-  if (tabName === 'motor-setup') MotorSetupTab.refreshArms();
-  if (tabName === 'teleop') { TeleopTab.refreshDeviceOptions(); TeleopTab.refreshCalibrationIdOptions(); TeleopTab.showFeeds(); DeviceSetupTab.loadStreamSettings(); }
+  if (tabName === 'calibrate') CalibrateTab.onTabOpen();
+  if (tabName === 'motor-setup') MotorSetupTab.onTabOpen();
+  if (tabName === 'teleop') { TeleopTab.onTabOpen(); DeviceSetupTab.loadStreamSettings(); }
   if (tabName === 'record') { RecordTab.onTabOpen(); DeviceSetupTab.loadStreamSettings(); }
   if (tabName === 'train') { TrainTab.refreshGpu(); TrainTab.refreshDatasets(); TrainTab.refreshPreflight(); }
   if (tabName === 'eval') EvalTab.loadDefaults();

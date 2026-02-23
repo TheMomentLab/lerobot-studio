@@ -1,4 +1,4 @@
-# LeRobot Studio — 구현 로드맵 (Implementation Roadmap)
+# LeStudio — 구현 로드맵 (Implementation Roadmap)
 
 최종 갱신: 2026-02-23
 
@@ -85,16 +85,29 @@
 
 ---
 
-## 4단계 — 다중 로봇 & 플러그인
+## 4단계 — 생태계 통합 (Ecosystem Integration)
+**목표**: LeRobot 생태계 전체 (16+ Robot, 16+ Teleoperator, 4 Camera 타입, 커스텀 플랫폼)를 하드코딩 없이 지원한다.
 
-**목표**: SO-100/SO-101 이외의 로봇을 하드코딩 없이 지원한다.
+**상세 설계 문서**: [`docs/ecosystem-integration-plan.md`](ecosystem-integration-plan.md) (v2 — LeRobot 공식 문서 분석 반영)
+**핵심 변경**:
+ DeviceRegistry: LeRobot의 3-Registry (Robot/Teleoperator/Camera) 통합 동적 탐색 + 플러그인 자동 발견
+ ConnectionAdapter: Serial/CAN bus/ZMQ/Cloud SDK/Ethernet 통신 프로토콜 추상화
+ GenericCommandBuilder: `--robot.type` + `--teleop.type` 분리, 새 CLI 엔트리포인트(`lerobot-teleoperate` 등) 사용
+ Capability 기반 UI: 로봇 능력(팔/바퀴/카메라/네트워크)에 따라 패널 동적 렌더링
 
-- 로봇 유형을 설정 스키마로 추상화 (현재 `ROBOT_TYPES` 하드코딩)
-- 플러그인: YAML/JSON으로 로봇 프로필 정의
-- 커뮤니티 기여 프로필 (Koch v1.1, Moss v1, Aloha 등)
+**v2 주요 발견 (LeRobot 문서 분석)**:
+ 🔴 Robot ↔ Teleoperator 완전 분리 (SO-101 follower=Robot, SO-101 leader=Teleoperator)
+ 🔴 플러그인 시스템 공식 존재 (`lerobot_robot_*`, `lerobot_camera_*`, `lerobot_teleoperator_*`)
+ 🔴 draccus.ChoiceRegistry — `_subclass_registry` dict로 런타임 동적 쿼리 가능
+ 🟡 Processor Pipeline 시스템 (Phase 2+ 대응)
+ 🟡 CLI 엔트리포인트 변경 (`lerobot-teleoperate` 등)
+**구현 Phase**:
+ Phase 0: 추상화 레이어 삽입 (DeviceRegistry 3-Registry + 플러그인 발견)
+ Phase 1: Backend 일반화 (GenericCommandBuilder, ConnectionAdapter 4종, 새 CLI)
+ Phase 2: Frontend 적응형 UI (네트워크 설정, 모바일 베이스, 양팔, 카메라 타입별 폼)
+ Phase 3: 커스텀 로봇 가이드 & 플러그인 관리 UI
 
-**아키텍처 참고**: LeRobot 직접 결합은 현재 bridge 3파일(`teleop_bridge.py`, `record_bridge.py`, `camera_patch.py`)에 격리되어 있다. 범용화 시 이 파일들만 어댑터 인터페이스로 교체하면 된다. 그 전까지는 `lerobot.*` import가 이 3파일 밖으로 퍼지지 않도록 유지한다.
-
+**아키텍처 참고**: LeRobot 직접 결합은 현재 bridge 3파일 + 신규 `device_registry.py` (4번째 접점)에 격리. `connection.py`, `command_builders.py`는 LeRobot import 없음.
 ---
 
 ## 5단계 — 원격 조작 (Remote Operation)

@@ -1,4 +1,34 @@
 const CalibrateTab = {
+  async refreshRobotTypeOptions() {
+    try {
+      const [robotsData, teleopsData] = await Promise.all([
+        api.get('/api/robots'),
+        api.get('/api/teleops'),
+      ]);
+      const allTypes = [
+        ...(Array.isArray(robotsData?.types) ? robotsData.types : []),
+        ...(Array.isArray(teleopsData?.types) ? teleopsData.types : []),
+      ];
+      const preferred = ['so101_follower', 'so100_follower', 'so101_leader', 'so100_leader'];
+      const select = document.getElementById('cal-type');
+      if (!select) return;
+      const current = select.value || 'so101_follower';
+      const uniq = [];
+      const seen = new Set();
+      [...preferred, ...allTypes, current].forEach(v => {
+        if (v && !seen.has(v)) { seen.add(v); uniq.push(v); }
+      });
+      select.innerHTML = uniq.map(v => `<option value="${v}">${v}</option>`).join('');
+      select.value = uniq.includes(current) ? current : uniq[0];
+    } catch (_) { /* keep existing HTML options */ }
+  },
+
+  async onTabOpen() {
+    await this.refreshRobotTypeOptions();
+    await this.refreshArms();
+    await this.refreshFiles();
+    this.checkFile();
+  },
   checkTimer: null,
   cachedFiles: [],
 

@@ -30,7 +30,7 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
         return [
             python_exe,
             "-m",
-            "lerobot_studio.teleop_bridge",
+            "lestudio.teleop_bridge",
             "--robot.type=bi_so_follower",
             f'--robot.left_arm_config.port={cfg["left_follower_port"]}',
             f'--robot.right_arm_config.port={cfg["right_follower_port"]}',
@@ -42,7 +42,7 @@ def build_teleop_args(python_exe: str, cfg: dict) -> list[str]:
     return [
         python_exe,
         "-m",
-        "lerobot_studio.teleop_bridge",
+        "lestudio.teleop_bridge",
         "--robot.type=so101_follower",
         f'--robot.port={cfg["follower_port"]}',
         f'--robot.id={cfg.get("robot_id", "my_so101_follower_1")}',
@@ -89,7 +89,7 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
         return [
             python_exe,
             "-m",
-            "lerobot_studio.record_bridge",
+            "lestudio.record_bridge",
             "--robot.type=bi_so_follower",
             f'--robot.left_arm_config.port={cfg["left_follower_port"]}',
             f'--robot.right_arm_config.port={cfg["right_follower_port"]}',
@@ -100,7 +100,7 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
     return [
         python_exe,
         "-m",
-        "lerobot_studio.record_bridge",
+        "lestudio.record_bridge",
         "--robot.type=so101_follower",
         f'--robot.port={cfg["follower_port"]}',
         f'--robot.id={cfg.get("robot_id", "my_so101_follower_1")}',

@@ -1,6 +1,6 @@
 /* ─── Theme Manager ──────────────────────────────────────────────────────────── */
 const ThemeManager = {
-  _STORAGE_KEY: 'lerobot-studio-theme',
+  _STORAGE_KEY: 'lestudio-theme',
 
   init() {
     const saved = localStorage.getItem(this._STORAGE_KEY) || 'dark';
