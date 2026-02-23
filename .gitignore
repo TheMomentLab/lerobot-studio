@@ -42,3 +42,6 @@ src/lerobot/
 
 # AGENTS.md
 AGENTS.md
+
+# Private docs (competitive analysis, internal strategy)
+docs/private/
