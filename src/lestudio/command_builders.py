@@ -129,6 +129,33 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
 
 
 def build_calibrate_args(python_exe: str, data: dict) -> list[str]:
+    robot_mode = data.get("robot_mode", "single")
+
+    if robot_mode == "bi":
+        bi_type = data.get("bi_type", "bi_so_follower")
+        robot_id = data.get("robot_id", "bimanual_follower")
+        left_port = data.get("left_port", "/dev/follower_arm_1")
+        right_port = data.get("right_port", "/dev/follower_arm_2")
+        if "leader" in bi_type:
+            return [
+                python_exe,
+                "-m",
+                "lerobot.scripts.lerobot_calibrate",
+                f"--teleop.type={bi_type}",
+                f"--teleop.left_arm_config.port={left_port}",
+                f"--teleop.right_arm_config.port={right_port}",
+                f"--teleop.id={robot_id}",
+            ]
+        return [
+            python_exe,
+            "-m",
+            "lerobot.scripts.lerobot_calibrate",
+            f"--robot.type={bi_type}",
+            f"--robot.left_arm_config.port={left_port}",
+            f"--robot.right_arm_config.port={right_port}",
+            f"--robot.id={robot_id}",
+        ]
+
     robot_type = data.get("robot_type", "so101_follower")
     robot_id = data.get("robot_id", "my_so101_follower_1")
     port = data.get("port", "/dev/follower_arm_1")
@@ -190,11 +217,11 @@ def build_train_args(python_exe: str, cfg: dict) -> list[str]:
 
     batch_size = cfg.get("train_batch_size")
     if batch_size:
-        args.append(f"--training.batch_size={int(batch_size)}")
+        args.append(f"--batch_size={int(batch_size)}")
 
     lr = cfg.get("train_lr")
     if lr:
-        args.append(f"--training.lr={float(lr)}")
+        args.append(f"--optimizer.lr={float(lr)}")
 
     return args
 

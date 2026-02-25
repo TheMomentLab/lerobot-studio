@@ -29,9 +29,31 @@ export const useProcess = () => {
     return apiPost<{ ok: boolean; error?: string }>(`/api/process/${processName}/input`, { text })
   }, [])
 
+  const runProcessCommand = useCallback(async (processName: string, command: string) => {
+    const url = `/api/process/${processName}/command`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+    })
+
+    if (res.status === 404 || res.status === 405) {
+      return {
+        ok: false,
+        error: `Backend endpoint ${url} is unavailable (${res.status}). Restart LeStudio server with the current source build.`,
+      }
+    }
+
+    if (!res.ok) {
+      throw new Error(`POST ${url} failed: ${res.status}`)
+    }
+
+    return res.json() as Promise<{ ok: boolean; error?: string; command?: string }>
+  }, [])
+
   const stopProcess = useCallback(async (processName: string) => {
     return apiPost<{ ok: boolean; error?: string }>(`/api/process/${processName}/stop`)
   }, [])
 
-  return { runPreflight, sendProcessInput, stopProcess }
+  return { runPreflight, sendProcessInput, runProcessCommand, stopProcess }
 }

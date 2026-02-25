@@ -27,7 +27,7 @@ def find_lerobot_src() -> Path | None:
 
         module_file = getattr(lerobot, "__file__", None)
         if isinstance(module_file, str) and module_file:
-            return Path(module_file).parent
+            return Path(module_file).parent.parent  # return src/ not src/lerobot/
     except ImportError:
         pass
 
@@ -89,6 +89,10 @@ def resolve_lerobot_src(lerobot_path_arg: Path | None) -> Path:
     if not lerobot_src.is_dir():
         print(f"ERROR: --lerobot-path does not exist: {lerobot_src}", file=sys.stderr)
         sys.exit(1)
+    # If user passed the repo root (e.g. .../lerobot), resolve to src/ automatically
+    src_candidate = lerobot_src / "src"
+    if (src_candidate / "lerobot").is_dir():
+        lerobot_src = src_candidate
     return lerobot_src
 
 

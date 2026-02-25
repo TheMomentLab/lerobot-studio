@@ -15,6 +15,9 @@ interface RulesStatusResponse {
   fallback_rules_path?: string
   fallback_rules_exists?: boolean
   sudo_noninteractive: boolean
+  pkexec_available?: boolean
+  graphical_session?: boolean
+  gui_auth_available?: boolean
   manual_commands?: string[]
 }
 
@@ -472,11 +475,41 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
     [armAssignments],
   )
 
+  const cameraRolesReady = cameraMappable.length === 0 || cameraAssignedCount === cameraMappable.length
+  const armRolesReady = armMappable.length === 0 || armAssignedCount === armMappable.length
+
+  const mappingBlockers = useMemo(() => {
+    const blockers: string[] = []
+    if (rulesStatus && !rulesStatus.rules_installed) blockers.push('udev rules not installed')
+    if (!cameraRolesReady) blockers.push(`Unassigned camera roles (${cameraMappable.length - cameraAssignedCount})`)
+    if (!armRolesReady) blockers.push(`Unassigned arm roles (${armMappable.length - armAssignedCount})`)
+    if (hasCameraDuplicates || hasArmDuplicates) blockers.push('Duplicate role assignments found')
+    if (devices.arms.length === 0) blockers.push('No arms detected')
+    return blockers
+  }, [
+    rulesStatus,
+    cameraRolesReady,
+    cameraMappable.length,
+    cameraAssignedCount,
+    armRolesReady,
+    armMappable.length,
+    armAssignedCount,
+    hasCameraDuplicates,
+    hasArmDuplicates,
+    devices.arms.length,
+  ])
+
   const mappingComplete =
     (cameraMappable.length === 0 || cameraAssignedCount === cameraMappable.length) &&
     (armMappable.length === 0 || armAssignedCount === armMappable.length) &&
     !hasCameraDuplicates &&
     !hasArmDuplicates
+
+  const canOneClickInstall = !!(
+    rulesStatus
+    && !rulesStatus.rules_installed
+    && (rulesStatus.sudo_noninteractive || rulesStatus.gui_auth_available)
+  )
 
   const renderRulesTable = (title: string, portHeader: string, rows: Array<{ port: string; symlink: string; mode: string; exists?: boolean | null }>) => {
     const symlinkCounts: Record<string, number> = {}
@@ -543,6 +576,24 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
         </button>
       </div>
 
+      {!mappingComplete ? (
+        <div className="mapping-blocker-card">
+          <div className="dsub" style={{ marginBottom: 6 }}>Mapping blocked:</div>
+          <div className="mapping-blocker-chip-row">
+            {mappingBlockers.map((blocker) => (
+              <span key={blocker} className="dbadge badge-warn">{blocker}</span>
+            ))}
+          </div>
+          <div className="mapping-blocker-actions">
+            {rulesStatus && !rulesStatus.rules_installed ? (
+              <button type="button" className="link-btn" onClick={() => setRulesPanelOpen(true)}>→ Open Rules Details</button>
+            ) : null}
+            <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
+            <button type="button" className="link-btn" onClick={() => setActiveTab('calibrate')}>→ Go to Calibration</button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="card" id="rules-card">
         <h3>udev Rules</h3>
         <div id="rules-install-status">
@@ -554,15 +605,20 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                   {rulesStatus.rules_path ?? '(unknown path)'}
                 </code>
               </span>
+            ) : canOneClickInstall ? (
+              <span>
+                <span style={{ color: 'var(--yellow)', fontWeight: 600 }}>⚠</span> udev rules are not installed yet. One-click install is available in this tab.{' '}
+                {rulesStatus.gui_auth_available ? 'A desktop authentication popup may appear.' : 'No terminal required when non-interactive sudo is configured.'}
+              </span>
             ) : rulesStatus.needs_root_for_install ? (
               <span>
                 <span style={{ color: 'var(--yellow)', fontWeight: 600 }}>⚠</span> udev rules are not installed. Root permission required. Run:{' '}
                 <code style={{ fontFamily: 'var(--mono)', fontSize: 11, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 6px' }}>
-                  lerobot-studio install-udev
+                  lestudio install-udev
                 </code>
               </span>
             ) : (
-              <span>⏳ installing udev rules…</span>
+              <span>⏳ checking udev install status…</span>
             )
           ) : (
             'Checking udev install status...'
@@ -586,9 +642,26 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                 <div className="rules-item">
                   <div className="rules-item-key">Recommended</div>
                   <div className="rules-item-value">
-                    <code style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>lerobot-studio install-udev</code>
+                    <code style={{ fontFamily: 'var(--mono)', fontSize: 12 }}>lestudio install-udev</code>
                   </div>
                 </div>
+                {canOneClickInstall && (
+                  <div className="rules-item">
+                    <div className="rules-item-key">One-click</div>
+                    <div className="rules-item-value">
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        disabled={applyState === 'applying'}
+                        onClick={() => {
+                          void applyRules(cameraAssignments, armAssignments, false)
+                        }}
+                      >
+                        {applyState === 'applying' ? 'Installing...' : 'Install Rules Now'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -596,8 +669,11 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
 
         <details className="advanced-panel" id="rules-advanced-panel" open={rulesPanelOpen} style={{ marginTop: 16, padding: 0 }}>
           <summary onClick={(e) => { e.preventDefault(); setRulesPanelOpen((prev) => !prev) }}>
-            <span>Current Active Rules {rulesPanelOpen ? '▾' : '▸'}</span>
-            <span className="rules-summary-meta">{rulesPanelOpen ? 'Tap to hide details' : 'Tap to show details'}</span>
+            <span className="rules-summary-title">
+              <span>Current Active Rules</span>
+              <span className="rules-summary-caret" aria-hidden="true">{rulesPanelOpen ? '▾' : '▸'}</span>
+            </span>
+            <span className="rules-summary-meta">{rulesPanelOpen ? 'Hide details' : 'Show details'}</span>
           </summary>
           {rulesPanelOpen ? (
             <div className="rules-readable" style={{ marginTop: 10 }}>
@@ -633,13 +709,13 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
         <div className="device-list">
           <div className="device-item" style={{ justifyContent: 'space-between' }}>
             <div className="dname">Camera roles</div>
-            <span className={`dbadge ${(cameraMappable.length > 0 && cameraAssignedCount === cameraMappable.length) ? 'badge-ok' : 'badge-warn'}`}>
+            <span className={`dbadge ${cameraMappable.length === 0 ? 'badge-idle' : cameraRolesReady ? 'badge-ok' : 'badge-warn'}`}>
               {cameraAssignedCount}/{cameraMappable.length || 0}
             </span>
           </div>
           <div className="device-item" style={{ justifyContent: 'space-between' }}>
             <div className="dname">Arm roles</div>
-            <span className={`dbadge ${(armMappable.length > 0 && armAssignedCount === armMappable.length) ? 'badge-ok' : 'badge-warn'}`}>
+            <span className={`dbadge ${armMappable.length === 0 ? 'badge-idle' : armRolesReady ? 'badge-ok' : 'badge-warn'}`}>
               {armAssignedCount}/{armMappable.length || 0}
             </span>
           </div>
@@ -658,8 +734,14 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
           {applyNote ? <div className="dsub">{applyNote}</div> : null}
           {mappingComplete && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
-              <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
-              <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
+              {armMappable.length === 0 ? (
+                <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
+              ) : (
+                <>
+                  <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
+                  <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -766,12 +848,14 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
           <div className="field-help" style={{ marginBottom: 0 }}>
             Assign stable symlink names to each detected arm by serial number.
           </div>
-          <button className="btn-sm" onClick={() => setIdentifyPanelOpen((prev) => !prev)}>
-            🔍 Identify Arm
-          </button>
+          {devices.arms.length > 0 ? (
+            <button className="btn-sm" onClick={() => setIdentifyPanelOpen((prev) => !prev)}>
+              🔍 Identify Arm
+            </button>
+          ) : null}
         </div>
 
-        {identifyPanelOpen && (
+        {identifyPanelOpen && devices.arms.length > 0 && (
           <div id="arm-identify-panel" style={{ marginBottom: 14, padding: 14, background: 'color-mix(in srgb, var(--accent) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)', borderRadius: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 10, flexWrap: 'wrap' }}>
               <div>
@@ -830,7 +914,15 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
 
         <div id="device-arms-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
           {devices.arms.length === 0
-            ? <div style={{ color: 'var(--color-text-secondary, var(--text2))', fontStyle: 'italic', padding: '12px 0' }}>No arms detected. Connect a USB arm and click Refresh.</div>
+            ? (
+              <div className="mapping-arms-empty-state">
+                <span>No arms detected. Connect a USB arm and click Refresh.</span>
+                <div className="mapping-arms-empty-actions">
+                  <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
+                  <button type="button" className="link-btn" onClick={() => setActiveTab('calibrate')}>→ Go to Calibration</button>
+                </div>
+              </div>
+            )
             : devices.arms.map((arm, idx) => (
                 <div className="arm-card" key={`${arm.device ?? 'arm'}-${idx}`} style={{ boxShadow: '0 2px 8px rgba(0,0,0,0.2)', border: '1px solid var(--border)', borderRadius: 8, padding: 14, background: 'var(--bg-card)' }}>
                   <div style={{ fontWeight: 600, marginBottom: 8 }}>/dev/{arm.device ?? '?'}</div>

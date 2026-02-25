@@ -290,7 +290,7 @@ export function ConsoleDrawer() {
   const clearLog = useLeStudioStore((s) => s.clearLog)
   const addToast = useLeStudioStore((s) => s.addToast)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
-  const { stopProcess } = useProcess()
+  const { sendProcessInput, runProcessCommand, stopProcess } = useProcess()
   const runningProcesses = useRunningProcesses()
   // Hide Running Bar for the process matching the current tab (avoids duplicate Stop button)
   const visibleRunning = useMemo(
@@ -377,20 +377,28 @@ export function ConsoleDrawer() {
   }, [setConsoleHeight])
 
   const sendInput = useCallback(async () => {
+    const input = running ? stdinValue : stdinValue.trim()
+    if (!running && !input) return
+
     try {
-      const res = await fetch(`/api/process/${selectedProcess}/input`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: stdinValue }),
-      })
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`)
+      if (running) {
+        const res = await sendProcessInput(selectedProcess, input)
+        if (!res.ok) {
+          throw new Error(res.error ?? 'Failed to send input')
+        }
+      } else {
+        const res = await runProcessCommand(selectedProcess, input)
+        if (!res.ok) {
+          throw new Error(res.error ?? 'Failed to run command')
+        }
+        addToast(`Started command on ${selectedProcess}: ${res.command ?? input}`, 'info')
       }
+
       setStdinValue('')
     } catch (err) {
-      addToast(`Failed to send input: ${String(err)}`, 'error')
+      addToast(`Console action failed: ${String(err)}`, 'error')
     }
-  }, [addToast, selectedProcess, stdinValue])
+  }, [addToast, runProcessCommand, running, selectedProcess, sendProcessInput, stdinValue])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -489,6 +497,8 @@ export function ConsoleDrawer() {
                 className={
                   line.kind === 'stderr' || line.kind === 'error'
                     ? 'line-error'
+                    : line.kind === 'translation'
+                      ? 'line-translation'
                     : line.kind === 'info'
                       ? 'line-info'
                       : 'line-stdout'
@@ -506,7 +516,7 @@ export function ConsoleDrawer() {
           <div className="stdin-row">
             <input
               type="text"
-              placeholder="Send input to selected process"
+              placeholder={running ? 'Send stdin (empty Enter sends newline/default)' : 'Run command in selected process environment'}
               value={stdinValue}
               onChange={(e) => setStdinValue(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -514,6 +524,11 @@ export function ConsoleDrawer() {
             <button className="btn-sm" onClick={sendInput}>
               Send ↵
             </button>
+            {running ? (
+              <button className="btn-sm" onClick={() => void handleStopProcess(selectedProcess)}>
+                Ctrl+C (Stop)
+              </button>
+            ) : null}
           </div>
         </div>
       )}

@@ -43,7 +43,7 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 
 ### Optional
 
-- **udev apply**: passwordless `sudo` recommended for one-click rule installation. Without it, LeStudio provides manual commands to copy-paste.
+- **udev apply**: one-click install works with either passwordless `sudo` or a desktop Polkit auth prompt (`pkexec`). In headless/SSH environments without those, LeStudio provides manual commands.
 - **Hub push / download**: `huggingface-cli login` and a valid token are required.
 - **GPU monitoring / CUDA preflight**: CUDA environment and `nvidia-smi` required for full Train diagnostics.
 
@@ -54,6 +54,8 @@ Install from source:
 ```bash
 git clone https://github.com/TheMomentLab/lestudio.git
 cd lestudio
+# one-time (if needed): conda create -n lerobot python=3.10 -y
+conda activate lerobot
 pip install -e .
 ```
 

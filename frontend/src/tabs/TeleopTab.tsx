@@ -158,6 +158,10 @@ export function TeleopTab({ active }: TeleopTabProps) {
   const rightLeaderPort = (config.right_leader_port as string) ?? '/dev/leader_arm_2'
   const robotId = (config.robot_id as string) ?? 'my_so101_follower_1'
   const teleopId = (config.teleop_id as string) ?? 'my_so101_leader_1'
+  const leftRobotId = (config.left_robot_id as string) ?? 'my_so101_follower_1'
+  const rightRobotId = (config.right_robot_id as string) ?? 'my_so101_follower_2'
+  const leftTeleopId = (config.left_teleop_id as string) ?? 'my_so101_leader_1'
+  const rightTeleopId = (config.right_teleop_id as string) ?? 'my_so101_leader_2'
 
   const followerPortOptions = useMemo(
     () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, followerPort),
@@ -185,6 +189,10 @@ export function TeleopTab({ active }: TeleopTabProps) {
   )
   const followerIdOptions = useMemo(() => buildSelectOptions(['my_so101_follower_1'], followerIds, robotId), [followerIds, robotId])
   const leaderIdOptions = useMemo(() => buildSelectOptions(['my_so101_leader_1'], leaderIds, teleopId), [leaderIds, teleopId])
+  const leftFollowerIdOptions = useMemo(() => buildSelectOptions(['my_so101_follower_1'], followerIds, leftRobotId), [followerIds, leftRobotId])
+  const rightFollowerIdOptions = useMemo(() => buildSelectOptions(['my_so101_follower_2'], followerIds, rightRobotId), [followerIds, rightRobotId])
+  const leftLeaderIdOptions = useMemo(() => buildSelectOptions(['my_so101_leader_1'], leaderIds, leftTeleopId), [leaderIds, leftTeleopId])
+  const rightLeaderIdOptions = useMemo(() => buildSelectOptions(['my_so101_leader_2'], leaderIds, rightTeleopId), [leaderIds, rightTeleopId])
 
   useEffect(() => {
     if (!active) return
@@ -259,6 +267,13 @@ export function TeleopTab({ active }: TeleopTabProps) {
 
   const armsReady = missingArmPorts.length === 0
   const teleopReady = armsReady && camerasReady && !conflictReason
+  const teleopBlockers = useMemo(() => {
+    const blockers: string[] = []
+    if (!armsReady) blockers.push(`Missing arm ports (${missingArmPorts.length})`)
+    if (!camerasReady) blockers.push(mappedCameraCount === 0 ? 'No mapped cameras' : 'Mapped camera path unavailable')
+    if (conflictReason) blockers.push(`${conflictReason} process running`)
+    return blockers
+  }, [armsReady, camerasReady, conflictReason, mappedCameraCount, missingArmPorts.length])
 
   const streamSrc = (cameraPath: string) => {
     const cameraName = cameraPath.replace('/dev/', '')
@@ -278,6 +293,10 @@ export function TeleopTab({ active }: TeleopTabProps) {
       right_follower_port: (config.right_follower_port as string) ?? '/dev/follower_arm_2',
       left_leader_port: (config.left_leader_port as string) ?? '/dev/leader_arm_1',
       right_leader_port: (config.right_leader_port as string) ?? '/dev/leader_arm_2',
+      left_robot_id: (config.left_robot_id as string) ?? 'my_so101_follower_1',
+      right_robot_id: (config.right_robot_id as string) ?? 'my_so101_follower_2',
+      left_teleop_id: (config.left_teleop_id as string) ?? 'my_so101_leader_1',
+      right_teleop_id: (config.right_teleop_id as string) ?? 'my_so101_leader_2',
       teleop_speed: (config.teleop_speed as string) ?? '0.5',
       cameras: mappedCameras,
     }
@@ -337,6 +356,21 @@ export function TeleopTab({ active }: TeleopTabProps) {
         </div>
       </div>
 
+      {!running && !teleopReady ? (
+        <div className="teleop-guard-card">
+          <div className="dsub" style={{ marginBottom: 6 }}>Start blocked:</div>
+          <div className="teleop-blocker-chip-row">
+            {teleopBlockers.map((blocker) => (
+              <span key={blocker} className="dbadge badge-warn">{blocker}</span>
+            ))}
+          </div>
+          <div className="teleop-blocker-actions">
+            <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+            <button type="button" className="link-btn" onClick={() => setStep1Open(true)}>→ Review Step 1</button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="two-col">
         <div className="card">
           {!step1Open ? (
@@ -351,8 +385,9 @@ export function TeleopTab({ active }: TeleopTabProps) {
                 <span>Teleop: {formatRobotType(selectedTeleopType)}</span>
               </div>
               <div className="dsub" style={{ marginTop: 4 }}>
-                Ports: {requiredArmPorts.join(', ')}
+                Ports ready: {requiredArmPorts.length - missingArmPorts.length}/{requiredArmPorts.length}
               </div>
+              {!armsReady ? <div className="dsub" style={{ marginTop: 2 }}>Missing: {missingArmPorts.join(', ')}</div> : null}
             </div>
           ) : null}
           <details
@@ -449,11 +484,31 @@ export function TeleopTab({ active }: TeleopTabProps) {
                     </select>
                   </div>
                   <div className="form-field">
+                    <label>Left Follower Arm ID</label>
+                    <select value={leftRobotId} onChange={(e) => update('left_robot_id', e.target.value)}>
+                      {leftFollowerIdOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
                     <label>Right Follower Arm Port</label>
                     <select value={rightFollowerPort} onChange={(e) => update('right_follower_port', e.target.value)}>
                       {rightFollowerPortOptions.map((p) => (
                         <option key={p} value={p}>
                           {p}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>Right Follower Arm ID</label>
+                    <select value={rightRobotId} onChange={(e) => update('right_robot_id', e.target.value)}>
+                      {rightFollowerIdOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
                         </option>
                       ))}
                     </select>
@@ -469,6 +524,16 @@ export function TeleopTab({ active }: TeleopTabProps) {
                     </select>
                   </div>
                   <div className="form-field">
+                    <label>Left Leader Arm ID</label>
+                    <select value={leftTeleopId} onChange={(e) => update('left_teleop_id', e.target.value)}>
+                      {leftLeaderIdOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-field">
                     <label>Right Leader Arm Port</label>
                     <select value={rightLeaderPort} onChange={(e) => update('right_leader_port', e.target.value)}>
                       {rightLeaderPortOptions.map((p) => (
@@ -478,6 +543,17 @@ export function TeleopTab({ active }: TeleopTabProps) {
                       ))}
                     </select>
                   </div>
+                  <div className="form-field">
+                    <label>Right Leader Arm ID</label>
+                    <select value={rightTeleopId} onChange={(e) => update('right_teleop_id', e.target.value)}>
+                      {rightLeaderIdOptions.map((id) => (
+                        <option key={id} value={id}>
+                          {id}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field-help">Arm ID selects the calibration profile for each arm.</div>
                 </>
               )}
             </div>
@@ -486,12 +562,10 @@ export function TeleopTab({ active }: TeleopTabProps) {
 
         <div className="card">
           <h3>Step 2 — Camera Feeds</h3>
-          {Object.keys(mappedCameras).length === 0 && (
-            <div className="field-help">
-              No cameras mapped yet.{' '}
-              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
-            </div>
-          )}
+          <div className="field-help" style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <span>Mapped cameras: {mappedCameraCount} · Available now: {availableCameras.length}</span>
+            {mappedCameraCount === 0 ? <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button> : null}
+          </div>
           <div id="teleop-cameras" className="camera-cfg" style={{ marginTop: 16 }}>
             <MappedCameraRows mappedCameras={mappedCameras} />
           </div>
@@ -588,6 +662,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
                   <br />
                   Connect a camera and refresh.
                 </div>
+                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
               </div>
             )}
           </div>

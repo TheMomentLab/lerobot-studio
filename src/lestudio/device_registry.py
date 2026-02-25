@@ -32,6 +32,15 @@ try:
     from lerobot.utils.import_utils import register_third_party_plugins  # type: ignore
 
     register_third_party_plugins()
+    # Trigger decorator registration for bi-arm types
+    try:
+        from lerobot.robots import bi_so_follower as _bi_so_follower  # noqa: F401
+    except Exception:
+        pass
+    try:
+        from lerobot.teleoperators import bi_so_leader as _bi_so_leader  # noqa: F401
+    except Exception:
+        pass
     _LEROBOT_AVAILABLE = True
     logger.info("LeRobot registry loaded successfully.")
 except Exception as _e:
@@ -311,7 +320,8 @@ def get_robot_types() -> list[str]:
     if not _LEROBOT_AVAILABLE or _RobotConfig is None:
         return _FALLBACK_ROBOT_TYPES.copy()
     try:
-        return list(_RobotConfig.get_known_choices().keys())
+        types = list(_RobotConfig.get_known_choices().keys())
+        return types if types else _FALLBACK_ROBOT_TYPES.copy()
     except Exception as e:
         logger.warning("Failed to query RobotConfig registry: %s", e)
         return _FALLBACK_ROBOT_TYPES.copy()
@@ -327,6 +337,8 @@ def get_teleop_types(robot_type: str | None = None) -> list[str]:
         return _FALLBACK_TELEOP_TYPES.copy()
     try:
         all_teleops = list(_TeleoperatorConfig.get_known_choices().keys())
+        if not all_teleops:
+            all_teleops = _FALLBACK_TELEOP_TYPES.copy()
     except Exception as e:
         logger.warning("Failed to query TeleoperatorConfig registry: %s", e)
         return _FALLBACK_TELEOP_TYPES.copy()

@@ -5,10 +5,16 @@ import { getProcessConflict } from '../lib/processConflicts'
 import { useProcess } from '../hooks/useProcess'
 import { apiDelete, apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
-import type { LogLine, RobotsResponse } from '../lib/types'
+import type { ArmDevice, LogLine, RobotsResponse, TeleopsResponse } from '../lib/types'
 
 interface CalibrateTabProps {
   active: boolean
+}
+
+interface CalibrationFileItem {
+  id: string
+  guessed_type: string
+  modified?: string
 }
 
 const DEFAULT_ARM_TYPES = ['so101_follower', 'so100_follower', 'so101_leader', 'so100_leader']
@@ -25,11 +31,136 @@ function truncatePath(fullPath: string): string {
   return fullPath
 }
 
+function lastNumberToken(input: string): number | null {
+  const match = input.match(/(\d+)(?!.*\d)/)
+  if (!match) return null
+  const parsed = Number(match[1])
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function pickBestCalibrationId(options: {
+  files: CalibrationFileItem[]
+  robotType: string
+  port: string
+  preferredId: string
+}): string | null {
+  const { files, robotType, port, preferredId } = options
+  if (files.length === 0) return preferredId || null
+
+  const role = robotType.toLowerCase().includes('leader') ? 'leader' : 'follower'
+  const roleFiles = files.filter((f) => f.guessed_type.toLowerCase().includes(role))
+  if (roleFiles.length === 0) return preferredId || null
+
+  const portIndex = lastNumberToken(port)
+  const ranked = [...roleFiles].sort((a, b) => {
+    const score = (file: CalibrationFileItem) => {
+      let value = 0
+      if (file.id === preferredId) value += 100
+      if (file.guessed_type === robotType) value += 30
+      if (file.id.toLowerCase().includes(role)) value += 20
+      const idIndex = lastNumberToken(file.id)
+      if (portIndex !== null && idIndex === portIndex) value += 50
+      return value
+    }
+
+    const diff = score(b) - score(a)
+    if (diff !== 0) return diff
+    return a.id.localeCompare(b.id)
+  })
+
+  const best = ranked[0]?.id
+  if (best) return best
+  return preferredId || null
+}
+
+function armPath(arm: ArmDevice, fallbackIndex: number): string {
+  return arm.path || `/dev/${arm.device || `ttyUSB${fallbackIndex}`}`
+}
+
+function getPortLabel(arms: ArmDevice[], selectedPort: string): string {
+  const matched = arms.find((arm, idx) => armPath(arm, idx) === selectedPort)
+  return matched?.symlink || selectedPort
+}
+
+function getPortIndex(arms: ArmDevice[], selectedPort: string): number | null {
+  const matched = arms.find((arm, idx) => armPath(arm, idx) === selectedPort)
+  if (!matched) return lastNumberToken(selectedPort)
+  const labelIndex = lastNumberToken(matched.symlink || '')
+  if (labelIndex !== null) return labelIndex
+  const pathIndex = lastNumberToken(matched.path || '')
+  if (pathIndex !== null) return pathIndex
+  return lastNumberToken(selectedPort)
+}
+
+function inferPortRole(portLabel: string, portPath: string): 'leader' | 'follower' | null {
+  const text = `${portLabel} ${portPath}`.toLowerCase()
+  if (text.includes('leader')) return 'leader'
+  if (text.includes('follower')) return 'follower'
+  return null
+}
+
+function inferIdRole(id: string): 'leader' | 'follower' | null {
+  const text = id.toLowerCase()
+  if (text.includes('leader')) return 'leader'
+  if (text.includes('follower')) return 'follower'
+  return null
+}
+
+function swapRoleInType(type: string, targetRole: 'leader' | 'follower'): string {
+  if (targetRole === 'leader' && /follower/i.test(type)) return type.replace(/follower/i, 'leader')
+  if (targetRole === 'follower' && /leader/i.test(type)) return type.replace(/leader/i, 'follower')
+  return type
+}
+
+function pickBestPortForId(options: {
+  arms: ArmDevice[]
+  robotType: string
+  selectedId: string
+  currentPort: string
+}): string | null {
+  const { arms, robotType, selectedId, currentPort } = options
+  if (arms.length === 0) return null
+
+  const role = robotType.toLowerCase().includes('leader') ? 'leader' : 'follower'
+  const roleArms = arms
+    .map((arm, idx) => ({
+      arm,
+      path: armPath(arm, idx),
+      label: arm.symlink || armPath(arm, idx),
+    }))
+    .filter((entry) => entry.label.toLowerCase().includes(role) || entry.path.toLowerCase().includes(role))
+
+  if (roleArms.length === 0) return null
+
+  const idIndex = lastNumberToken(selectedId)
+  if (idIndex !== null) {
+    const indexed = roleArms.filter((entry) => {
+      const portIndex = lastNumberToken(entry.label) ?? lastNumberToken(entry.path)
+      return portIndex === idIndex
+    })
+    if (indexed.length === 0) return null
+    indexed.sort((a, b) => {
+      if (a.path === currentPort && b.path !== currentPort) return -1
+      if (b.path === currentPort && a.path !== currentPort) return 1
+      return a.path.localeCompare(b.path)
+    })
+    return indexed[0]?.path ?? null
+  }
+
+  const ranked = [...roleArms].sort((a, b) => {
+    if (a.path === currentPort && b.path !== currentPort) return -1
+    if (b.path === currentPort && a.path !== currentPort) return 1
+    return a.path.localeCompare(b.path)
+  })
+  return ranked[0]?.path ?? null
+}
+
 
 
 export function CalibrateTab({ active }: CalibrateTabProps) {
   const running = useLeStudioStore((s) => !!s.procStatus.calibrate)
   const procStatus = useLeStudioStore((s) => s.procStatus)
+  const config = useLeStudioStore((s) => s.config)
   const conflictReason = getProcessConflict('calibrate', procStatus)
   const addToast = useLeStudioStore((s) => s.addToast)
   const appendLog = useLeStudioStore((s) => s.appendLog)
@@ -43,29 +174,123 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   const [port, setPort] = useState('/dev/follower_arm_1')
   const [fileStatus, setFileStatus] = useState('Checking...')
   const [fileMeta, setFileMeta] = useState('')
-  const [files, setFiles] = useState<Array<{ id: string; guessed_type: string; modified?: string }>>([])
+  const [files, setFiles] = useState<CalibrationFileItem[]>([])
   const [fileFilter, setFileFilter] = useState<string>('all')
   const [showIdentifyPanel, setShowIdentifyPanel] = useState(false)
   const [identifyRunning, setIdentifyRunning] = useState(false)
   const [identifyMessage, setIdentifyMessage] = useState(IDENTIFY_DEFAULT_MSG)
   const [identifyResult, setIdentifyResult] = useState('')
+  const [matchWarning, setMatchWarning] = useState('')
   const identifyPollTimer = useRef<number | null>(null)
   const identifySnapshot = useRef<Set<string> | null>(null)
   const identifyAutoOpenedRef = useRef(false)
+  const autoMatchTriggerRef = useRef<'type' | 'id' | 'port' | ''>('type')
+  const [isBiArm, setIsBiArm] = useState(() => (config.robot_mode as string) === 'bi')
+  const [biType, setBiType] = useState('bi_so_follower')
+  const [biId, setBiId] = useState('bimanual_follower')
+  const [biLeftPort, setBiLeftPort] = useState('/dev/follower_arm_1')
+  const [biRightPort, setBiRightPort] = useState('/dev/follower_arm_2')
   const filteredFiles = fileFilter === 'all' ? files : files.filter((f) => f.guessed_type === fileFilter)
   const [armTypes, setArmTypes] = useState<string[]>(DEFAULT_ARM_TYPES)
+  const singleArmTypes = useMemo(() => armTypes.filter((t) => !t.startsWith('bi_')), [armTypes])
+  const calibrateBlockers = useMemo(() => {
+    const blockers: string[] = []
+    if (devices.arms.length === 0) blockers.push('No arms detected')
+    if (conflictReason) blockers.push(`${conflictReason} process running`)
+    return blockers
+  }, [devices.arms.length, conflictReason])
 
-  // #6: Auto-match Arm Port when Arm Role Type changes
   useEffect(() => {
-    const isFollower = type.includes('follower')
-    const defaultPort = isFollower ? '/dev/follower_arm_1' : '/dev/leader_arm_1'
-    const matchingArm = devices.arms.find((arm) => {
-      const sym = arm.symlink ?? ''
-      return isFollower ? sym.includes('follower') : sym.includes('leader')
-    })
-    const bestPort = matchingArm ? (matchingArm.path ?? `/dev/${matchingArm.device}`) : defaultPort
-    setPort(bestPort)
-  }, [type, devices.arms])
+    if (!active) return
+
+    let trigger = autoMatchTriggerRef.current
+    if (!trigger && id === 'my_arm_1') {
+      trigger = 'type'
+    }
+    if (!trigger) {
+      setMatchWarning('')
+      return
+    }
+
+    const role = type.toLowerCase().includes('leader') ? 'leader' : 'follower'
+    const roleFiles = files.filter((f) => f.guessed_type.toLowerCase().includes(role))
+    const roleArms = devices.arms
+      .map((arm, idx) => ({ path: armPath(arm, idx), label: arm.symlink || armPath(arm, idx) }))
+      .filter((entry) => entry.label.toLowerCase().includes(role) || entry.path.toLowerCase().includes(role))
+
+    const preferredId = ((role === 'leader' ? config.teleop_id : config.robot_id) as string) ?? ''
+    const defaultPort = role === 'leader' ? '/dev/leader_arm_1' : '/dev/follower_arm_1'
+
+    let nextPort = port
+    let nextId = id
+    let warning = ''
+
+    if (trigger === 'type') {
+      const seedId = preferredId || nextId
+      const matchedPort = pickBestPortForId({ arms: devices.arms, robotType: type, selectedId: seedId, currentPort: nextPort })
+      if (matchedPort) {
+        nextPort = matchedPort
+      } else if (roleArms.length > 0) {
+        nextPort = roleArms[0].path
+      } else {
+        nextPort = defaultPort
+      }
+      const matchedId = pickBestCalibrationId({ files: roleFiles, robotType: type, port: nextPort, preferredId: seedId })
+      if (matchedId) nextId = matchedId
+    }
+
+    const nextPortLabel = getPortLabel(devices.arms, nextPort)
+    const nextPortRole = inferPortRole(nextPortLabel, nextPort)
+    const nextPortIndex = getPortIndex(devices.arms, nextPort)
+    const nextIdIndex = lastNumberToken(nextId)
+    const nextIdRole = inferIdRole(nextId)
+
+    if (trigger === 'port') {
+      if (nextPortRole && nextPortRole !== role) {
+        warning = `Selected port ${nextPortLabel} looks like ${nextPortRole}, but role is ${role}.`
+      } else {
+        const matchedId = pickBestCalibrationId({ files: roleFiles, robotType: type, port: nextPort, preferredId: '' })
+        if (matchedId) {
+          nextId = matchedId
+        } else if (roleFiles.length === 0) {
+          warning = `No ${role} calibration profiles found. A new file will be created.`
+        } else {
+          warning = `No existing ${role} calibration profile matches ${nextPortLabel}.`
+        }
+      }
+    }
+
+    if (!warning && trigger === 'type' && roleFiles.length === 0) {
+      warning = `No ${role} calibration profiles found. A new file will be created.`
+    }
+
+    if (!warning && trigger === 'id' && nextIdIndex !== null && roleArms.length > 0) {
+      const hasIndexedPort = roleArms.some((entry) => {
+        const idx = lastNumberToken(entry.label) ?? lastNumberToken(entry.path)
+        return idx === nextIdIndex
+      })
+      if (!hasIndexedPort) {
+        warning = `No detected ${role} arm port matches ID ${nextId}.`
+      }
+    }
+
+    if (!warning && trigger === 'id' && nextIdRole && nextIdRole !== role) {
+      warning = `Selected ID ${nextId} looks like ${nextIdRole}, but role is ${role}.`
+    }
+
+    if (!warning && nextPortRole && nextPortRole !== role) {
+      warning = `Selected port ${nextPortLabel} looks like ${nextPortRole}, but role is ${role}.`
+    }
+
+    if (!warning && nextPortIndex !== null && nextIdIndex !== null && nextPortIndex !== nextIdIndex) {
+      warning = `ID ${nextId} and port ${nextPortLabel} look mismatched.`
+    }
+
+    if (nextPort !== port) setPort(nextPort)
+    if (nextId !== id) setId(nextId)
+    setMatchWarning(warning)
+    autoMatchTriggerRef.current = ''
+  }, [active, config.robot_id, config.teleop_id, devices.arms, files, id, port, type])
 
 
   const motorRows = useMemo(() => {
@@ -157,7 +382,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   }, [id, type])
 
   const refreshFiles = useCallback(async () => {
-    const res = await apiGet<{ files: Array<{ id: string; guessed_type: string; modified?: string }> }>('/api/calibrate/list')
+    const res = await apiGet<{ files: CalibrationFileItem[] }>('/api/calibrate/list')
     setFiles(res.files ?? [])
   }, [])
 
@@ -193,7 +418,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
       return
     }
     if (identifyAutoOpenedRef.current) return
-    if (devices.arms.length !== 1) {
+    if (devices.arms.length > 1) {
       setShowIdentifyPanel(true)
       identifyAutoOpenedRef.current = true
     }
@@ -202,11 +427,24 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
 
   useEffect(() => {
     if (!active) return
-    apiGet<RobotsResponse>('/api/robots').then((r) => {
-      const types = r.types ?? DEFAULT_ARM_TYPES
-      if (types.length > 0) setArmTypes(types)
-    })
-  }, [active])
+    Promise.all([
+      apiGet<RobotsResponse>('/api/robots'),
+      apiGet<TeleopsResponse>('/api/teleops'),
+    ])
+      .then(([robots, teleops]) => {
+        const merged = [
+          ...(robots.types ?? []),
+          ...(teleops.types ?? []),
+        ]
+        const types = Array.from(new Set(merged.length > 0 ? merged : DEFAULT_ARM_TYPES))
+        if (type && !types.includes(type)) types.push(type)
+        if (types.length > 0) setArmTypes(types)
+      })
+      .catch(() => {
+        const fallback = Array.from(new Set([...DEFAULT_ARM_TYPES, type]))
+        setArmTypes(fallback)
+      })
+  }, [active, type])
 
   useEffect(() => {
     if (active) return
@@ -222,7 +460,10 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
 
   const start = async () => {
     clearLog('calibrate')
-    const res = await apiPost<{ ok: boolean; error?: string }>('/api/calibrate/start', { robot_type: type, robot_id: id, port })
+    const payload = isBiArm
+      ? { robot_mode: 'bi', bi_type: biType, left_port: biLeftPort, right_port: biRightPort, robot_id: biId }
+      : { robot_type: type, robot_id: id, port }
+    const res = await apiPost<{ ok: boolean; error?: string }>('/api/calibrate/start', payload)
     if (!res.ok) {
       appendLog('calibrate', `[ERROR] ${res.error ?? 'failed to start calibration'}`, 'error')
       return
@@ -244,87 +485,183 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
         <span className={`status-verdict ${!conflictReason && devices.arms.length > 0 ? 'ready' : 'warn'}`}>
           {running ? 'Running' : !conflictReason && devices.arms.length > 0 ? 'Ready' : 'Action Needed'}
         </span>
+        <div className="mode-toggle">
+          <button className={`toggle${!isBiArm ? ' active' : ''}`} onClick={() => setIsBiArm(false)}>Single</button>
+          <button className={`toggle${isBiArm ? ' active' : ''}`} onClick={() => setIsBiArm(true)}>Bi-Arm</button>
+        </div>
       </div>
+      {!running && calibrateBlockers.length > 0 ? (
+        <div className="calibrate-blocker-card">
+          <div className="dsub" style={{ marginBottom: 6 }}>Calibration blocked:</div>
+          <div className="calibrate-blocker-chip-row">
+            {calibrateBlockers.map((blocker) => (
+              <span key={blocker} className="dbadge badge-warn">{blocker}</span>
+            ))}
+          </div>
+          <div className="calibrate-blocker-actions">
+            {devices.arms.length === 0 ? (
+              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+            ) : null}
+            <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
+          </div>
+        </div>
+      ) : null}
       <div className="two-col">
         <div className="card">
-          <h3>Step 1: Arm Selection</h3>
-          <label>Arm Role Type</label>
-          <select value={type} onChange={(e) => setType(e.target.value)}>
-            {armTypes.map((t) => (
-              <option key={t} value={t}>
-                {formatRobotType(t)}
-              </option>
-            ))}
-          </select>
-          <label>Arm ID</label>
-          <select value={id} onChange={(e) => setId(e.target.value)}>
-            {files.length === 0 ? (
-              <option value={id}>{id}</option>
-            ) : (() => {
-              const leaderFiles = files.filter((f) => f.guessed_type.includes('leader'))
-              const followerFiles = files.filter((f) => f.guessed_type.includes('follower'))
-              const otherFiles = files.filter((f) => !f.guessed_type.includes('leader') && !f.guessed_type.includes('follower'))
-              return (
-                <>
-                  {followerFiles.length > 0 && <optgroup label="Follower">
-                    {followerFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
-                  </optgroup>}
-                  {leaderFiles.length > 0 && <optgroup label="Leader">
-                    {leaderFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
-                  </optgroup>}
-                  {otherFiles.length > 0 && <optgroup label="Other">
-                    {otherFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
-                  </optgroup>}
-                </>
-              )
-            })()}
-          </select>
-          <label>Arm Port</label>
-          <select value={port} onChange={(e) => setPort(e.target.value)}>
-            {devices.arms.length === 0 ? (
-              <option value={port}>{port}</option>
-            ) : (
-              devices.arms.map((arm, idx) => {
-                const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
-                return <option key={p} value={p}>{arm.symlink ?? p}</option>
-              })
-            )}
-          </select>
-          <div className="field-help" style={{ marginTop: 6 }}>
-            Not sure which arm this port belongs to?{' '}
-            <button
-              type="button"
-              className="link-btn"
-              onClick={() => {
-                setShowIdentifyPanel(true)
-                const panel = document.getElementById('arm-identify-panel')
-                panel?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-              }}
-            >
-              Open Identify Wizard
-            </button>
-          </div>
-          <div className="info-box" style={{ marginTop: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontWeight: 600, color: 'var(--text)' }}>Calibration File</span>
-              <span id="cal-file-status" className={`dbadge ${fileStatus === 'Found' ? 'badge-ok' : 'badge-err'}`}>
-                {fileStatus}
-              </span>
-            </div>
-            <div id="cal-file-meta" style={{ fontFamily: 'var(--mono)', fontSize: 10, opacity: 0.8, wordBreak: 'break-all', whiteSpace: 'pre-line' }}>
-              {fileMeta}
-            </div>
-          </div>
-          {fileStatus === 'Found' && !running ? (
-            <div className="field-help" style={{ marginTop: 8 }}>
-              Calibration file exists.{' '}
-              <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
-            </div>
-          ) : null}
-          <div className="spacer" />
-          <div className="calibrate-inline-controls">
-            <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Calibration" conflictReason={conflictReason} />
-          </div>
+          {isBiArm ? (
+            <>
+              <h3>Bi-Arm Configuration</h3>
+              <label>Device Type</label>
+              <select value={biType} onChange={(e) => {
+                const t = e.target.value
+                setBiType(t)
+                setBiId(t.includes('leader') ? 'bimanual_leader' : 'bimanual_follower')
+              }}>
+                <option value="bi_so_follower">Bi SO-101/100 Follower</option>
+                <option value="bi_so_leader">Bi SO-101/100 Leader</option>
+              </select>
+              <label>Combined Arm ID</label>
+              <input type="text" value={biId} onChange={(e) => setBiId(e.target.value)} placeholder="e.g. bimanual_follower" />
+              <div className="field-help">Both arms share this ID as their calibration profile name.</div>
+              <label>Left Arm Port</label>
+              <select value={biLeftPort} onChange={(e) => setBiLeftPort(e.target.value)}>
+                {devices.arms.length === 0 ? (
+                  <option value={biLeftPort}>{biLeftPort}</option>
+                ) : (
+                  devices.arms.map((arm, idx) => {
+                    const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
+                    return <option key={`left-${p}`} value={p}>{arm.symlink ?? p}</option>
+                  })
+                )}
+              </select>
+              <label>Right Arm Port</label>
+              <select value={biRightPort} onChange={(e) => setBiRightPort(e.target.value)}>
+                {devices.arms.length === 0 ? (
+                  <option value={biRightPort}>{biRightPort}</option>
+                ) : (
+                  devices.arms.map((arm, idx) => {
+                    const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
+                    return <option key={`right-${p}`} value={p}>{arm.symlink ?? p}</option>
+                  })
+                )}
+              </select>
+              <div className="field-help" style={{ marginTop: 8 }}>Both arms are calibrated sequentially in a single run.</div>
+              <div className="spacer" />
+              <div className="calibrate-inline-controls">
+                <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Calibration" conflictReason={conflictReason} />
+              </div>
+            </>
+          ) : (
+            <>
+              <h3>Step 1: Arm Selection</h3>
+              <label>Arm Role Type</label>
+              <select value={type} onChange={(e) => { autoMatchTriggerRef.current = 'type'; setType(e.target.value) }}>
+                {singleArmTypes.map((t) => (
+                  <option key={t} value={t}>
+                    {formatRobotType(t)}
+                  </option>
+                ))}
+              </select>
+              <label>Arm Port</label>
+              <select value={port} onChange={(e) => {
+                const nextPort = e.target.value
+                autoMatchTriggerRef.current = 'port'
+                setPort(nextPort)
+                const inferredRole = inferPortRole(getPortLabel(devices.arms, nextPort), nextPort)
+                if (!inferredRole) return
+                const currentRole = type.toLowerCase().includes('leader') ? 'leader' : 'follower'
+                if (inferredRole === currentRole) return
+                const candidateType = swapRoleInType(type, inferredRole)
+                if (candidateType !== type && singleArmTypes.includes(candidateType)) {
+                  setType(candidateType)
+                }
+              }}>
+                {devices.arms.length === 0 ? (
+                  <option value={port}>{port}</option>
+                ) : (
+                  devices.arms.map((arm, idx) => {
+                    const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
+                    return <option key={p} value={p}>{arm.symlink ?? p}</option>
+                  })
+                )}
+              </select>
+              <label>Arm ID</label>
+              <select value={id} onChange={(e) => {
+                const nextId = e.target.value
+                autoMatchTriggerRef.current = 'id'
+                setId(nextId)
+                const inferredRole = inferIdRole(nextId)
+                if (!inferredRole) return
+                const currentRole = type.toLowerCase().includes('leader') ? 'leader' : 'follower'
+                if (inferredRole === currentRole) return
+                const candidateType = swapRoleInType(type, inferredRole)
+                if (candidateType !== type && armTypes.includes(candidateType)) {
+                  setType(candidateType)
+                }
+              }}>
+                {files.length === 0 ? (
+                  <option value={id}>{id}</option>
+                ) : (() => {
+                  const leaderFiles = files.filter((f) => f.guessed_type.toLowerCase().includes('leader'))
+                  const followerFiles = files.filter((f) => f.guessed_type.toLowerCase().includes('follower'))
+                  const otherFiles = files.filter((f) => !f.guessed_type.toLowerCase().includes('leader') && !f.guessed_type.toLowerCase().includes('follower'))
+                  return (
+                    <>
+                      {followerFiles.length > 0 && <optgroup label="Follower">
+                        {followerFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
+                      </optgroup>}
+                      {leaderFiles.length > 0 && <optgroup label="Leader">
+                        {leaderFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
+                      </optgroup>}
+                      {otherFiles.length > 0 && <optgroup label="Other">
+                        {otherFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
+                      </optgroup>}
+                    </>
+                  )
+                })()}
+              </select>
+              <div className="field-help" style={{ marginTop: 6 }}>
+                Not sure which arm this port belongs to?{' '}
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => {
+                    setShowIdentifyPanel(true)
+                    const panel = document.getElementById('arm-identify-panel')
+                    panel?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                  }}
+                >
+                  Open Identify Wizard
+                </button>
+              </div>
+              {matchWarning ? (
+                <div className="field-help" style={{ marginTop: 6, color: 'var(--yellow)' }}>
+                  {matchWarning}
+                </div>
+              ) : null}
+              <div className="info-box" style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600, color: 'var(--text)' }}>Calibration File</span>
+                  <span id="cal-file-status" className={`dbadge ${fileStatus === 'Found' ? 'badge-ok' : 'badge-err'}`}>
+                    {fileStatus}
+                  </span>
+                </div>
+                <div id="cal-file-meta" style={{ fontFamily: 'var(--mono)', fontSize: 10, opacity: 0.8, wordBreak: 'break-all', whiteSpace: 'pre-line' }}>
+                  {fileMeta}
+                </div>
+              </div>
+              {fileStatus === 'Found' && !running ? (
+                <div className="field-help" style={{ marginTop: 8 }}>
+                  Calibration file exists.{' '}
+                  <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
+                </div>
+              ) : null}
+              <div className="spacer" />
+              <div className="calibrate-inline-controls">
+                <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Calibration" conflictReason={conflictReason} />
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -401,8 +738,11 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
             </div>
             <div className="device-list">
               {devices.arms.length === 0 ? (
-                <div className="device-item">
+                <div className="device-empty-state">
                   <span className="dsub">No arms detected. Connect a USB arm to see it here.</span>
+                  <div className="device-empty-actions">
+                    <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+                  </div>
                 </div>
               ) : (
                 devices.arms.map((arm, idx) => (
@@ -463,6 +803,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                         <div style={{ fontSize: 10, color: 'var(--text2)', margin: '12px 0 6px 4px', textTransform: 'uppercase', letterSpacing: '0.8px', fontWeight: 600 }}>{gtype}</div>
                         {gfiles.map((f) => (
                           <div key={`${f.id}-${f.guessed_type}`} className={`device-item${f.id === id ? ' selected' : ''}`} style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
+                            autoMatchTriggerRef.current = 'type'
                             setId(f.id)
                             if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                           }}>
@@ -479,6 +820,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                   </>
                 ) : filteredFiles.map((f) => (
                     <div key={`${f.id}-${f.guessed_type}`} className={`device-item${f.id === id ? ' selected' : ''}`} style={{ cursor: 'pointer', marginBottom: 4 }} onClick={() => {
+                      autoMatchTriggerRef.current = 'type'
                       setId(f.id)
                       if (armTypes.includes(f.guessed_type)) setType(f.guessed_type)
                     }}>
@@ -502,7 +844,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
       <div className="card" id="cal-live-table">
         <h3>Live Motor Ranges</h3>
         {motorRows.length === 0 ? (
-          <div id="cal-motor-placeholder" className="muted" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+          <div id="cal-motor-placeholder" className="muted" style={{ textAlign: 'center', padding: '14px 0' }}>
             Waiting for calibration…<br />Start process to see live ranges.
           </div>
         ) : (

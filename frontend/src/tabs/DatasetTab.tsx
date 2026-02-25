@@ -95,6 +95,7 @@ export function DatasetTab({ active }: DatasetTabProps) {
   const addToast = useLeStudioStore((s) => s.addToast)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
+  const [loadingDatasets, setLoadingDatasets] = useState(false)
   const [selected, setSelected] = useState<DatasetDetail | null>(null)
   const [selectedEpisode, setSelectedEpisode] = useState<number>(0)
   const [tags, setTags] = useState<Record<string, 'good' | 'bad' | 'review'>>({})
@@ -126,11 +127,14 @@ export function DatasetTab({ active }: DatasetTabProps) {
   const videoContainerRef = useRef<HTMLDivElement>(null)
 
   const refreshList = useCallback(async () => {
+    setLoadingDatasets(true)
     try {
       const res = await apiGet<{ datasets: DatasetListItem[] }>('/api/datasets')
       setDatasets(res.datasets ?? [])
     } catch (error) {
       addToast(`Failed to load datasets: ${String(error)}`, 'error')
+    } finally {
+      setLoadingDatasets(false)
     }
   }, [addToast])
 
@@ -670,14 +674,25 @@ export function DatasetTab({ active }: DatasetTabProps) {
         <div className="card" style={{ maxHeight: 800, display: 'flex', flexDirection: 'column' }}>
           <h3>Local Datasets</h3>
           <div id="dataset-list" className="device-list" style={{ overflowY: 'auto', flex: 1 }}>
-            {datasets.length === 0
-              ? <div style={{ padding: '16px 0', color: 'var(--text2)', fontSize: 12, lineHeight: 1.6 }}>No datasets found in local cache.<br />Record episodes in the <strong>Record</strong> tab, or search and download from the <strong>HuggingFace Hub</strong> above.</div>
+            {loadingDatasets
+              ? <div className="device-empty-note">Loading datasets...</div>
+              : datasets.length === 0
+              ? <div className="device-empty-note">No datasets found in local cache.<br />Record episodes in the <strong>Record</strong> tab, or search and download from the <strong>HuggingFace Hub</strong> above.</div>
                 : datasets.map((ds) => (
                   <div
                     className={`device-item ${selected?.dataset_id === ds.id ? 'selected' : ''}`}
                     key={ds.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open dataset ${ds.id}`}
                     style={{ cursor: 'pointer', alignItems: 'flex-start', position: 'relative' }}
                     onClick={() => loadDataset(ds.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        void loadDataset(ds.id)
+                      }
+                    }}
                   >
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, fontSize: 14 }}>{ds.id}</div>
@@ -775,6 +790,19 @@ export function DatasetTab({ active }: DatasetTabProps) {
                   </details>
                 </div>
               </div>
+
+              <div className="dataset-quick-actions">
+                <button className="btn-xs" onClick={() => void inspectQuality(selected.dataset_id)}>Inspect Quality</button>
+                <button className="btn-xs ds-action-btn-push" onClick={() => void pushToHub(selected.dataset_id)}>Push to Hub</button>
+                <button className="btn-xs ds-action-btn-danger" onClick={() => void deleteDataset(selected.dataset_id)}>Delete</button>
+              </div>
+
+              {!quality ? (
+                <div className="dataset-workflow-banner">
+                  <span className="dsub">Run quality inspection before training to validate episodes, frames, and video integrity.</span>
+                  <button type="button" className="link-btn" onClick={() => void inspectQuality(selected.dataset_id)}>→ Inspect Quality Now</button>
+                </div>
+              ) : null}
 
               <div id="ds-push-status" style={{ display: pushStatus.visible ? 'block' : 'none', border: '1px solid var(--border)', borderRadius: 8, padding: 10, background: 'var(--bg3)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>

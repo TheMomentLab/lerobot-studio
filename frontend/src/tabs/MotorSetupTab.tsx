@@ -73,6 +73,14 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
           {running ? 'Running' : !conflictReason && devices.arms.length > 0 ? 'Ready' : 'Action Needed'}
         </span>
       </div>
+      {!running && conflictReason ? (
+        <div className="motor-setup-blocker-card">
+          <div className="dsub" style={{ marginBottom: 6 }}>Setup blocked:</div>
+          <div className="motor-setup-blocker-chip-row">
+            <span className="dbadge badge-warn">{conflictReason} process running</span>
+          </div>
+        </div>
+      ) : null}
       <div className="quick-guide">
         <h3>Motor Setup Guide</h3>
         <p>Assigns unique IDs to each servo motor. Run once per arm — results are saved permanently to the firmware. If the console asks for keyboard input, type in the <strong>global console drawer</strong> at the bottom. After setup, proceed to <strong>Calibration</strong>.</p>
@@ -80,12 +88,12 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
       <div className="two-col">
         <div className="card">
           <h3>Step 1: Connect Arm</h3>
-          <label>Arm Role Type</label>
-          <select value={type} onChange={(e) => setType(e.target.value)}>
+          <label htmlFor="motor-role-type">Arm Role Type</label>
+          <select id="motor-role-type" value={type} onChange={(e) => setType(e.target.value)}>
             {armTypes.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <label>Arm Port</label>
-          <select value={port} onChange={(e) => setPort(e.target.value)}>
+          <label htmlFor="motor-port">Arm Port</label>
+          <select id="motor-port" value={port} onChange={(e) => setPort(e.target.value)}>
             {devices.arms.length === 0 ? (
               <option value={port}>{port}</option>
             ) : (
@@ -103,7 +111,12 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
           <h3>Connected Arms</h3>
           <div className="device-list">
             {devices.arms.length === 0 ? (
-              <div className="device-item" style={{ color: 'var(--color-text-secondary)', fontStyle: 'italic' }}>No arms detected. Connect a USB arm and refresh.</div>
+              <div className="device-empty-state">
+                <span>No arms detected. Connect a USB arm and click Refresh.</span>
+                <div className="device-empty-actions">
+                  <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+                </div>
+              </div>
             ) : (
               devices.arms.map((arm, idx) => (
                 <div className="device-item" key={`${arm.device ?? 'arm'}-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -117,13 +130,13 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
             )}
           </div>
         </div>
+      </div>
       {!running && hasRun && (
         <div className="card" style={{ marginTop: 12, textAlign: 'center' }}>
           <p style={{ margin: '0 0 8px', color: 'var(--color-text-secondary)' }}>Motor setup complete? Continue to calibration.</p>
           <button type="button" className="link-btn" onClick={() => setActiveTab('calibrate')}>→ Proceed to Calibration</button>
         </div>
       )}
-      </div>
     </section>
   )
 }

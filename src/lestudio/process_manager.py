@@ -1,13 +1,22 @@
 import os
 import queue
 import re
+import shlex
 import signal
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Callable
 
 PROCESS_NAMES = ["teleop", "record", "calibrate", "motor_setup", "train", "train_install", "eval"]
+
+# Hardware conflict groups: processes sharing the same physical resource
+# must not run concurrently.
+HARDWARE_GROUPS: dict[str, list[str]] = {
+    "arms": ["calibrate", "teleop", "record", "motor_setup"],
+    "gpu": ["train", "eval"],
+}
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 _TRAIN_TOTAL_RE = re.compile(r"cfg\.steps=([0-9_,]+)", re.IGNORECASE)
 _TRAIN_STEP_RE = re.compile(r"\bstep\s*[:=]\s*([0-9]+(?:\.[0-9]+)?[KMBTQ]?)", re.IGNORECASE)
@@ -19,6 +28,7 @@ _ERR_CALIB_RE = re.compile(r"could not find calibration file|calibration file.*n
 _ERR_CAMERA_OPEN_RE = re.compile(r"camera index\s*\d+\s*cannot be opened|cannot open camera|failed to open.*video", re.IGNORECASE)
 _ERR_CUDA_OOM_RE = re.compile(r"cuda out of memory|outofmemoryerror|cublas_status_alloc_failed", re.IGNORECASE)
 _ERR_CUDA_UNAVAILABLE_RE = re.compile(r"cuda is not available|torch\.cuda\.is_available\(\).*false|no cuda", re.IGNORECASE)
+_ERR_MISSING_MODULE_RE = re.compile(r"ModuleNotFoundError:\s*No module named ['\"]([^'\"]+)['\"]", re.IGNORECASE)
 
 
 def _translate_error_line(line: str) -> str | None:
@@ -38,6 +48,12 @@ def _translate_error_line(line: str) -> str | None:
 
     if _ERR_CUDA_UNAVAILABLE_RE.search(line):
         return "CUDA runtime is unavailable. Install compatible PyTorch CUDA build or switch to CPU/MPS."
+
+    m_missing = _ERR_MISSING_MODULE_RE.search(line)
+    if m_missing:
+        pkg = m_missing.group(1)
+        python = shlex.quote(sys.executable)
+        return f"Missing Python package '{pkg}'. Install in the same environment: {python} -m pip install {pkg}"
 
     return None
 
@@ -96,6 +112,8 @@ class ProcessManager:
         self.procs: dict[str, subprocess.Popen] = {}
         self.out_q: queue.Queue = queue.Queue(maxsize=1000)
         self.on_process_exit = on_process_exit
+        self.last_translation: dict[str, str] = {}
+        self.seen_translations: dict[str, set[str]] = {}
 
     def flush_queue(self, name: str):
         items = []
@@ -115,6 +133,8 @@ class ProcessManager:
     def start(self, name: str, args: list[str]) -> bool:
         self.stop(name)
         self.flush_queue(name)
+        self.last_translation.pop(name, None)
+        self.seen_translations.pop(name, None)
         env = {
             **os.environ,
             "PYTHONPATH": str(self.lerobot_src) + ":" + os.environ.get("PYTHONPATH", ""),
@@ -174,14 +194,16 @@ class ProcessManager:
                 else:
                     proc.kill()
 
-    def send_input(self, name: str, text: str):
+    def send_input(self, name: str, text: str) -> bool:
         proc = self.procs.get(name)
-        if proc and proc.poll() is None and proc.stdin:
-            try:
-                proc.stdin.write((text + "\n").encode())
-                proc.stdin.flush()
-            except Exception:
-                pass
+        if not (proc and proc.poll() is None and proc.stdin):
+            return False
+        try:
+            proc.stdin.write((text + "\n").encode())
+            proc.stdin.flush()
+            return True
+        except Exception:
+            return False
 
     def is_running(self, name: str) -> bool:
         proc = self.procs.get(name)
@@ -190,6 +212,15 @@ class ProcessManager:
     def status_all(self) -> dict:
         return {n: self.is_running(n) for n in PROCESS_NAMES}
 
+    def conflicting_processes(self, name: str) -> list[str]:
+        """Return running process names that share a hardware group with *name*."""
+        conflicts: list[str] = []
+        for group in HARDWARE_GROUPS.values():
+            if name in group:
+                conflicts.extend(
+                    n for n in group if n != name and self.is_running(n)
+                )
+        return list(dict.fromkeys(conflicts))  # dedupe, preserve order
     def _reader(self, name: str, proc: subprocess.Popen):
         import select as sel
 
@@ -264,6 +295,14 @@ class ProcessManager:
             pass
 
     def _push_translation(self, name: str, message: str):
+        seen = self.seen_translations.setdefault(name, set())
+        if message in seen:
+            return
+        prev = self.last_translation.get(name)
+        if prev == message:
+            return
+        seen.add(message)
+        self.last_translation[name] = message
         try:
             self.out_q.put_nowait({"process": name, "line": f"[GUIDE] {message}", "kind": "translation"})
         except queue.Full:

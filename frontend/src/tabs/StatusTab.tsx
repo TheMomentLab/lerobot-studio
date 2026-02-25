@@ -110,6 +110,8 @@ export function StatusTab({ active }: StatusTabProps) {
   const [resourcesError, setResourcesError] = useState(false)
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [lastUpdate, setLastUpdate] = useState('')
+  const [resourceUpdatedAt, setResourceUpdatedAt] = useState('')
+  const [historyExpanded, setHistoryExpanded] = useState(false)
 
   const refresh = useCallback(async () => {
     const data = await apiGet<DevicesResponse>('/api/devices')
@@ -122,6 +124,7 @@ export function StatusTab({ active }: StatusTabProps) {
       const data = await apiGet<ResourcesResponse>('/api/system/resources')
       setResources(data)
       setResourcesError(false)
+      setResourceUpdatedAt(new Date().toLocaleTimeString())
     } catch {
       setResourcesError(true)
     }
@@ -157,11 +160,11 @@ export function StatusTab({ active }: StatusTabProps) {
   }, [procStatus])
 
   const readinessIssues = useMemo(() => {
-    const issues: string[] = []
-    if (devices.cameras.length === 0) issues.push('No camera detected')
-    if (devices.arms.length === 0) issues.push('No arm port detected')
-    if (resourcesError) issues.push('System resources unavailable')
-    if (runningProcess) issues.push(`${runningProcess.label} is running`)
+    const issues: Array<{ id: 'camera' | 'arm' | 'resources' | 'process'; text: string }> = []
+    if (devices.cameras.length === 0) issues.push({ id: 'camera', text: 'No camera detected' })
+    if (devices.arms.length === 0) issues.push({ id: 'arm', text: 'No arm port detected' })
+    if (resourcesError) issues.push({ id: 'resources', text: 'System resources unavailable' })
+    if (runningProcess) issues.push({ id: 'process', text: `${runningProcess.label} is running` })
     return issues
   }, [devices.arms.length, devices.cameras.length, resourcesError, runningProcess])
 
@@ -205,11 +208,15 @@ export function StatusTab({ active }: StatusTabProps) {
 
       {!readyForOperation ? (
         <div className="status-issues">
-          <div className="dsub">{readinessIssues.join(' · ')}</div>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div className="status-issues-list">
+            {readinessIssues.map((issue) => (
+              <span key={issue.id} className="status-issue-chip">{issue.text}</span>
+            ))}
+          </div>
+          <div className="status-issues-actions">
             {(devices.cameras.length === 0 || devices.arms.length === 0) ? (
               <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>
-                → Go to Mapping
+                → Open Mapping
               </button>
             ) : null}
             {runningProcess ? (
@@ -226,14 +233,23 @@ export function StatusTab({ active }: StatusTabProps) {
         </div>
       ) : null}
 
+      {readyForOperation ? (
+        <div className="status-ready-banner">
+          <div className="dsub">All core checks passed. Continue with device mapping verification or start teleop.</div>
+          <div className="status-ready-actions">
+            <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+            <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="status-grid">
         <div className="card">
           <h3>📷 Cameras</h3>
           <div id="status-cameras" className="device-list">
             {devices.cameras.length === 0 ? (
-              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12, flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-                <span>No cameras detected. Connect a USB camera and click <strong>Refresh</strong>.</span>
-                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
+              <div className="device-empty-note">
+                <span>No cameras detected. Connect a USB camera and click <strong>Refresh</strong>. Then map it in the Mapping tab.</span>
               </div>
             ) : (
               devices.cameras.map((camera, idx) => (
@@ -256,9 +272,8 @@ export function StatusTab({ active }: StatusTabProps) {
           <h3>🦾 Arm Ports</h3>
           <div id="status-arms" className="device-list">
             {devices.arms.length === 0 ? (
-              <div className="device-item" style={{ color: 'var(--text2)', fontSize: 12, flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
-                <span>No arm ports detected. Connect an arm via USB and click <strong>Refresh</strong>.</span>
-                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
+              <div className="device-empty-note">
+                <span>No arm ports detected. Connect an arm via USB and click <strong>Refresh</strong>. Then map it in the Mapping tab.</span>
               </div>
             ) : (
               devices.arms.map((arm, idx) => (
@@ -302,6 +317,7 @@ export function StatusTab({ active }: StatusTabProps) {
 
         <div className="card">
           <h3>🖥️ System Resources</h3>
+          {resourceUpdatedAt ? <div className="dsub" style={{ marginBottom: 6 }}>Updated: {resourceUpdatedAt}</div> : null}
           <div id="status-resources" className="device-list">
             {!resources ? (
               resourcesError ? (
@@ -323,6 +339,13 @@ export function StatusTab({ active }: StatusTabProps) {
                     <div
                       className={`usb-bar-fill ${barSeverityClass(asNumber(resources.cpu_percent))}`.trim()}
                       style={{ width: `${clampPercent(asNumber(resources.cpu_percent))}%` }}
+                      role="progressbar"
+                      aria-label="CPU usage"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={asNumber(resources.cpu_percent) ?? undefined}
+                      aria-valuetext={pctText(asNumber(resources.cpu_percent))}
+                      title={`CPU ${pctText(asNumber(resources.cpu_percent))}`}
                     />
                   </div>
                 </div>
@@ -341,6 +364,13 @@ export function StatusTab({ active }: StatusTabProps) {
                     <div
                       className={`usb-bar-fill ${barSeverityClass(asNumber(resources.memory_percent ?? resources.ram_percent))}`.trim()}
                       style={{ width: `${clampPercent(asNumber(resources.memory_percent ?? resources.ram_percent))}%` }}
+                      role="progressbar"
+                      aria-label="RAM usage"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={asNumber(resources.memory_percent ?? resources.ram_percent) ?? undefined}
+                      aria-valuetext={pctText(asNumber(resources.memory_percent ?? resources.ram_percent))}
+                      title={`RAM ${pctText(asNumber(resources.memory_percent ?? resources.ram_percent))}`}
                     />
                   </div>
                 </div>
@@ -354,6 +384,13 @@ export function StatusTab({ active }: StatusTabProps) {
                     <div
                       className={`usb-bar-fill ${barSeverityClass(asNumber(resources.disk_percent))}`.trim()}
                       style={{ width: `${clampPercent(asNumber(resources.disk_percent))}%` }}
+                      role="progressbar"
+                      aria-label="Disk usage"
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-valuenow={asNumber(resources.disk_percent) ?? undefined}
+                      aria-valuetext={pctText(asNumber(resources.disk_percent))}
+                      title={`Disk ${pctText(asNumber(resources.disk_percent))}`}
                     />
                   </div>
                 </div>
@@ -373,11 +410,14 @@ export function StatusTab({ active }: StatusTabProps) {
         <div className="card" style={{ gridColumn: '1 / -1' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <h3 style={{ margin: 0 }}>📋 Session History</h3>
-            <button className="btn-sm" onClick={clearHistory} style={{ fontSize: 10, color: 'var(--red)', borderColor: 'color-mix(in srgb, var(--red) 40%, var(--border))' }}>
-              Clear
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button className="btn-xs" onClick={() => setHistoryExpanded((prev) => !prev)}>{historyExpanded ? 'Collapse' : 'Expand'}</button>
+              <button className="btn-sm" onClick={clearHistory} style={{ fontSize: 10, color: 'var(--red)', borderColor: 'color-mix(in srgb, var(--red) 40%, var(--border))' }}>
+                Clear
+              </button>
+            </div>
           </div>
-          <div id="status-history" className="device-list" style={{ maxHeight: 220, overflowY: 'auto' }}>
+          <div id="status-history" className="device-list" style={{ maxHeight: historyExpanded ? 420 : 220, overflowY: 'auto' }}>
             {history.length === 0 ? (
               <div className="device-item">No session events yet. Start calibration, recording, training, or eval to see history here.</div>
             ) : (

@@ -6,7 +6,7 @@ import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
 import { useLeStudioStore } from '../store'
 
-import type { LogLine } from '../lib/types'
+import type { DatasetListItem, LogLine } from '../lib/types'
 
 const EMPTY_EVAL_LINES: LogLine[] = []
 
@@ -17,7 +17,8 @@ interface EvalTabProps {
 interface CheckpointItem {
   name: string
   path: string
-  step?: number
+  display?: string
+  step?: number | null
 }
 
 type EvalProgressStatus = 'idle' | 'starting' | 'running' | 'stopped' | 'completed' | 'error'
@@ -62,6 +63,7 @@ function parseSuccess(rawValue: string) {
 
 export function EvalTab({ active }: EvalTabProps) {
   const running = useLeStudioStore((s) => !!s.procStatus.eval)
+  const installing = useLeStudioStore((s) => !!s.procStatus.train_install)
   const procStatus = useLeStudioStore((s) => s.procStatus)
   const conflictReason = getProcessConflict('eval', procStatus)
   const evalLogLines = useLeStudioStore((s) => s.logLines.eval ?? EMPTY_EVAL_LINES)
@@ -72,6 +74,9 @@ export function EvalTab({ active }: EvalTabProps) {
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const hfUsername = useLeStudioStore((s) => s.hfUsername)
   const [checkpoints, setCheckpoints] = useState<CheckpointItem[]>([])
+  const [policySource, setPolicySource] = useState<'local' | 'hf'>('local')
+  const [datasetSource, setDatasetSource] = useState<'local' | 'hf'>('local')
+  const [datasets, setDatasets] = useState<DatasetListItem[]>([])
   const [progressStatus, setProgressStatus] = useState<EvalProgressStatus>('idle')
   const [doneEpisodes, setDoneEpisodes] = useState(0)
   const [targetEpisodes, setTargetEpisodes] = useState<number | null>(null)
@@ -87,6 +92,7 @@ export function EvalTab({ active }: EvalTabProps) {
   const [elapsedTick, setElapsedTick] = useState(0)
   const processedLogsRef = useRef(0)
   const perEpisodeRewardRef = useRef<Record<number, number>>({})
+  const autoInstallCommandRef = useRef('')
   const [preflightOk, setPreflightOk] = useState(true)
 
   const [preflightReason, setPreflightReason] = useState('')
@@ -97,11 +103,17 @@ export function EvalTab({ active }: EvalTabProps) {
   const refreshPreflight = useCallback(async () => {
     const device = (config.eval_device as string) ?? 'cuda'
     const res = await apiGet<{ ok: boolean; reason?: string; action?: string; command?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
-    setPreflightOk(!!res.ok)
-    setPreflightReason(res.reason ?? '')
-    setPreflightAction(res.action ?? '')
-    setPreflightCommand(res.command ?? '')
-    return !!res.ok
+    const next = {
+      ok: !!res.ok,
+      reason: res.reason ?? '',
+      action: res.action ?? '',
+      command: res.command ?? '',
+    }
+    setPreflightOk(next.ok)
+    setPreflightReason(next.reason)
+    setPreflightAction(next.action)
+    setPreflightCommand(next.command)
+    return next
   }, [config.eval_device])
 
   const installCudaTorch = async () => {
@@ -118,32 +130,60 @@ export function EvalTab({ active }: EvalTabProps) {
     }
   }
 
-  const runPreflightFix = async () => {
+  const runPreflightFix = useCallback(async (opts?: { auto?: boolean }) => {
     if (!preflightCommand) return
-    appendLog('eval', `[INFO] Running: ${preflightCommand}`, 'info')
+    const isAuto = !!opts?.auto
+    if (isAuto && preflightAction === 'install_python_dep') {
+      appendLog('eval', '[INFO] Auto-installing missing Python packages in background...', 'info')
+    } else {
+      appendLog('eval', `[INFO] Running: ${preflightCommand}`, 'info')
+    }
     try {
       const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/install_torchcodec_fix', { command: preflightCommand })
       if (!res.ok) {
         appendLog('eval', `[ERROR] ${res.error ?? 'Failed to start installer.'}`, 'error')
         return
       }
-      addToast('Fix installer started — check console for progress', 'info')
+      if (isAuto && preflightAction === 'install_python_dep') {
+        addToast('Auto-install started — check console for progress', 'info')
+      } else {
+        addToast('Fix installer started — check console for progress', 'info')
+      }
     } catch (e) {
       appendLog('eval', `[ERROR] ${e instanceof Error ? e.message : 'Installer request failed.'}`, 'error')
     }
-  }
+  }, [addToast, appendLog, preflightAction, preflightCommand])
 
   const totalEpisodes = Number(config.eval_episodes ?? 10)
   const progressTotal = targetEpisodes && targetEpisodes > 0 ? targetEpisodes : null
   const progressPct = Math.max(0, Math.min(100, progressTotal ? (doneEpisodes / progressTotal) * 100 : 0))
-  const repoId = (config.eval_repo_id as string) ?? ''
+  const localDatasetId = useMemo(() => {
+    const configured = (config.eval_repo_id as string) ?? ''
+    if (configured && datasets.some((ds) => ds.id === configured)) return configured
+    return datasets[0]?.id ?? '__none__'
+  }, [config.eval_repo_id, datasets])
+  const repoId = datasetSource === 'local' ? localDatasetId : ((config.eval_repo_id as string) ?? '')
   const repoError = useMemo(() => {
+    if (datasetSource === 'local') return ''
     const repo = repoId.trim()
     if (!repo) return 'Dataset Repo ID is required'
     if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repo)) return 'Dataset Repo ID must be username/dataset format.'
     return ''
-  }, [repoId])
-  const evalReady = preflightOk && !repoError && !conflictReason
+  }, [repoId, datasetSource])
+  const noLocalCheckpoint = policySource === 'local' && !(config.eval_policy_path as string)
+  const noLocalDataset = datasetSource === 'local' && localDatasetId === '__none__'
+  const evalReady = preflightOk && !repoError && !conflictReason && !noLocalCheckpoint && !noLocalDataset
+  const preflightFixLabel = preflightAction === 'install_python_dep' ? 'Install Missing Python Packages' : 'Run Fix'
+  const evalBlockers = useMemo(() => {
+    const blockers: string[] = []
+    if (!preflightOk) blockers.push(preflightReason || 'Device preflight failed')
+    if (repoError) blockers.push(repoError)
+    if (noLocalCheckpoint) blockers.push('No checkpoint selected')
+    if (noLocalDataset) blockers.push('No local dataset selected')
+    if (conflictReason) blockers.push(`${conflictReason} process running`)
+    return blockers
+  }, [preflightOk, preflightReason, repoError, noLocalCheckpoint, noLocalDataset, conflictReason])
+  const showProgressDetails = progressStatus === 'running' || progressStatus === 'completed' || progressStatus === 'stopped' || progressStatus === 'error' || doneEpisodes > 0
 
   const progressStatusStyle = useMemo(() => {
     const map: Record<EvalProgressStatus, { label: string; bg: string; color: string }> = {
@@ -186,16 +226,74 @@ export function EvalTab({ active }: EvalTabProps) {
     perEpisodeRewardRef.current = {}
   }
 
+  const refreshDatasets = useCallback(async () => {
+    const res = await apiGet<{ datasets: DatasetListItem[] }>('/api/datasets')
+    setDatasets(res.datasets ?? [])
+  }, [])
+
   const loadCheckpoints = async () => {
     const res = await apiGet<{ ok: boolean; checkpoints: CheckpointItem[] }>('/api/checkpoints')
-    if (res.ok) setCheckpoints(res.checkpoints ?? [])
+    if (res.ok) {
+      const list = res.checkpoints ?? []
+      setCheckpoints(list)
+      if (policySource === 'local' && !(config.eval_policy_path as string) && list.length > 0) {
+        void buildConfig({ eval_policy_path: list[0].path })
+      }
+    }
+  }
+
+  const handleSetPolicySource = (newSource: 'local' | 'hf') => {
+    setPolicySource(newSource)
+    if (newSource === 'local') {
+      const currentPath = (config.eval_policy_path as string) ?? ''
+      const isValidLocalPath = checkpoints.some((cp) => cp.path === currentPath)
+      if (!isValidLocalPath) {
+        void buildConfig({ eval_policy_path: checkpoints[0]?.path ?? '' })
+      }
+    } else {
+      void buildConfig({ eval_policy_path: '' })
+    }
+  }
+
+  const handleSetDatasetSource = (newSource: 'local' | 'hf') => {
+    setDatasetSource(newSource)
+    if (newSource === 'local') {
+      const currentId = (config.eval_repo_id as string) ?? ''
+      const isValidLocal = datasets.some((ds) => ds.id === currentId)
+      if (!isValidLocal) {
+        void buildConfig({ eval_repo_id: datasets[0]?.id ?? '' })
+      }
+    } else {
+      void buildConfig({ eval_repo_id: '' })
+    }
   }
 
   useEffect(() => {
     if (!active) return
     loadCheckpoints()
+    refreshDatasets()
     refreshPreflight()
-  }, [active, refreshPreflight])
+  }, [active, refreshDatasets, refreshPreflight])
+
+  useEffect(() => {
+    if (!active || preflightOk) return
+    const timer = window.setInterval(() => {
+      refreshPreflight()
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [active, preflightOk, refreshPreflight])
+
+  useEffect(() => {
+    if (preflightOk) {
+      autoInstallCommandRef.current = ''
+      return
+    }
+    if (!active || installing) return
+    if (preflightAction !== 'install_python_dep' || !preflightCommand) return
+    if (autoInstallCommandRef.current === preflightCommand) return
+    autoInstallCommandRef.current = preflightCommand
+    void runPreflightFix({ auto: true })
+  }, [active, installing, preflightAction, preflightCommand, preflightOk, runPreflightFix])
 
   useEffect(() => {
     if (!startedAtMs || endedAtMs) return
@@ -335,8 +433,28 @@ export function EvalTab({ active }: EvalTabProps) {
     setTargetEpisodes(cfg.eval_episodes)
     processedLogsRef.current = evalLogLines.length
     await buildConfig(cfg)
-    const res = await apiPost<{ ok: boolean; error?: string }>('/api/eval/start', cfg)
+    const preflight = await refreshPreflight()
+    if (!preflight.ok) {
+      appendLog('eval', `[ERROR] ${preflight.reason || 'Device compatibility check failed.'}`, 'error')
+      if (preflight.command) {
+        appendLog('eval', `[INFO] Run Fix command: ${preflight.command}`, 'info')
+      }
+      setHadError(true)
+      setProgressStatus('error')
+      setEndedAtMs(Date.now())
+      return
+    }
+
+    const res = await apiPost<{ ok: boolean; error?: string; auto_install_started?: boolean }>('/api/eval/start', cfg)
     if (!res.ok) {
+      if (res.auto_install_started) {
+        appendLog('eval', `[INFO] ${res.error ?? 'Auto-install started. Retry evaluation after installer finishes.'}`, 'info')
+        addToast('Auto-fix started in background', 'info')
+        await refreshPreflight()
+        setProgressStatus('idle')
+        setEndedAtMs(Date.now())
+        return
+      }
       appendLog('eval', `[ERROR] ${res.error ?? 'failed to start eval'}`, 'error')
       setHadError(true)
       setProgressStatus('error')
@@ -369,6 +487,27 @@ export function EvalTab({ active }: EvalTabProps) {
         </span>
       </div>
 
+      {!running && !evalReady ? (
+        <div className="eval-blocker-card">
+          <div className="dsub" style={{ marginBottom: 6 }}>Evaluation blocked:</div>
+          <div className="eval-blocker-chip-row">
+            {evalBlockers.map((blocker) => (
+              <span key={blocker} className="dbadge badge-warn">{blocker}</span>
+            ))}
+          </div>
+          <div className="eval-blocker-actions">
+            {!preflightOk ? (
+              <button type="button" className="link-btn" onClick={() => buildConfig({ eval_device: 'cpu' })}>→ Switch to CPU</button>
+            ) : null}
+            {!preflightOk && preflightAction === 'install_python_dep' && preflightCommand ? (
+              <button type="button" className="link-btn" onClick={() => { void runPreflightFix() }}>→ Install Missing Python Packages</button>
+            ) : null}
+            <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>→ Open Dataset</button>
+            <button type="button" className="link-btn" onClick={() => setActiveTab('train')}>→ Go to Train</button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="quick-guide">
         <h3>Evaluation Guide</h3>
         <p>Select a <strong>trained checkpoint</strong> or enter a custom path. Match the <strong>Dataset Repo ID</strong> to the dataset used during training. Switch <strong>Compute Device</strong> to CPU/MPS if CUDA is unavailable. Start with <strong>3–5 episodes</strong> for a quick sanity check. Logs and detailed metrics appear in the <strong>global console drawer</strong>.</p>
@@ -377,36 +516,85 @@ export function EvalTab({ active }: EvalTabProps) {
       <div>
         <div className="card">
           <h3>Configuration</h3>
-          <label>Checkpoint</label>
-          <select
-            value={(config.eval_policy_path as string) ?? ''}
-            onChange={(e) => buildConfig({ eval_policy_path: e.target.value })}
-            style={{ marginBottom: 12 }}
-          >
-            <option value="">(manual path below)</option>
-            {checkpoints.map((cp) => (
-              <option key={cp.path} value={cp.path}>
-                {cp.step ? `${cp.name} (step ${cp.step.toLocaleString()})` : cp.name}
-              </option>
-            ))}
-          </select>
-          <label>Policy Path</label>
-          <input
-            type="text"
-            value={(config.eval_policy_path as string) ?? 'outputs/train/checkpoints/last/pretrained_model'}
-            placeholder="Path to trained policy/checkpoint"
-            onChange={(e) => buildConfig({ eval_policy_path: e.target.value })}
-          />
-          <div className="field-help">Auto-filled when you select a checkpoint above. Edit to use a custom path.</div>
-          <label>Dataset Repo ID</label>
-          <input
-            type="text"
-            value={repoId}
-            placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'username/dataset'}
-            onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
-            style={repoError ? { borderColor: 'var(--red)' } : undefined}
-          />
-          {repoError ? <div className="ep-guard-hint" style={{ marginTop: 4 }}>{repoError}</div> : null}
+          <label>Policy Source</label>
+          <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
+            <button className={`toggle ${policySource === 'local' ? 'active' : ''}`} onClick={() => handleSetPolicySource('local')}>
+              Local
+            </button>
+            <button className={`toggle ${policySource === 'hf' ? 'active' : ''}`} onClick={() => handleSetPolicySource('hf')}>
+              Hugging Face
+            </button>
+          </div>
+          {policySource === 'local' ? (
+            <>
+              <label>Checkpoint</label>
+              {checkpoints.length === 0 && (
+                <div className="field-help" style={{ marginBottom: 8, color: 'var(--yellow)' }}>No checkpoints found. Train a model first.</div>
+              )}
+              <select
+                value={(config.eval_policy_path as string) ?? ''}
+                onChange={(e) => buildConfig({ eval_policy_path: e.target.value })}
+              >
+                {checkpoints.length === 0 ? <option value="">No checkpoints — train first</option> : null}
+                {checkpoints.map((cp) => (
+                  <option key={cp.path} value={cp.path}>
+                    {cp.display ?? (cp.step ? `${cp.name} (step ${cp.step.toLocaleString()})` : cp.name)}
+                  </option>
+                ))}
+              </select>
+              <div className="field-help">Choose from locally trained checkpoints.</div>
+            </>
+          ) : (
+            <>
+              <label>Policy Repo ID</label>
+              <input
+                type="text"
+                value={(config.eval_policy_path as string) ?? ''}
+                placeholder="e.g. lerobot/act_pusht_diffusion"
+                onChange={(e) => buildConfig({ eval_policy_path: e.target.value })}
+              />
+              <div className="field-help">Hugging Face Hub model ID to evaluate.</div>
+            </>
+          )}
+          <label>Dataset Source</label>
+          <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
+            <button className={`toggle ${datasetSource === 'local' ? 'active' : ''}`} onClick={() => handleSetDatasetSource('local')}>
+              Local
+            </button>
+            <button className={`toggle ${datasetSource === 'hf' ? 'active' : ''}`} onClick={() => handleSetDatasetSource('hf')}>
+              Hugging Face
+            </button>
+          </div>
+          {datasetSource === 'local' ? (
+            <>
+              <label>Local Dataset</label>
+              {datasets.length === 0 && (
+                <div className="field-help" style={{ marginBottom: 8, color: 'var(--yellow)' }}>No local datasets found. Record episodes first.</div>
+              )}
+              <select
+                value={localDatasetId}
+                onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
+              >
+                {datasets.length === 0 ? <option value="__none__">No local datasets — record first</option> : null}
+                {datasets.map((ds) => (
+                  <option key={ds.id} value={ds.id}>{ds.id}</option>
+                ))}
+              </select>
+              <div className="field-help">Choose a dataset from local cache (`~/.cache/huggingface/lerobot`).</div>
+            </>
+          ) : (
+            <>
+              <label>Dataset Repo ID</label>
+              <input
+                type="text"
+                value={(config.eval_repo_id as string) ?? ''}
+                placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'username/dataset'}
+                onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
+                style={repoError ? { borderColor: 'var(--red)' } : undefined}
+              />
+              {repoError ? <div className="ep-guard-hint" style={{ marginTop: 4 }}>{repoError}</div> : null}
+            </>
+          )}
           <label>Episodes</label>
           <input type="number" min={1} value={totalEpisodes} onChange={(e) => buildConfig({ eval_episodes: Number(e.target.value) })} />
           <label>Compute Device</label>
@@ -430,10 +618,22 @@ export function EvalTab({ active }: EvalTabProps) {
           ) : null}
           {!preflightOk && preflightCommand && preflightAction !== 'install_torch_cuda' ? (
             <div id="eval-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
-              <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock evaluation:</div>
-              <button className="btn-primary" onClick={runPreflightFix}>
-                Run Fix
+              <div className="field-help" style={{ marginBottom: 6 }}>
+                {preflightAction === 'install_python_dep'
+                  ? 'Missing Python packages detected. Auto-install starts automatically.'
+                  : 'Recommended next step to unblock evaluation:'}
+              </div>
+              {preflightAction !== 'install_python_dep' ? (
+                <div className="field-help" style={{ marginBottom: 8, fontFamily: 'var(--mono)' }}>{preflightCommand}</div>
+              ) : null}
+              <button className="btn-primary" onClick={() => { void runPreflightFix() }} disabled={installing}>
+                {installing ? 'Fix Running...' : preflightFixLabel}
               </button>
+              {installing ? (
+                <button className="btn-sm" style={{ marginLeft: 8 }} onClick={() => { void stopProcess('train') }}>
+                  Stop Fix
+                </button>
+              ) : null}
             </div>
           ) : null}
           <label>Task (Optional)</label>
@@ -462,27 +662,42 @@ export function EvalTab({ active }: EvalTabProps) {
               </span>
             </div>
             <div className="usb-bus-bar-track">
-              <div id="eval-progress-fill" className="usb-bar-fill good" style={{ width: `${progressPct}%` }} />
+              <div
+                id="eval-progress-fill"
+                className="usb-bar-fill good"
+                style={{ width: `${progressPct}%` }}
+                role="progressbar"
+                aria-label="Evaluation progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(progressPct)}
+                aria-valuetext={`${Math.round(progressPct)} percent`}
+              />
             </div>
-            {progressStatus !== 'idle' && (
+            {showProgressDetails ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text2)', gap: 10, flexWrap: 'wrap' }}>
                 <span id="eval-progress-episodes">Episodes: {doneEpisodes || '--'} / {progressTotal || '--'}</span>
                 <span id="eval-progress-reward">Reward: {formatReward(meanReward)}</span>
                 <span id="eval-progress-success">Success: {formatSuccess(successRate)}</span>
               </div>
+            ) : (
+              <div className="field-help" style={{ marginTop: 8 }}>Start evaluation to populate episode/reward/success metrics.</div>
             )}
           </div>
 
           {progressStatus !== 'idle' && (
             <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
               <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Evaluation Summary</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, fontSize: 11, color: 'var(--text2)' }}>
+              <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text2)' }}>
                 <span id="eval-summary-confidence" className="dbadge" style={{ display: 'none' }} />
-                <span id="eval-summary-time">
-                  Start {formatClock(startedAtMs)} · Elapsed {formatElapsed(startedAtMs, endedAtMs, elapsedTick)} · End {formatClock(endedAtMs)} · Update {formatClock(lastMetricUpdateMs)}
-                </span>
+                <div id="eval-summary-time" className="eval-summary-time">
+                  <span>Start {formatClock(startedAtMs)}</span>
+                  <span>Elapsed {formatElapsed(startedAtMs, endedAtMs, elapsedTick)}</span>
+                  <span>End {formatClock(endedAtMs)}</span>
+                  <span>Update {formatClock(lastMetricUpdateMs)}</span>
+                </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12, color: 'var(--text2)' }}>
+              <div className="eval-summary-grid" style={{ fontSize: 12, color: 'var(--text2)' }}>
                 <div id="eval-summary-final-reward">Final Reward: {formatReward(finalReward)}</div>
                 <div id="eval-summary-final-success">Final Success: {formatSuccess(finalSuccess)}</div>
                 <div id="eval-summary-best">

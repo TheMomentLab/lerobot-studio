@@ -12,6 +12,7 @@ import shutil
 import psutil
 import subprocess
 import sys
+import textwrap
 import threading
 import time
 import uuid
@@ -33,10 +34,66 @@ from lestudio.command_builders import (
     build_train_args,
     resolve_record_resume,
 )
-from lestudio.process_manager import ProcessManager
+from lestudio.process_manager import ProcessManager, PROCESS_NAMES
 from lestudio import device_registry
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+
+# ─── nvidia pip 패키지의 .so를 LD_LIBRARY_PATH에 자동 추가 ─────────────────
+def _patch_nvidia_lib_path():
+    import importlib.util
+
+    existing = os.environ.get("LD_LIBRARY_PATH", "")
+    existing_parts = [p for p in existing.split(":") if p]
+    seen = set(existing_parts)
+    added: list[str] = []
+
+    def add_lib_dir(path: str):
+        if not path:
+            return
+        if not os.path.isdir(path):
+            return
+        if path in seen:
+            return
+        seen.add(path)
+        added.append(path)
+
+    for pkg in ["nvidia.npp", "nvidia.cudnn", "nvidia.cublas", "nvidia.cusparse", "nvidia.cufft", "nvidia.cusolver", "nvidia.nvjitlink"]:
+        try:
+            spec = importlib.util.find_spec(pkg)
+        except ModuleNotFoundError:
+            continue
+        if spec and spec.submodule_search_locations:
+            for loc in spec.submodule_search_locations:
+                add_lib_dir(os.path.join(loc, "lib"))
+
+    conda_prefix_candidates: list[Path] = []
+    env_prefix = os.environ.get("CONDA_PREFIX", "").strip()
+    if env_prefix:
+        conda_prefix_candidates.append(Path(env_prefix))
+
+    conda_exe = (os.environ.get("CONDA_EXE", "").strip() or shutil.which("conda") or "").strip()
+    if conda_exe:
+        conda_path = Path(conda_exe).resolve()
+        if conda_path.parent.name in {"condabin", "bin"}:
+            conda_prefix_candidates.append(conda_path.parent.parent)
+
+    dedup_prefixes: list[Path] = []
+    seen_prefixes: set[str] = set()
+    for prefix in conda_prefix_candidates:
+        key = str(prefix)
+        if not key or key in seen_prefixes:
+            continue
+        seen_prefixes.add(key)
+        dedup_prefixes.append(prefix)
+
+    for prefix in dedup_prefixes:
+        add_lib_dir(str(prefix / "lib"))
+
+    if added:
+        os.environ["LD_LIBRARY_PATH"] = ":".join(added + existing_parts)
+
+_patch_nvidia_lib_path()
 
 CAMERA_ROLES = [
     "(none)", "top_cam_1", "top_cam_2", "top_cam_3",
@@ -382,7 +439,12 @@ def restart_all_streamers(config_path: Path):
 # ─── Config ────────────────────────────────────────────────────────────────────
 def _load_config(config_path: Path) -> dict:
     if config_path.exists():
-        return {**DEFAULT_CONFIG, **json.loads(config_path.read_text())}
+        try:
+            content = config_path.read_text().strip()
+            if content:
+                return {**DEFAULT_CONFIG, **json.loads(content)}
+        except (json.JSONDecodeError, Exception):
+            pass
     return DEFAULT_CONFIG.copy()
 
 
@@ -529,6 +591,23 @@ def _manual_udev_install_commands(source_rules: Path, target_rules: Path) -> lis
     ]
 
 
+def _run_privileged_udev_apply(command_prefix: list[str], source_rules: Path, target_rules: Path) -> tuple[bool, str]:
+    steps = [
+        [*command_prefix, "cp", str(source_rules), str(target_rules)],
+        [*command_prefix, "udevadm", "control", "--reload-rules"],
+        [*command_prefix, "udevadm", "trigger", "--subsystem-match=video4linux"],
+        [*command_prefix, "udevadm", "trigger", "--subsystem-match=tty"],
+    ]
+    for step in steps:
+        result = subprocess.run(step, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            stdout = (result.stdout or "").strip()
+            err = stderr or stdout or f"{' '.join(step)} failed"
+            return False, err
+    return True, ""
+
+
 def _apply_rules_with_fallback(
     assignments: dict[str, str],
     arm_assignments: dict[str, str],
@@ -536,7 +615,7 @@ def _apply_rules_with_fallback(
     fallback_rules_path: Path | None,
 ) -> tuple[bool, str]:
     content = _build_rules(assignments, arm_assignments, rules_path)
-    tmp = Path("/tmp/99-lerobot.rules.new")
+    tmp = Path(f"/tmp/99-lerobot.rules.{uuid.uuid4().hex}.new")
     tmp.write_text(content)
 
     if fallback_rules_path is not None:
@@ -546,12 +625,21 @@ def _apply_rules_with_fallback(
         except Exception:
             pass
 
-    r = subprocess.run(
-        ["sudo", "-n", "cp", str(tmp), str(rules_path)],
-        capture_output=True, text=True,
-    )
-    if r.returncode != 0:
-        base_err = (r.stderr or "").strip() or "sudo failed — install udev rules via CLI helper"
+    try:
+        sudo_ok, sudo_err = _run_privileged_udev_apply(["sudo", "-n"], tmp, rules_path)
+        if sudo_ok:
+            return True, ""
+
+        pkexec_err = ""
+        if shutil.which("pkexec"):
+            pkexec_ok, pkexec_err = _run_privileged_udev_apply(["pkexec"], tmp, rules_path)
+            if pkexec_ok:
+                return True, ""
+
+        base_err = sudo_err or "sudo failed — install udev rules via CLI helper"
+        if pkexec_err:
+            base_err = f"{base_err}\npkexec failed: {pkexec_err}"
+
         if fallback_rules_path is None:
             return False, base_err
         commands = _manual_udev_install_commands(fallback_rules_path, rules_path)
@@ -561,16 +649,11 @@ def _apply_rules_with_fallback(
             f"Saved rules to: {fallback_rules_path}\n"
             f"Run these commands:\n{hint}"
         )
-    subprocess.run(["sudo", "-n", "udevadm", "control", "--reload-rules"], capture_output=True)
-    subprocess.run(
-        ["sudo", "-n", "udevadm", "trigger", "--subsystem-match=video4linux"],
-        capture_output=True,
-    )
-    subprocess.run(
-        ["sudo", "-n", "udevadm", "trigger", "--subsystem-match=tty"],
-        capture_output=True,
-    )
-    return True, ""
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
@@ -624,6 +707,169 @@ def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
     return ok, reason
 
 
+def _cuda_tag_to_toolkit_version(cuda_tag: str) -> str | None:
+    token = (cuda_tag or "").strip().lower()
+    if not token.startswith("cu"):
+        return None
+    digits = token[2:]
+    if not digits.isdigit() or len(digits) < 2:
+        return None
+    if len(digits) == 3:
+        major = int(digits[:2])
+        minor = int(digits[2])
+    else:
+        major = int(digits[:-1])
+        minor = int(digits[-1])
+    return f"{major}.{minor}"
+
+
+def _check_torchcodec_compat(python_exe: str) -> dict:
+    """torchcodec가 현재 환경에서 로드 가능한지 확인하고, 실패 시 원인을 분류합니다."""
+    script = textwrap.dedent("""
+        import json, sys
+        try:
+            from torchcodec.decoders import VideoDecoder
+            print(json.dumps({"ok": True, "reason": "torchcodec is available."}))
+        except ImportError:
+            import torch
+            tv = torch.__version__
+            is_nightly = "dev" in tv
+            cuda_tag = ""
+            if "+cu" in tv:
+                cuda_tag = "cu" + tv.split("+cu")[1]
+            try:
+                import torchvision
+                has_video_opt = bool(getattr(torchvision.io, "_HAS_VIDEO_OPT", False))
+                has_cpu_decoder = bool(getattr(torchvision.io, "_HAS_CPU_VIDEO_DECODER", False))
+                if not (has_video_opt and has_cpu_decoder):
+                    print(json.dumps({
+                        "ok": False,
+                        "reason": "torchcodec is not installed and torchvision VideoReader is unavailable on this build. Training video decode will fail unless torchcodec is installed.",
+                        "cause": "pyav_video_reader_unavailable",
+                        "nightly": is_nightly,
+                        "cuda_tag": cuda_tag,
+                    }))
+                    raise SystemExit(0)
+                print(json.dumps({"ok": True, "reason": "torchcodec not installed. pyav will be used as fallback.", "fallback": True, "nightly": is_nightly, "cuda_tag": cuda_tag}))
+            except Exception as e:
+                print(json.dumps({
+                    "ok": False,
+                    "reason": f"torchcodec is not installed and pyav fallback probe failed: {type(e).__name__}",
+                    "cause": "pyav_video_reader_unavailable",
+                    "nightly": is_nightly,
+                    "cuda_tag": cuda_tag,
+                }))
+        except RuntimeError as e:
+            import torch
+            err = str(e)
+            tv = torch.__version__
+            is_nightly = "dev" in tv
+            cuda_tag = ""
+            if "+cu" in tv:
+                cuda_tag = "cu" + tv.split("+cu")[1]
+            # 원인 분류
+            if "libnppicc" in err or "libnpp" in err:
+                cause = "missing_cuda_toolkit"
+                msg = f"CUDA toolkit libraries (libnppicc) not found. torchcodec requires the CUDA toolkit to be installed."
+            elif "libavcodec" in err or "libavformat" in err or "FFmpeg" in err.split("Likely causes")[0] if "Likely causes" in err else False:
+                cause = "missing_ffmpeg"
+                msg = "FFmpeg libraries not found. torchcodec requires FFmpeg 4-7 to be installed."
+            elif "is not compatible" in err:
+                cause = "version_mismatch"
+                msg = f"torchcodec is incompatible with PyTorch {tv}. Reinstall torchcodec to match your PyTorch version."
+            else:
+                cause = "unknown"
+                msg = f"torchcodec failed to load (PyTorch {tv}). Check your CUDA toolkit and FFmpeg installation."
+            print(json.dumps({"ok": False, "reason": msg, "cause": cause, "nightly": is_nightly, "cuda_tag": cuda_tag}))
+        except Exception as e:
+            print(json.dumps({"ok": False, "reason": f"torchcodec check error: {type(e).__name__}", "cause": "unknown"}))
+    """)
+    try:
+        r = subprocess.run([python_exe, "-c", script], capture_output=True, text=True, timeout=10)
+    except Exception as e:
+        return {"ok": False, "reason": f"torchcodec check failed: {e}", "cause": "unknown"}
+    out = (r.stdout or "").strip().splitlines()
+    if not out:
+        err = (r.stderr or "").strip()
+        return {"ok": False, "reason": f"torchcodec check returned no output. {err}".strip(), "cause": "unknown"}
+    try:
+        payload = json.loads(out[-1])
+    except Exception:
+        return {"ok": False, "reason": f"torchcodec check parse error: {out[-1]}", "cause": "unknown"}
+    # 실패 시 cause별 install 명령어 생성
+    if not payload.get("ok"):
+        cause = payload.get("cause", "unknown")
+        nightly = payload.get("nightly", False)
+        cuda_tag = str(payload.get("cuda_tag", ""))
+        toolkit_version = _cuda_tag_to_toolkit_version(cuda_tag)
+        if cause == "missing_cuda_toolkit":
+            if toolkit_version:
+                payload["command"] = f"conda install -y -c nvidia cuda-toolkit={toolkit_version}"
+                payload["reason"] = (
+                    f"CUDA toolkit libraries (libnppicc) matching PyTorch {cuda_tag} are missing. "
+                    f"Install CUDA toolkit {toolkit_version} runtime libraries."
+                )
+            else:
+                payload["command"] = "conda install -y -c nvidia cuda-toolkit"
+        elif cause == "missing_ffmpeg":
+            payload["command"] = "conda install -y -c conda-forge ffmpeg"
+        else:
+            parts = ["pip", "install", "--force-reinstall"]
+            if nightly:
+                parts.append("--pre")
+            parts.append("torchcodec")
+            if nightly and cuda_tag:
+                parts.extend(["--index-url", f"https://download.pytorch.org/whl/nightly/{cuda_tag}"])
+            elif cuda_tag:
+                parts.extend(["--index-url", f"https://download.pytorch.org/whl/{cuda_tag}"])
+            payload["command"] = " ".join(parts)
+    return payload
+
+
+def _check_train_python_deps(python_exe: str) -> dict:
+    script = textwrap.dedent("""
+        import importlib.util
+        import json
+
+        required = ["accelerate", "av"]
+        missing = []
+        for name in required:
+            try:
+                if importlib.util.find_spec(name) is None:
+                    missing.append(name)
+            except Exception:
+                missing.append(name)
+
+        print(json.dumps({"ok": len(missing) == 0, "missing": missing}))
+    """)
+    try:
+        r = subprocess.run([python_exe, "-c", script], capture_output=True, text=True, timeout=8)
+    except Exception as e:
+        return {"ok": True, "reason": f"Dependency probe skipped: {e}"}
+
+    out = (r.stdout or "").strip().splitlines()
+    if not out:
+        return {"ok": True, "reason": "Dependency probe skipped: no output"}
+
+    try:
+        payload = json.loads(out[-1])
+    except Exception:
+        return {"ok": True, "reason": f"Dependency probe skipped: parse error ({out[-1]})"}
+
+    missing = [str(name).strip() for name in payload.get("missing", []) if str(name).strip()]
+    if missing:
+        args = [python_exe, "-m", "pip", "install", *missing]
+        pkg_text = ", ".join(missing)
+        return {
+            "ok": False,
+            "reason": f"Missing required Python package(s) for training: {pkg_text}.",
+            "action": "install_python_dep",
+            "command": _format_cmd(args),
+            "missing": missing,
+        }
+
+    return {"ok": True, "reason": "Core training dependencies are available."}
+
 def _build_torch_install_args(python_exe: str, cuda_tag: str = "cu128", nightly: bool = True) -> list[str]:
     channel = "nightly" if nightly else "stable"
     index_url = f"https://download.pytorch.org/whl/{channel}/{cuda_tag}" if nightly else f"https://download.pytorch.org/whl/{cuda_tag}"
@@ -636,6 +882,60 @@ def _build_torch_install_args(python_exe: str, cuda_tag: str = "cu128", nightly:
 
 def _format_cmd(args: list[str]) -> str:
     return " ".join(shlex.quote(a) for a in args)
+
+
+def _ensure_non_interactive_conda_args(args: list[str]) -> list[str]:
+    if not args:
+        return args
+    exe = Path(args[0]).name.lower()
+    if exe not in {"conda", "mamba", "micromamba"}:
+        return args
+    if len(args) < 2:
+        return args
+    subcommand = args[1].lower()
+    if subcommand not in {"install", "update", "remove", "uninstall"}:
+        return args
+    if "-y" in args[2:] or "--yes" in args[2:]:
+        return args
+    return [args[0], args[1], "-y", *args[2:]]
+
+
+def _parse_install_args(raw_command: str, python_exe: str) -> list[str]:
+    command = str(raw_command or "").strip()
+    if not command:
+        return []
+    try:
+        args = shlex.split(command)
+    except Exception:
+        return []
+    if not args:
+        return []
+
+    head = args[0]
+    if head in {"pip", "pip3"}:
+        args = [python_exe, "-m", "pip", *args[1:]]
+    elif head in {"python", "python3"} and len(args) >= 3 and args[1] == "-m" and args[2] == "pip":
+        args = [python_exe, "-m", "pip", *args[3:]]
+    return _ensure_non_interactive_conda_args(args)
+
+
+def _normalize_console_command(python_exe: str, raw_command: str) -> tuple[list[str], str]:
+    command = (raw_command or "").strip()
+    if not command:
+        raise ValueError("No command provided.")
+
+    args = shlex.split(command)
+    if not args:
+        raise ValueError("No command provided.")
+
+    head = args[0]
+    if head in {"pip", "pip3"}:
+        args = [python_exe, "-m", "pip", *args[1:]]
+    elif head in {"python", "python3"} and len(args) >= 3 and args[1] == "-m" and args[2] == "pip":
+        args = [python_exe, "-m", "pip", *args[3:]]
+    args = _ensure_non_interactive_conda_args(args)
+
+    return args, _format_cmd(args)
 
 
 # ─── USB Bus Info ──────────────────────────────────────────────────────────────
@@ -891,9 +1191,12 @@ def create_app(
             sudo_noninteractive = probe.returncode == 0
         except Exception:
             sudo_noninteractive = False
+        pkexec_available = shutil.which("pkexec") is not None
+        graphical_session = bool((os.environ.get("DISPLAY") or "").strip() or (os.environ.get("WAYLAND_DISPLAY") or "").strip())
+        gui_auth_available = pkexec_available and graphical_session
         rules_installed = rules_path.exists()
         install_needed = not rules_installed
-        needs_root_for_install = install_needed and not sudo_noninteractive
+        needs_root_for_install = install_needed and not (sudo_noninteractive or gui_auth_available)
         return {
             "rules_path": str(rules_path),
             "rules_installed": rules_installed,
@@ -902,6 +1205,9 @@ def create_app(
             "fallback_rules_path": str(FALLBACK_RULES_PATH),
             "fallback_rules_exists": FALLBACK_RULES_PATH.exists(),
             "sudo_noninteractive": sudo_noninteractive,
+            "pkexec_available": pkexec_available,
+            "graphical_session": graphical_session,
+            "gui_auth_available": gui_auth_available,
             "manual_commands": _manual_udev_install_commands(FALLBACK_RULES_PATH, rules_path),
         }
 
@@ -1007,6 +1313,13 @@ def create_app(
                 return
             if not os.access(path, os.R_OK | os.W_OK):
                 add("error", label, f"Permission denied for {path}")
+                return
+            # If LeStudio already has this camera open (MJPEG preview), skip re-opening
+            real_path = str(Path(path).resolve())
+            with _streamers_lock:
+                already_streaming = real_path in _streamers or real_path in _preview_streamers
+            if already_streaming:
+                add("ok", label, f"{path} is streaming (ready)")
                 return
             cap = None
             try:
@@ -1214,20 +1527,68 @@ def create_app(
 
     @app.post("/api/process/{name}/stop")
     def api_proc_stop(name: str):
-        proc_mgr.stop(name)
+        if name not in PROCESS_NAMES:
+            return {"ok": False, "error": f"Unknown process: {name}"}
+
+        targets = [name]
+        if name == "train":
+            targets = ["train_install", "train"]
+
+        for target in targets:
+            proc_mgr.stop(target)
         unlock_cameras()
-        return {"ok": True}
+        return {"ok": True, "stopped": targets}
 
     @app.post("/api/process/{name}/input")
     async def api_proc_input(name: str, data: dict):
-        proc_mgr.send_input(name, data.get("text", ""))
-        return {"ok": True}
+        if name not in PROCESS_NAMES:
+            return {"ok": False, "error": f"Unknown process: {name}"}
+
+        target = name
+        if not proc_mgr.is_running(target):
+            if name == "train" and proc_mgr.is_running("train_install"):
+                target = "train_install"
+            else:
+                return {"ok": False, "error": f"{name} is not running"}
+
+        text = data.get("text", "")
+        if text is None:
+            text = ""
+        if not isinstance(text, str):
+            text = str(text)
+
+        ok = proc_mgr.send_input(target, text)
+        if not ok:
+            return {"ok": False, "error": f"Failed to write to {target} stdin"}
+        return {"ok": True, "process": target}
+
+    @app.post("/api/process/{name}/command")
+    async def api_proc_command(name: str, data: dict | None = None):
+        if proc_mgr.is_running(name):
+            return {"ok": False, "error": f"{name} is running. Stop it or send stdin input instead."}
+
+        payload = data or {}
+        raw_command = str(payload.get("command", "")).strip()
+        try:
+            args, normalized = _normalize_console_command(PYTHON, raw_command)
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+
+        ok = proc_mgr.start(name, args)
+        return {
+            "ok": ok,
+            "command": normalized,
+            "error": None if ok else "Failed to launch command process.",
+        }
 
     # ─── API: Teleop ───────────────────────────────────────────────────────
     @app.post("/api/teleop/start")
     async def api_teleop_start(data: dict):
         if proc_mgr.is_running("teleop"):
             return {"ok": False, "error": "Already running"}
+        conflicts = proc_mgr.conflicting_processes("teleop")
+        if conflicts:
+            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
         stop_all_streamers_for_process()
         args = build_teleop_args(PYTHON, data)
         return {"ok": proc_mgr.start("teleop", args)}
@@ -1237,6 +1598,9 @@ def create_app(
     async def api_record_start(data: dict):
         if proc_mgr.is_running("record"):
             return {"ok": False, "error": "Already running"}
+        conflicts = proc_mgr.conflicting_processes("record")
+        if conflicts:
+            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
         stop_all_streamers_for_process()
         cfg = data
         # Inject camera settings (resolution/fps) from user's config into record args
@@ -1263,18 +1627,51 @@ def create_app(
     @app.get("/api/train/preflight")
     def api_train_preflight(device: str = "cuda"):
         dev = (device or "cuda").lower()
+
+        deps = _check_train_python_deps(PYTHON)
+        if not deps.get("ok"):
+            return {
+                "ok": False,
+                "reason": deps.get("reason", "Training dependency check failed."),
+                "action": deps.get("action", "install_python_dep"),
+                "command": deps.get("command", ""),
+            }
+
         if dev != "cuda":
-            return {"ok": True, "reason": f"{dev.upper()} selected. Compatibility preflight is only required for CUDA."}
+            # non-CUDA: CUDA 체크 스킵, torchcodec만 확인
+            tc = _check_torchcodec_compat(PYTHON)
+            if tc.get("ok"):
+                return {"ok": True, "reason": f"{dev.upper()} selected. {tc['reason']}"}
+            cause = tc.get("cause", "unknown")
+            action_map = {"missing_cuda_toolkit": "install_cuda_toolkit", "missing_ffmpeg": "install_ffmpeg", "version_mismatch": "install_torchcodec"}
+            return {
+                "ok": False,
+                "reason": tc.get("reason", "torchcodec check failed."),
+                "action": action_map.get(cause, "install_torchcodec"),
+                "command": tc.get("command", ""),
+            }
 
         ok, reason = _check_cuda_runtime_compat(PYTHON)
-        if ok:
-            return {"ok": True, "reason": reason}
-        install_args = _build_torch_install_args(PYTHON, cuda_tag="cu128", nightly=True)
+        if not ok:
+            install_args = _build_torch_install_args(PYTHON, cuda_tag="cu128", nightly=True)
+            return {
+                "ok": False,
+                "reason": f"{reason} Switch Compute Device to CPU/MPS or install a CUDA-compatible PyTorch build.",
+                "action": "install_torch_cuda",
+                "command": _format_cmd(install_args),
+            }
+
+        # CUDA OK → torchcodec 체크
+        tc = _check_torchcodec_compat(PYTHON)
+        if tc.get("ok"):
+            return {"ok": True, "reason": f"{reason} | {tc['reason']}"}
+        cause = tc.get("cause", "unknown")
+        action_map = {"missing_cuda_toolkit": "install_cuda_toolkit", "missing_ffmpeg": "install_ffmpeg", "version_mismatch": "install_torchcodec"}
         return {
             "ok": False,
-            "reason": f"{reason} Switch Compute Device to CPU/MPS or install a CUDA-compatible PyTorch build.",
-            "action": "install_torch_cuda",
-            "command": _format_cmd(install_args),
+            "reason": tc.get("reason", "torchcodec check failed."),
+            "action": action_map.get(cause, "install_torchcodec"),
+            "command": tc.get("command", ""),
         }
 
     @app.get("/api/deps/status")
@@ -1303,10 +1700,75 @@ def create_app(
             "error": None if ok else "Failed to launch installer process.",
         }
 
+    @app.post("/api/train/install_torchcodec_fix")
+    async def api_train_install_torchcodec_fix(data: dict | None = None):
+        if proc_mgr.is_running("train"):
+            return {"ok": False, "error": "Stop training before installing."}
+        if proc_mgr.is_running("train_install"):
+            return {"ok": False, "error": "Another installer is already running."}
+        payload = data or {}
+        command = str(payload.get("command", "")).strip()
+        if not command:
+            return {"ok": False, "error": "No install command provided."}
+        args = _parse_install_args(command, PYTHON)
+        if not args:
+            return {"ok": False, "error": "Invalid install command."}
+        ok = proc_mgr.start("train_install", args)
+        return {
+            "ok": ok,
+            "command": " ".join(args),
+            "error": None if ok else "Failed to launch installer process.",
+        }
+
+    def ensure_train_installer(command: str) -> tuple[bool, bool]:
+        if proc_mgr.is_running("train_install"):
+            return True, True
+        args = _parse_install_args(command, PYTHON)
+        if not args:
+            return False, False
+        return proc_mgr.start("train_install", args), False
+
     @app.post("/api/train/start")
     async def api_train_start(data: dict):
         if proc_mgr.is_running("train"):
             return {"ok": False, "error": "Already running"}
+        conflicts = proc_mgr.conflicting_processes("train")
+        if conflicts:
+            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
+
+        deps = _check_train_python_deps(PYTHON)
+        if not deps.get("ok"):
+            command = str(deps.get("command", "")).strip()
+            reason = str(deps.get("reason", "Missing required Python package for training.")).strip()
+            ok_install, already_running = ensure_train_installer(command)
+            if ok_install:
+                status = "already running" if already_running else "started"
+                return {
+                    "ok": False,
+                    "error": f"{reason} Auto-install {status} in background. Retry training after installer finishes.",
+                    "auto_install_started": True,
+                }
+            return {
+                "ok": False,
+                "error": f"{reason} Auto-install could not be started. Open Train tab and retry install once.",
+            }
+
+        tc = _check_torchcodec_compat(PYTHON)
+        if not tc.get("ok"):
+            command = str(tc.get("command", "")).strip()
+            reason = str(tc.get("reason", "torchcodec check failed.")).strip()
+            ok_install, already_running = ensure_train_installer(command)
+            if ok_install:
+                status = "already running" if already_running else "started"
+                return {
+                    "ok": False,
+                    "error": f"{reason} Auto-install {status} in background. Retry training after installer finishes.",
+                    "auto_install_started": True,
+                }
+            return {
+                "ok": False,
+                "error": f"{reason} Auto-install could not be started. Open Train tab and retry install once.",
+            }
 
         train_device = str(data.get("train_device", "cuda")).lower()
         if train_device == "cuda":
@@ -1428,10 +1890,49 @@ def create_app(
             return (2, -(c["step"] or 0), c["modified"] or "")
         results.sort(key=sort_key)
 
+        return {"ok": True, "checkpoints": results}
+
     @app.post("/api/eval/start")
     async def api_eval_start(data: dict):
         if proc_mgr.is_running("eval"):
             return {"ok": False, "error": "Already running"}
+        conflicts = proc_mgr.conflicting_processes("eval")
+        if conflicts:
+            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
+
+        deps = _check_train_python_deps(PYTHON)
+        if not deps.get("ok"):
+            command = str(deps.get("command", "")).strip()
+            reason = str(deps.get("reason", "Missing required Python package for evaluation.")).strip()
+            ok_install, already_running = ensure_train_installer(command)
+            if ok_install:
+                status = "already running" if already_running else "started"
+                return {
+                    "ok": False,
+                    "error": f"{reason} Auto-install {status} in background. Retry evaluation after installer finishes.",
+                    "auto_install_started": True,
+                }
+            return {
+                "ok": False,
+                "error": f"{reason} Auto-install could not be started. Open Eval tab and retry install once.",
+            }
+
+        tc = _check_torchcodec_compat(PYTHON)
+        if not tc.get("ok"):
+            command = str(tc.get("command", "")).strip()
+            reason = str(tc.get("reason", "torchcodec check failed.")).strip()
+            ok_install, already_running = ensure_train_installer(command)
+            if ok_install:
+                status = "already running" if already_running else "started"
+                return {
+                    "ok": False,
+                    "error": f"{reason} Auto-install {status} in background. Retry evaluation after installer finishes.",
+                    "auto_install_started": True,
+                }
+            return {
+                "ok": False,
+                "error": f"{reason} Auto-install could not be started. Open Eval tab and retry install once.",
+            }
 
         eval_device = str(data.get("eval_device", "cuda")).lower()
         if eval_device == "cuda":
@@ -1516,6 +2017,9 @@ def create_app(
     async def api_calibrate_start(data: dict):
         if proc_mgr.is_running("calibrate"):
             return {"ok": False, "error": "Already running"}
+        conflicts = proc_mgr.conflicting_processes("calibrate")
+        if conflicts:
+            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
         args = build_calibrate_args(PYTHON, data)
         ok = proc_mgr.start("calibrate", args)
         if ok:
@@ -1543,14 +2047,21 @@ def create_app(
                             info = json.loads(info_path.read_text())
                             mtime = info_path.stat().st_mtime
                             mdate = datetime.datetime.fromtimestamp(mtime).strftime('%Y-%m-%d %H:%M:%S')
-                            # Try info.json fields first, fallback to actual disk usage
-                            info_size = info.get("data_files_size_in_mb", 0) + info.get("video_files_size_in_mb", 0)
-                            if info_size == 0:
-                                try:
-                                    total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
-                                    info_size = round(total_bytes / (1024 * 1024), 1)
-                                except Exception:
-                                    info_size = 0
+                            data_size_raw = info.get("data_files_size_in_mb", 0)
+                            video_size_raw = info.get("video_files_size_in_mb", 0)
+                            try:
+                                info_size = float(data_size_raw or 0) + float(video_size_raw or 0)
+                            except Exception:
+                                info_size = 0.0
+
+                            disk_size = 0.0
+                            try:
+                                total_bytes = sum(f.stat().st_size for f in ds_dir.rglob('*') if f.is_file())
+                                disk_size = round(total_bytes / (1024 * 1024), 1)
+                            except Exception:
+                                disk_size = 0.0
+
+                            info_size = disk_size if disk_size > 0 else round(info_size, 1)
                             datasets.append({
                                 "id": f"{user_dir.name}/{ds_dir.name}",
                                 "total_episodes": info.get("total_episodes", 0),
@@ -2059,6 +2570,25 @@ def create_app(
                 return {"ok": False, "error": "Push job not found"}
             return {"ok": True, **job}
 
+    # ─── API: HF Identity ─────────────────────────────────────────────────
+    @app.get("/api/hf/whoami")
+    def api_hf_whoami():
+        """Return the HuggingFace username associated with the current token."""
+        token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+        if not token:
+            return {"ok": False, "username": None, "error": "no_token"}
+        try:
+            from huggingface_hub import whoami  # type: ignore
+            info = whoami(token=token)
+            username = info.get("name", None) if isinstance(info, dict) else None
+            if not username:
+                return {"ok": False, "username": None, "error": "no_username"}
+            return {"ok": True, "username": username}
+        except ImportError:
+            return {"ok": False, "username": None, "error": "huggingface_hub_not_installed"}
+        except Exception:
+            return {"ok": False, "username": None, "error": "auth_failed"}
+
     # ─── API: HF Hub Dataset Search / Download ──────────────────────────────
     download_jobs: dict[str, dict] = {}
     download_jobs_lock = threading.Lock()
@@ -2205,6 +2735,9 @@ def create_app(
     async def api_motor_setup_start(data: dict):
         if proc_mgr.is_running("motor_setup"):
             return {"ok": False, "error": "Already running"}
+        conflicts = proc_mgr.conflicting_processes("motor_setup")
+        if conflicts:
+            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
         args = build_motor_setup_args(PYTHON, data)
         return {"ok": proc_mgr.start("motor_setup", args)}
 

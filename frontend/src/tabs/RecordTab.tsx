@@ -229,6 +229,10 @@ export function RecordTab({ active }: RecordTabProps) {
     right_follower_port: (config.right_follower_port as string) ?? '/dev/follower_arm_2',
     left_leader_port: (config.left_leader_port as string) ?? '/dev/leader_arm_1',
     right_leader_port: (config.right_leader_port as string) ?? '/dev/leader_arm_2',
+    left_robot_id: (config.left_robot_id as string) ?? 'my_so101_follower_1',
+    right_robot_id: (config.right_robot_id as string) ?? 'my_so101_follower_2',
+    left_teleop_id: (config.left_teleop_id as string) ?? 'my_so101_leader_1',
+    right_teleop_id: (config.right_teleop_id as string) ?? 'my_so101_leader_2',
     record_task: (config.record_task as string) ?? '',
     record_episodes: Number(config.record_episodes ?? 50),
     record_repo_id: (config.record_repo_id as string) ?? defaultRepoId,
@@ -262,6 +266,10 @@ export function RecordTab({ active }: RecordTabProps) {
     config.teleop_id,
     leaderArmIds,
   ])
+  const leftFollowerIdOptions = useMemo(() => uniq(['my_so101_follower_1', ...(config.left_robot_id ? [String(config.left_robot_id)] : []), ...followerArmIds]), [config.left_robot_id, followerArmIds])
+  const rightFollowerIdOptions = useMemo(() => uniq(['my_so101_follower_2', ...(config.right_robot_id ? [String(config.right_robot_id)] : []), ...followerArmIds]), [config.right_robot_id, followerArmIds])
+  const leftLeaderIdOptions = useMemo(() => uniq(['my_so101_leader_1', ...(config.left_teleop_id ? [String(config.left_teleop_id)] : []), ...leaderArmIds]), [config.left_teleop_id, leaderArmIds])
+  const rightLeaderIdOptions = useMemo(() => uniq(['my_so101_leader_2', ...(config.right_teleop_id ? [String(config.right_teleop_id)] : []), ...leaderArmIds]), [config.right_teleop_id, leaderArmIds])
 
   const feedCameras = useMemo(
     () =>
@@ -370,6 +378,14 @@ export function RecordTab({ active }: RecordTabProps) {
   const camerasReady = mappedCameraCount > 0
   const planReady = !repoError && totalEpisodes > 0
   const recordReady = planReady && camerasReady && armsReady && !conflictReason
+  const recordBlockers = useMemo(() => {
+    const blockers: string[] = []
+    if (!planReady) blockers.push(repoError || 'Plan is incomplete')
+    if (!camerasReady) blockers.push(mappedCameraCount === 0 ? 'No mapped cameras' : 'Mapped camera path unavailable')
+    if (!armsReady) blockers.push(`Missing arm ports (${missingArmPorts.length})`)
+    if (conflictReason) blockers.push(`${conflictReason} process running`)
+    return blockers
+  }, [planReady, repoError, camerasReady, mappedCameraCount, armsReady, missingArmPorts.length, conflictReason])
 
   const guardHint = conflictReason
     ? `${conflictReason} is running`
@@ -407,6 +423,20 @@ export function RecordTab({ active }: RecordTabProps) {
           </button>
         </div>
       </div>
+
+      {!running && !recordReady ? (
+        <div className="record-blocker-card">
+          <div className="dsub" style={{ marginBottom: 6 }}>Recording blocked:</div>
+          <div className="record-blocker-chip-row">
+            {recordBlockers.map((blocker) => (
+              <span key={blocker} className="dbadge badge-warn">{blocker}</span>
+            ))}
+          </div>
+          <div className="record-blocker-actions">
+            <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="two-col">
         <div className="card">
@@ -530,7 +560,7 @@ export function RecordTab({ active }: RecordTabProps) {
             </>
           ) : (
             <>
-              <label>Left Follower</label>
+              <label>Left Follower Port</label>
               <select value={(config.left_follower_port as string) ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)}>
                 {leftFollowerPortOpts.map((p) => (
                   <option key={p} value={p}>
@@ -538,7 +568,15 @@ export function RecordTab({ active }: RecordTabProps) {
                   </option>
                 ))}
               </select>
-              <label>Right Follower</label>
+              <label>Left Follower ID</label>
+              <select value={(config.left_robot_id as string) ?? 'my_so101_follower_1'} onChange={(e) => update('left_robot_id', e.target.value)}>
+                {leftFollowerIdOptions.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <label>Right Follower Port</label>
               <select value={(config.right_follower_port as string) ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)}>
                 {rightFollowerPortOpts.map((p) => (
                   <option key={p} value={p}>
@@ -546,7 +584,15 @@ export function RecordTab({ active }: RecordTabProps) {
                   </option>
                 ))}
               </select>
-              <label>Left Leader</label>
+              <label>Right Follower ID</label>
+              <select value={(config.right_robot_id as string) ?? 'my_so101_follower_2'} onChange={(e) => update('right_robot_id', e.target.value)}>
+                {rightFollowerIdOptions.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <label>Left Leader Port</label>
               <select value={(config.left_leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)}>
                 {leftLeaderPortOpts.map((p) => (
                   <option key={p} value={p}>
@@ -554,7 +600,15 @@ export function RecordTab({ active }: RecordTabProps) {
                   </option>
                 ))}
               </select>
-              <label>Right Leader</label>
+              <label>Left Leader ID</label>
+              <select value={(config.left_teleop_id as string) ?? 'my_so101_leader_1'} onChange={(e) => update('left_teleop_id', e.target.value)}>
+                {leftLeaderIdOptions.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <label>Right Leader Port</label>
               <select value={(config.right_leader_port as string) ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)}>
                 {rightLeaderPortOpts.map((p) => (
                   <option key={p} value={p}>
@@ -562,18 +616,25 @@ export function RecordTab({ active }: RecordTabProps) {
                   </option>
                 ))}
               </select>
+              <label>Right Leader ID</label>
+              <select value={(config.right_teleop_id as string) ?? 'my_so101_leader_2'} onChange={(e) => update('right_teleop_id', e.target.value)}>
+                {rightLeaderIdOptions.map((id) => (
+                  <option key={id} value={id}>
+                    {id}
+                  </option>
+                ))}
+              </select>
+              <div className="field-help">Arm ID selects the calibration profile for each arm.</div>
             </>
           )}
         </div>
 
         <div className="card">
           <h3>Step 3: Camera Feeds</h3>
-          {Object.keys(mappedCameras).length === 0 && (
-            <div className="field-help">
-              No cameras mapped yet.{' '}
-              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Go to Mapping</button>
-            </div>
-          )}
+        <div className="field-help" style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <span>Mapped cameras: {mappedCameraCount} · Feeds: {feedCameras.length}</span>
+          {mappedCameraCount === 0 ? <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button> : null}
+        </div>
           <MappedCameraRows mappedCameras={mappedCameras} />
           <details className="advanced-panel" style={{ marginTop: 12 }}>
             <summary>Advanced Stream Settings</summary>
@@ -620,7 +681,7 @@ export function RecordTab({ active }: RecordTabProps) {
         <div className="episode-progress-card">
           <div className="ep-card-title">Episode Progress</div>
           <div id="record-feeds" className="feed-grid">
-            {active ? feedCameras.map((camera) => {
+            {active && feedCameras.length > 0 ? feedCameras.map((camera) => {
               const streamSrc = `/stream/${camera.cam}?codec=${encodeURIComponent(streamCodec)}&width=${streamDims.width}&height=${streamDims.height}&fps=${encodeURIComponent(streamFps)}&quality=${streamQuality}`
               const stats = cameraStats[camera.cam]
               const fpsText = stats ? `${stats.fps.toFixed(1)} fps` : `${streamFps} fps`
@@ -651,24 +712,37 @@ export function RecordTab({ active }: RecordTabProps) {
                   </div>
                 </div>
               )
-            }) : null}
-          </div>
-          <div className="episode-status">
-            <div className="ep-label">Episodes</div>
-            <div className="ep-bar-wrap">
-              <div className="ep-bar" id="record-ep-bar" style={{ width: `${pct}%` }} />
-            </div>
-            <div className="ep-status-row">
-              <div className="ep-num">
-                <span id="record-ep-current">{running ? episodesDone : '—'}</span>
-                <span className="ep-sep"> / </span>
-                <span id="record-ep-total">{running ? totalEpisodes : '—'}</span>
+            }) : (
+              <div className="no-cameras-empty">
+                <div className="no-cam-text">
+                  No cameras detected.
+                  <br />
+                  Connect a camera and refresh.
+                </div>
+                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
               </div>
-              <div id="record-state-pill" className={`ep-state-pill ${running ? 'running' : 'idle'}`}>
-                {running ? 'Recording' : 'Idle'}
+            )}
+          </div>
+          {running || episodesDone > 0 ? (
+            <div className="episode-status">
+              <div className="ep-label">Episodes</div>
+              <div className="ep-bar-wrap">
+                <div className="ep-bar" id="record-ep-bar" style={{ width: `${pct}%` }} />
+              </div>
+              <div className="ep-status-row">
+                <div className="ep-num">
+                  <span id="record-ep-current">{running ? episodesDone : episodesDone}</span>
+                  <span className="ep-sep"> / </span>
+                  <span id="record-ep-total">{totalEpisodes}</span>
+                </div>
+                <div id="record-state-pill" className={`ep-state-pill ${running ? 'running' : 'idle'}`}>
+                  {running ? 'Recording' : 'Idle'}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="field-help" style={{ marginTop: 4 }}>No episodes yet. Start recording to begin progress tracking.</div>
+          )}
         </div>
       </div>
       <div className="record-sticky-controls">

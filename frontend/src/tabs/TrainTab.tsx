@@ -66,6 +66,7 @@ export function TrainTab({ active }: TrainTabProps) {
   const procStatus = useLeStudioStore((s) => s.procStatus)
   const conflictReason = getProcessConflict('train', procStatus)
   const prevInstallingRef = useRef(false)
+  const autoInstallCommandRef = useRef('')
 
   const trainLogs = useLeStudioStore((s) => s.logLines.train ?? EMPTY_TRAIN_LINES)
   const { config, buildConfig } = useConfig()
@@ -93,6 +94,11 @@ export function TrainTab({ active }: TrainTabProps) {
   const lossCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const trainSteps = Number(config.train_steps ?? 100000)
+  const trainBatchSize = useMemo(() => {
+    const parsed = Number(config.train_batch_size)
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed)
+    return 8
+  }, [config.train_batch_size])
   const localRepoId = useMemo(() => {
     const configured = (config.train_repo_id as string) ?? ''
     if (configured && datasets.some((ds) => ds.id === configured)) return configured
@@ -188,12 +194,18 @@ export function TrainTab({ active }: TrainTabProps) {
   const refreshPreflight = useCallback(async () => {
     const device = (config.train_device as string) ?? 'cuda'
     const res = await apiGet<{ ok: boolean; reason?: string; action?: string; command?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
-    setPreflightOk(!!res.ok)
-    setPreflightAction(res.action ?? '')
-    setPreflightReason(res.reason ?? '')
-    setPreflightCommand(res.command ?? '')
-    setSidebarSignals({ trainMissingDep: !res.ok })
-    return !!res.ok
+    const next = {
+      ok: !!res.ok,
+      action: res.action ?? '',
+      reason: res.reason ?? '',
+      command: res.command ?? '',
+    }
+    setPreflightOk(next.ok)
+    setPreflightAction(next.action)
+    setPreflightReason(next.reason)
+    setPreflightCommand(next.command)
+    setSidebarSignals({ trainMissingDep: !next.ok })
+    return next
   }, [config.train_device, setSidebarSignals])
 
   const installCudaTorch = async () => {
@@ -210,20 +222,29 @@ export function TrainTab({ active }: TrainTabProps) {
     }
   }
 
-  const runPreflightFix = async () => {
+  const runPreflightFix = useCallback(async (opts?: { auto?: boolean }) => {
     if (!preflightCommand) return
-    appendLog('train', `[INFO] Running: ${preflightCommand}`, 'info')
+    const isAuto = !!opts?.auto
+    if (isAuto && preflightAction === 'install_python_dep') {
+      appendLog('train', '[INFO] Auto-installing missing Python packages in background...', 'info')
+    } else {
+      appendLog('train', `[INFO] Running: ${preflightCommand}`, 'info')
+    }
     try {
       const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/install_torchcodec_fix', { command: preflightCommand })
       if (!res.ok) {
         appendLog('train', `[ERROR] ${res.error ?? 'Failed to start installer.'}`, 'error')
         return
       }
-      addToast('Fix installer started — check console for progress', 'info')
+      if (isAuto && preflightAction === 'install_python_dep') {
+        addToast('Auto-install started — check console for progress', 'info')
+      } else {
+        addToast('Fix installer started — check console for progress', 'info')
+      }
     } catch (e) {
       appendLog('train', `[ERROR] ${e instanceof Error ? e.message : 'Installer request failed.'}`, 'error')
     }
-  }
+  }, [addToast, appendLog, preflightAction, preflightCommand])
 
   useEffect(() => {
     if (!active) return
@@ -251,6 +272,18 @@ export function TrainTab({ active }: TrainTabProps) {
     }, 5000)
     return () => window.clearInterval(timer)
   }, [active, preflightOk, refreshPreflight])
+
+  useEffect(() => {
+    if (preflightOk) {
+      autoInstallCommandRef.current = ''
+      return
+    }
+    if (!active || installing) return
+    if (preflightAction !== 'install_python_dep' || !preflightCommand) return
+    if (autoInstallCommandRef.current === preflightCommand) return
+    autoInstallCommandRef.current = preflightCommand
+    void runPreflightFix({ auto: true })
+  }, [active, installing, preflightAction, preflightCommand, preflightOk, runPreflightFix])
 
   // OOM 감지: 로그에서 OutOfMemoryError 패턴 매칭
   useEffect(() => {
@@ -355,10 +388,18 @@ export function TrainTab({ active }: TrainTabProps) {
   const repoId = source === 'local' ? localRepoId : ((config.train_repo_id as string) ?? defaultRepoId)
   const noLocalDataset = source === 'local' && localRepoId === '__none__'
   const trainReady = preflightOk && !noLocalDataset && !conflictReason
+  const preflightFixLabel = preflightAction === 'install_python_dep' ? 'Install Missing Python Packages' : 'Run Fix'
   const startDisabled = starting || !trainReady
+  const trainBlockers = useMemo(() => {
+    const blockers: string[] = []
+    if (!preflightOk) blockers.push(preflightReason || 'Device preflight failed')
+    if (noLocalDataset) blockers.push('No local dataset selected')
+    if (conflictReason) blockers.push(`${conflictReason} process running`)
+    return blockers
+  }, [preflightOk, preflightReason, noLocalDataset, conflictReason])
 
   const reduceAndRetry = async () => {
-    const current = Number(config.train_batch_size) || 8
+    const current = trainBatchSize
     const next = Math.max(1, Math.floor(current / 2))
     await buildConfig({ train_batch_size: next })
     setOomDetected(false)
@@ -378,17 +419,26 @@ export function TrainTab({ active }: TrainTabProps) {
         train_repo_id: repoId,
         train_steps: Number(config.train_steps ?? 100000),
         train_device: (config.train_device as string) ?? 'cuda',
-        train_batch_size: Number(config.train_batch_size ?? 0) || undefined,
+        train_batch_size: trainBatchSize,
         train_lr: (config.train_lr as string) || undefined,
       }
       await buildConfig({ ...cfg, train_dataset_source: source })
       const preflight = await refreshPreflight()
-      if (!preflight) {
-        appendLog('train', '[ERROR] Device compatibility check failed.', 'error')
+      if (!preflight.ok) {
+        appendLog('train', `[ERROR] ${preflight.reason || 'Device compatibility check failed.'}`, 'error')
+        if (preflight.command) {
+          appendLog('train', `[INFO] Run Fix command: ${preflight.command}`, 'info')
+        }
         return
       }
-      const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/start', cfg)
+      const res = await apiPost<{ ok: boolean; error?: string; auto_install_started?: boolean }>('/api/train/start', cfg)
       if (!res.ok) {
+        if (res.auto_install_started) {
+          appendLog('train', `[INFO] ${res.error ?? 'Auto-install started. Retry training after installer finishes.'}`, 'info')
+          addToast('Auto-fix started in background', 'info')
+          await refreshPreflight()
+          return
+        }
         appendLog('train', `[ERROR] ${res.error ?? 'failed to start train'}`, 'error')
         return
       }
@@ -426,6 +476,27 @@ export function TrainTab({ active }: TrainTabProps) {
           {running ? 'Running' : trainReady ? 'Ready to Start' : 'Action Needed'}
         </span>
       </div>
+
+      {!running && !trainReady ? (
+        <div className="train-blocker-card">
+          <div className="dsub" style={{ marginBottom: 6 }}>Training blocked:</div>
+          <div className="train-blocker-chip-row">
+            {trainBlockers.map((blocker) => (
+              <span key={blocker} className="dbadge badge-warn">{blocker}</span>
+            ))}
+          </div>
+          <div className="train-blocker-actions">
+            {!preflightOk ? (
+              <button type="button" className="link-btn" onClick={() => buildConfig({ train_device: 'cpu' })}>→ Switch to CPU</button>
+            ) : null}
+            {!preflightOk && preflightAction === 'install_python_dep' && preflightCommand ? (
+              <button type="button" className="link-btn" onClick={() => { void runPreflightFix() }}>→ Install Missing Python Packages</button>
+            ) : null}
+            <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>→ Open Dataset</button>
+            <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Go to Record</button>
+          </div>
+        </div>
+      ) : null}
 
 
       <div className="quick-guide">
@@ -481,9 +552,9 @@ export function TrainTab({ active }: TrainTabProps) {
               <input type="text" value={(config.train_repo_id as string) ?? defaultRepoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
             </>
           )}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
+          <div className="train-steps-row">
             <label style={{ margin: 0 }}>Training Steps</label>
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="train-step-presets">
               <button className={`btn-xs${trainSteps === 1000 ? ' active' : ''}`} onClick={() => applyPreset('quick')}>
                 Quick (1K)
               </button>
@@ -496,22 +567,28 @@ export function TrainTab({ active }: TrainTabProps) {
             </div>
           </div>
           <input type="number" value={trainSteps} onChange={(e) => buildConfig({ train_steps: Number(e.target.value) })} />
+          <label>Batch Size</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={trainBatchSize}
+              onChange={(e) => {
+                const raw = e.target.value.trim()
+                if (!raw) return
+                const next = Number(raw)
+                if (!Number.isFinite(next) || next <= 0) return
+                buildConfig({ train_batch_size: Math.floor(next) })
+              }}
+              style={{ maxWidth: 160 }}
+            />
+          </div>
+          <div className="field-help" style={{ marginTop: 4 }}>Set any positive integer. If OOM occurs, lower this value and retry. This value is applied immediately when training starts.</div>
           <details className="advanced-panel" style={{ marginTop: 8 }}>
             <summary>Advanced Params</summary>
             <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <div>
-                  <label style={{ marginBottom: 3 }}>Batch Size</label>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    placeholder="default (64)"
-                    value={typeof config.train_batch_size === 'number' ? config.train_batch_size : ''}
-                    onChange={(e) => buildConfig({ train_batch_size: e.target.value.trim() ? Number(e.target.value) : undefined })}
-                  />
-                  <div className="field-help">Samples per gradient step.</div>
-                </div>
+              <div className="train-advanced-grid">
                 <div>
                   <label style={{ marginBottom: 3 }}>Learning Rate</label>
                   <input
@@ -546,10 +623,22 @@ export function TrainTab({ active }: TrainTabProps) {
           ) : null}
           {!preflightOk && preflightCommand && preflightAction !== 'install_torch_cuda' ? (
             <div id="train-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
-              <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock training:</div>
-              <button className="btn-primary" onClick={runPreflightFix}>
-                Run Fix
+              <div className="field-help" style={{ marginBottom: 6 }}>
+                {preflightAction === 'install_python_dep'
+                  ? 'Missing Python packages detected. Auto-install starts automatically.'
+                  : 'Recommended next step to unblock training:'}
+              </div>
+              {preflightAction !== 'install_python_dep' ? (
+                <div className="field-help" style={{ marginBottom: 8, fontFamily: 'var(--mono)' }}>{preflightCommand}</div>
+              ) : null}
+              <button className="btn-primary" onClick={() => { void runPreflightFix() }} disabled={installing}>
+                {installing ? 'Fix Running...' : preflightFixLabel}
               </button>
+              {installing ? (
+                <button className="btn-sm" style={{ marginLeft: 8 }} onClick={() => { void stopProcess('train') }}>
+                  Stop Fix
+                </button>
+              ) : null}
             </div>
           ) : null}
           <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
@@ -560,15 +649,29 @@ export function TrainTab({ active }: TrainTabProps) {
               </span>
             </div>
             <div className="usb-bus-bar-track">
-              <div id="train-progress-fill" className="usb-bar-fill good" style={{ width: `${progress.progressPct}%` }} />
+              <div
+                id="train-progress-fill"
+                className="usb-bar-fill good"
+                style={{ width: `${progress.progressPct}%` }}
+                role="progressbar"
+                aria-label="Training progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(progress.progressPct)}
+                aria-valuetext={`${Math.round(progress.progressPct)} percent`}
+              />
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text2)', gap: 10, flexWrap: 'wrap' }}>
-              <span>
-                Step: {progress.currentStep !== null ? progress.currentStep.toLocaleString() : '--'} / {progress.currentStep !== null && progress.totalSteps !== null ? (progress.totalSteps ?? trainSteps).toLocaleString() : '--'}
-              </span>
-              <span>Loss: {progress.latestLoss !== null ? progress.latestLoss.toFixed(4) : '--'}</span>
-              <span>ETA: {progress.etaText}</span>
-            </div>
+            {running || progress.currentStep !== null || progress.latestLoss !== null ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 12, color: 'var(--text2)', gap: 10, flexWrap: 'wrap' }}>
+                <span>
+                  Step: {progress.currentStep !== null ? progress.currentStep.toLocaleString() : '--'} / {progress.currentStep !== null && progress.totalSteps !== null ? (progress.totalSteps ?? trainSteps).toLocaleString() : '--'}
+                </span>
+                <span>Loss: {progress.latestLoss !== null ? progress.latestLoss.toFixed(4) : '--'}</span>
+                <span>ETA: {progress.etaText}</span>
+              </div>
+            ) : (
+              <div className="field-help" style={{ marginTop: 8 }}>No training signal yet. Start training to see step/loss/ETA metrics.</div>
+            )}
             {running && (
               <div style={{ marginTop: 8, border: '1px solid var(--border)', borderRadius: 6, padding: 8, background: 'var(--bg3)' }}>
                 <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>Loss Trend</div>
@@ -596,7 +699,7 @@ export function TrainTab({ active }: TrainTabProps) {
               {checkpointsLoading ? (
               checkpointsTimedOut ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="muted" style={{ color: 'var(--red)' }}>Failed to load checkpoints</span>
+                  <span className="muted">Couldn't load checkpoints</span>
                   <button className="btn-xs" onClick={refreshCheckpoints}>Retry</button>
                 </div>
               ) : (
@@ -626,7 +729,7 @@ export function TrainTab({ active }: TrainTabProps) {
               {!gpuStatus ? (
                 gpuTimedOut ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span className="muted" style={{ color: 'var(--red)' }}>Failed to load GPU info</span>
+                    <span className="muted">Couldn't load GPU info</span>
                     <button className="btn-xs" onClick={refreshGpu}>Retry</button>
                   </div>
                 ) : (
@@ -666,7 +769,7 @@ export function TrainTab({ active }: TrainTabProps) {
       </div>
       {oomDetected && !running ? (
         <div className="train-device-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', maxWidth: 600 }}>
-          <span>GPU out of memory. Current batch size: {Number(config.train_batch_size) || 8}. Reduce to {Math.max(1, Math.floor((Number(config.train_batch_size) || 8) / 2))} and retry?</span>
+          <span>GPU out of memory. Current batch size: {trainBatchSize}. Reduce to {Math.max(1, Math.floor(trainBatchSize / 2))} and retry?</span>
           <button className="btn-sm" style={{ flexShrink: 0 }} onClick={reduceAndRetry}>
             Reduce &amp; Retry
           </button>
