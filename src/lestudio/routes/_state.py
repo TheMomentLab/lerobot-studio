@@ -26,6 +26,14 @@ class AppState:
     push_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
     download_jobs: dict = field(default_factory=dict)
     download_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
+    derive_jobs: dict = field(default_factory=dict)
+    derive_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
+    derive_procs: dict = field(default_factory=dict)
+    derive_procs_lock: threading.Lock = field(default_factory=threading.Lock)
+    stats_jobs: dict = field(default_factory=dict)
+    stats_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
+    stats_cancel_events: dict = field(default_factory=dict)
+    stats_cancel_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def load_config(self) -> dict:
         return _load_config(self.config_path)

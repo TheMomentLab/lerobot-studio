@@ -58,6 +58,7 @@ export function RecordTab({ active }: RecordTabProps) {
   const defaultRepoId = `${hfUsername ?? 'user'}/my-dataset`
   const [mode, setMode] = useState<'single' | 'bi'>('single')
   const [episodesDone, setEpisodesDone] = useState(0)
+  const episodeBaseRef = useRef(-1)  // absolute episode index at session start; -1 = not yet seen
   const [followerArmIds, setFollowerArmIds] = useState<string[]>(['my_so101_follower_1'])
   const [leaderArmIds, setLeaderArmIds] = useState<string[]>(['my_so101_leader_1'])
   const [streamCodec, setStreamCodec] = useState('MJPG')
@@ -212,7 +213,11 @@ export function RecordTab({ active }: RecordTabProps) {
     if (!active) return
     const latest = recordLines.at(-1)?.text ?? ''
     const match = latest.match(/[Ee]pisode[\s_](?:index=)?(\d+)/)
-    if (match) setEpisodesDone(Number(match[1]))
+    if (match) {
+      const abs = Number(match[1])
+      if (episodeBaseRef.current < 0) episodeBaseRef.current = abs
+      setEpisodesDone(abs - episodeBaseRef.current)
+    }
   }, [active, recordLines])
 
   const update = (key: string, value: string | number | boolean) => {
@@ -239,6 +244,7 @@ export function RecordTab({ active }: RecordTabProps) {
     record_episodes: Number(config.record_episodes ?? 50),
     record_repo_id: (config.record_repo_id as string) ?? defaultRepoId,
     record_resume: Boolean(config.record_resume),
+    record_push_to_hub: Boolean(config.record_push_to_hub),
     cameras: mappedCameras,
   })
 
@@ -311,7 +317,7 @@ export function RecordTab({ active }: RecordTabProps) {
     }
     const ok = await runPreflight(cfg, 'record')
     if (!ok) return
-    setEpisodesDone(0)
+    episodeBaseRef.current = -1
     const res = await apiPost<{ ok: boolean; error?: string; resume_requested?: boolean; resume_enabled?: boolean }>('/api/record/start', cfg)
     if (!res.ok) {
       appendLog('record', `[ERROR] ${res.error ?? 'failed to start'}`, 'error')
@@ -492,6 +498,19 @@ export function RecordTab({ active }: RecordTabProps) {
               Resume existing dataset if it already exists
             </label>
             Prevents crash when the target dataset folder already exists.
+          </div>
+          <div className="field-help" style={{ marginTop: 6, marginBottom: 0 }}>
+            <label htmlFor="record-push-to-hub" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 12, color: 'var(--text)' }}>
+              <input
+                id="record-push-to-hub"
+                type="checkbox"
+                checked={Boolean(config.record_push_to_hub)}
+                onChange={(e) => update('record_push_to_hub', e.target.checked)}
+                style={{ width: 'auto' }}
+              />
+              Push to Hugging Face Hub after recording
+            </label>
+            Automatically uploads the dataset when recording completes. Off by default.
           </div>
           <label>Task Description <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
           <input

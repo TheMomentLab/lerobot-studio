@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { DatasetCurationPanel } from '../components/dataset/DatasetCurationPanel'
+import { DatasetAutoFlagPanel } from '../components/dataset/DatasetAutoFlagPanel'
 import { apiDelete, apiGet, apiPost } from '../lib/api'
 import type { DatasetDetail, DatasetListItem } from '../lib/types'
 import { useLeStudioStore } from '../store'
@@ -100,11 +102,17 @@ interface HFTokenMutationResponse {
 
 const clampPercent = (value: number) => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0))
 const DATASET_AUTO_NEXT_STORAGE_KEY = 'lestudio-dataset-auto-next-on-tag'
+const EP_SELECT_PAGE_SIZE = 100
 
 const parseDatasetId = (id: string): { user: string; repo: string } | null => {
   const [user, repo] = id.split('/')
   if (!user || !repo) return null
   return { user, repo }
+}
+
+const compactCameraLabel = (cameraName: string): string => {
+  const parts = cameraName.split('.')
+  return parts.length > 0 ? parts[parts.length - 1] : cameraName
 }
 
 export function DatasetTab({ active }: DatasetTabProps) {
@@ -119,6 +127,8 @@ export function DatasetTab({ active }: DatasetTabProps) {
   const [selectedEpisode, setSelectedEpisode] = useState<number>(0)
   const [tags, setTags] = useState<Record<string, 'good' | 'bad' | 'review'>>({})
   const [filter, setFilter] = useState<TagFilter>('all')
+  const [episodeQuery, setEpisodeQuery] = useState('')
+  const [episodePage, setEpisodePage] = useState(1)
   const [autoNextOnTag, setAutoNextOnTag] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem(DATASET_AUTO_NEXT_STORAGE_KEY) === '1'
@@ -319,6 +329,8 @@ export function DatasetTab({ active }: DatasetTabProps) {
     try {
       const detail = await apiGet<DatasetDetail>(`/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}`)
       setSelected(detail)
+      setEpisodeQuery('')
+      setEpisodePage(1)
       setPushStatus({ visible: false, status: 'idle', phase: 'idle', progress: 0, note: '' })
       setPushJobId('')
       setQuality(null)
@@ -336,6 +348,15 @@ export function DatasetTab({ active }: DatasetTabProps) {
     }
   }
 
+  const reloadTags = useCallback(async () => {
+    if (!selected) return
+    const [u, r] = selected.dataset_id.split('/')
+    const tagRes = await apiGet<{ ok: boolean; tags: Record<string, 'good' | 'bad' | 'review'> }>(
+      `/api/datasets/${encodeURIComponent(u)}/${encodeURIComponent(r)}/tags`,
+    )
+    setTags(tagRes.ok ? tagRes.tags ?? {} : {})
+  }, [selected])
+
   const filteredEpisodes = useMemo(() => {
     if (!selected) return []
     if (filter === 'all') return selected.episodes
@@ -345,10 +366,62 @@ export function DatasetTab({ active }: DatasetTabProps) {
     })
   }, [selected, filter, tags])
 
+  const searchedEpisodes = useMemo(() => {
+    const q = episodeQuery.trim()
+    if (!q) return filteredEpisodes
+    return filteredEpisodes.filter((ep) => String(ep.episode_index).includes(q))
+  }, [filteredEpisodes, episodeQuery])
+
+  const episodePageCount = useMemo(
+    () => Math.max(1, Math.ceil(searchedEpisodes.length / EP_SELECT_PAGE_SIZE)),
+    [searchedEpisodes],
+  )
+
+  const pagedEpisodes = useMemo(() => {
+    const safePage = Math.max(1, Math.min(episodePage, episodePageCount))
+    const from = (safePage - 1) * EP_SELECT_PAGE_SIZE
+    const to = from + EP_SELECT_PAGE_SIZE
+    return searchedEpisodes.slice(from, to)
+  }, [searchedEpisodes, episodePage, episodePageCount])
+
   const selectedEpisodeData = useMemo(() => {
     if (!selected) return null
     return selected.episodes.find((ep) => ep.episode_index === selectedEpisode) ?? null
   }, [selected, selectedEpisode])
+
+  const selectedEpisodeIsUntagged = !Object.prototype.hasOwnProperty.call(tags, String(selectedEpisode))
+  const selectedEpisodeTag: 'good' | 'bad' | 'review' | 'untagged' = selectedEpisodeIsUntagged
+    ? 'untagged'
+    : tags[String(selectedEpisode)]
+
+  const episodeSummaryText = useMemo(() => {
+    const hasSearch = episodeQuery.trim() !== ''
+    const hasTagFilter = filter !== 'all'
+    const hasPaging = episodePageCount > 1
+    if (!hasSearch && !hasTagFilter && !hasPaging) return ''
+
+    const parts: string[] = []
+    if (hasPaging) {
+      parts.push(`Showing ${pagedEpisodes.length} of ${searchedEpisodes.length}`)
+    } else {
+      parts.push(`${searchedEpisodes.length} episodes`)
+    }
+    if (hasTagFilter) {
+      parts.push(`tag: ${filter}`)
+    }
+    if (hasSearch) {
+      parts.push('search active')
+    }
+    return parts.join(' · ')
+  }, [episodeQuery, filter, episodePageCount, pagedEpisodes.length, searchedEpisodes.length])
+
+  const cameraBadges = useMemo(() => {
+    if (!selected) return []
+    return selected.cameras.map((cameraName) => ({
+      full: cameraName,
+      compact: compactCameraLabel(cameraName),
+    }))
+  }, [selected])
 
   const latestDatasetId = useMemo(() => {
     if (!datasets.length) return ''
@@ -373,9 +446,48 @@ export function DatasetTab({ active }: DatasetTabProps) {
   }, [filteredEpisodes, selectedEpisode])
 
   useEffect(() => {
+    if (searchedEpisodes.length === 0) return
+    if (!searchedEpisodes.some((ep) => ep.episode_index === selectedEpisode)) {
+      setSelectedEpisode(searchedEpisodes[0].episode_index)
+    }
+  }, [searchedEpisodes, selectedEpisode])
+
+  useEffect(() => {
+    setEpisodePage(1)
+  }, [selected?.dataset_id, filter, episodeQuery])
+
+  useEffect(() => {
+    if (episodePage > episodePageCount) {
+      setEpisodePage(episodePageCount)
+    }
+  }, [episodePage, episodePageCount])
+
+  useEffect(() => {
+    if (searchedEpisodes.length === 0) return
+    const idx = searchedEpisodes.findIndex((ep) => ep.episode_index === selectedEpisode)
+    if (idx < 0) return
+    const expectedPage = Math.floor(idx / EP_SELECT_PAGE_SIZE) + 1
+    if (expectedPage !== episodePage) {
+      setEpisodePage(expectedPage)
+    }
+  }, [searchedEpisodes, selectedEpisode, episodePage])
+
+  useEffect(() => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(DATASET_AUTO_NEXT_STORAGE_KEY, autoNextOnTag ? '1' : '0')
   }, [autoNextOnTag])
+
+  const jumpEpisodePage = useCallback((targetPage: number) => {
+    if (searchedEpisodes.length === 0) return
+    const safePage = Math.max(1, Math.min(targetPage, episodePageCount))
+    if (safePage === episodePage) return
+    const from = (safePage - 1) * EP_SELECT_PAGE_SIZE
+    const targetEpisode = searchedEpisodes[from]
+    setEpisodePage(safePage)
+    if (targetEpisode) {
+      setSelectedEpisode(targetEpisode.episode_index)
+    }
+  }, [searchedEpisodes, episodePageCount, episodePage])
 
   const tagEpisode = async (tag: 'good' | 'bad' | 'review' | 'untagged') => {
     if (!selected) return
@@ -913,13 +1025,31 @@ export function DatasetTab({ active }: DatasetTabProps) {
             </div>
           ) : (
             <div id="dataset-detail-view" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <div className="dataset-detail-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div>
                   <h3 id="ds-title" style={{ marginBottom: 4 }}>
                     {selected.dataset_id}
                   </h3>
-                  <div id="ds-stats" className="muted" style={{ fontSize: 13 }}>
-                    {selected.total_episodes} episodes · {selected.total_frames} frames · {selected.fps} FPS · Cameras: {selected.cameras.join(', ') || 'None'}
+                  <div id="ds-stats" className="muted dataset-detail-stats" style={{ fontSize: 13 }}>
+                    {selected.total_episodes} episodes · {selected.total_frames} frames · {selected.fps} FPS
+                  </div>
+                  <div className="dataset-camera-row">
+                    <span className="muted">Cameras</span>
+                    <div className="dataset-camera-chip-list">
+                      {cameraBadges.length === 0 ? (
+                        <span className="muted" style={{ fontSize: 12 }}>None</span>
+                      ) : (
+                        cameraBadges.map((camera) => (
+                          <span
+                            key={camera.full}
+                            className="dbadge badge-idle dataset-camera-chip"
+                            title={camera.full}
+                          >
+                            {camera.compact}
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div id="ds-detail-actions">
@@ -940,12 +1070,6 @@ export function DatasetTab({ active }: DatasetTabProps) {
                     </div>
                   </details>
                 </div>
-              </div>
-
-              <div className="dataset-quick-actions">
-                <button className="btn-xs" onClick={() => void inspectQuality(selected.dataset_id)}>Inspect Quality</button>
-                <button className="btn-xs ds-action-btn-push" onClick={() => void pushToHub(selected.dataset_id)}>Push to Hub</button>
-                <button className="btn-xs ds-action-btn-danger" onClick={() => void deleteDataset(selected.dataset_id)}>Delete</button>
               </div>
 
               {!quality ? (
@@ -1012,30 +1136,93 @@ export function DatasetTab({ active }: DatasetTabProps) {
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label>Episode:</label>
-                <select id="ds-ep-select" value={selectedEpisode} onChange={(e) => setSelectedEpisode(Number(e.target.value))} style={{ flex: 1, minWidth: 160 }}>
-                  {filteredEpisodes.map((ep) => (
-                    <option key={ep.episode_index} value={ep.episode_index}>
-                      Episode {ep.episode_index} ({ep.length ?? 0} frames)
-                    </option>
-                  ))}
-                </select>
-                <span className={`dbadge ${
-                  (tags[String(selectedEpisode)] ?? 'untagged') === 'good' ? 'badge-ok'
-                    : (tags[String(selectedEpisode)] ?? 'untagged') === 'bad' ? 'badge-err'
-                    : (tags[String(selectedEpisode)] ?? 'untagged') === 'review' ? 'badge-warn'
-                    : 'badge-idle'
-                }`}>
-                  {tags[String(selectedEpisode)] ?? 'untagged'}
-                </span>
-                <select id="ds-tag-filter" value={filter} onChange={(e) => setFilter(e.target.value as TagFilter)}>
-                  <option value="all">All episodes</option>
-                  <option value="good">👍 Good</option>
-                  <option value="bad">👎 Bad</option>
-                  <option value="review">🔍 Review</option>
-                  <option value="untagged">Untagged</option>
-                </select>
+
+              <div className="dataset-episode-controls">
+                <div className="dataset-episode-row dataset-episode-row-primary">
+                  <label htmlFor="ds-ep-select">Episode</label>
+                  <select
+                    id="ds-ep-select"
+                    className="dataset-episode-select"
+                    value={selectedEpisode}
+                    onChange={(e) => setSelectedEpisode(Number(e.target.value))}
+                    style={{ flex: 1, minWidth: 220 }}
+                  >
+                    {pagedEpisodes.length > 0 ? (
+                      pagedEpisodes.map((ep) => (
+                        <option key={ep.episode_index} value={ep.episode_index}>
+                          Episode {ep.episode_index} ({ep.length ?? 0} frames)
+                        </option>
+                      ))
+                    ) : (
+                      <option value={selectedEpisode}>No matching episodes</option>
+                    )}
+                  </select>
+
+                  <div className="dataset-page-nav" aria-label="Episode page navigation">
+                  <button
+                    className="btn-xs dataset-ep-nav-btn"
+                    title="Previous page"
+                    onClick={() => jumpEpisodePage(episodePage - 1)}
+                    disabled={episodePage <= 1}
+                  >
+                    Prev {EP_SELECT_PAGE_SIZE}
+                  </button>
+                  <button
+                    className="btn-xs dataset-ep-nav-btn"
+                    title="Next page"
+                    onClick={() => jumpEpisodePage(episodePage + 1)}
+                    disabled={episodePage >= episodePageCount}
+                  >
+                    Next {EP_SELECT_PAGE_SIZE}
+                  </button>
+                    <span className="muted dataset-page-indicator">
+                      Page {episodePage}/{episodePageCount}
+                    </span>
+                  </div>
+
+                  <span className={`dbadge dataset-episode-tag-badge ${
+                    selectedEpisodeTag === 'good' ? 'badge-ok'
+                      : selectedEpisodeTag === 'bad' ? 'badge-err'
+                      : selectedEpisodeTag === 'review' ? 'badge-warn'
+                      : 'badge-idle'
+                  }`}>
+                    {selectedEpisodeTag}
+                  </span>
+                </div>
+
+                <div className="dataset-episode-row dataset-episode-row-secondary">
+                  <div className="dataset-secondary-fields">
+                    <div className="dataset-inline-field">
+                      <label htmlFor="ds-ep-query">Find</label>
+                      <input
+                        id="ds-ep-query"
+                        type="text"
+                        value={episodeQuery}
+                        onChange={(e) => setEpisodeQuery(e.target.value)}
+                        placeholder="episode index"
+                      />
+                    </div>
+
+                    <div className="dataset-inline-field">
+                      <label htmlFor="ds-tag-filter">Filter</label>
+                      <select id="ds-tag-filter" value={filter} onChange={(e) => setFilter(e.target.value as TagFilter)}>
+                        <option value="all">All episodes</option>
+                        <option value="good">👍 Good</option>
+                        <option value="bad">👎 Bad</option>
+                        <option value="review">🔍 Review</option>
+                        <option value="untagged">Untagged</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {episodeSummaryText ? (
+                    <div className="dataset-episode-summary">
+                      <span className="muted dataset-episode-count">
+                        {episodeSummaryText}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               <div id="ds-video-grid" className="video-preview-grid" ref={videoContainerRef} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
@@ -1130,21 +1317,39 @@ export function DatasetTab({ active }: DatasetTabProps) {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-                <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>Tag:</span>
-                <button id="ds-tag-good" className="btn-xs" onClick={() => tagEpisode('good')}>
-                  👍 Good
-                </button>
-                <button id="ds-tag-bad" className="btn-xs" onClick={() => tagEpisode('bad')}>
-                  👎 Bad
-                </button>
-                <button id="ds-tag-review" className="btn-xs" onClick={() => tagEpisode('review')}>
-                  🔍 Review
-                </button>
-                <button id="ds-tag-clear" className="btn-xs" onClick={() => tagEpisode('untagged')}>
-                  ✕ Clear
-                </button>
-                <label htmlFor="ds-auto-next" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 4, fontSize: 11, color: 'var(--text2)' }}>
+              <div className="dataset-tag-row">
+                <span className="dataset-tag-label">Tag</span>
+                <div className="dataset-tag-actions">
+                  <button
+                    id="ds-tag-good"
+                    className={`btn-xs dataset-tag-btn ${selectedEpisodeTag === 'good' ? 'active' : ''}`}
+                    onClick={() => tagEpisode('good')}
+                  >
+                    👍 Good
+                  </button>
+                  <button
+                    id="ds-tag-bad"
+                    className={`btn-xs dataset-tag-btn ${selectedEpisodeTag === 'bad' ? 'active' : ''}`}
+                    onClick={() => tagEpisode('bad')}
+                  >
+                    👎 Bad
+                  </button>
+                  <button
+                    id="ds-tag-review"
+                    className={`btn-xs dataset-tag-btn ${selectedEpisodeTag === 'review' ? 'active' : ''}`}
+                    onClick={() => tagEpisode('review')}
+                  >
+                    🔍 Review
+                  </button>
+                  <button
+                    id="ds-tag-clear"
+                    className={`btn-xs dataset-tag-btn ${selectedEpisodeIsUntagged ? 'active' : ''}`}
+                    onClick={() => tagEpisode('untagged')}
+                  >
+                    ✕ Clear
+                  </button>
+                </div>
+                <label htmlFor="ds-auto-next" className="dataset-auto-next">
                   <input
                     id="ds-auto-next"
                     type="checkbox"
@@ -1155,6 +1360,29 @@ export function DatasetTab({ active }: DatasetTabProps) {
                   Auto-next after tag
                 </label>
               </div>
+
+              {selected && (
+                <DatasetAutoFlagPanel
+                  datasetId={selected.dataset_id}
+                  totalEpisodes={selected.total_episodes}
+                  onTagsChanged={reloadTags}
+                />
+              )}
+
+              {selected && (
+                <DatasetCurationPanel
+                  filteredEpisodes={filteredEpisodes}
+                  allEpisodes={selected.episodes}
+                  tags={tags}
+                  totalEpisodes={selected.total_episodes}
+                  datasetId={selected.dataset_id}
+                  onDerived={(newRepoId) => {
+                    void refreshList().then(() => {
+                      void loadDataset(newRepoId)
+                    })
+                  }}
+                />
+              )}
             </div>
           )}
         </div>

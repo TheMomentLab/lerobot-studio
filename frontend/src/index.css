@@ -2610,6 +2610,211 @@ kbd {
   flex-wrap: wrap;
 }
 
+.dataset-detail-header {
+  margin-bottom: 2px;
+}
+
+.dataset-detail-stats {
+  margin-bottom: 6px;
+}
+
+.dataset-camera-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dataset-camera-chip-list {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dataset-camera-chip {
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.dataset-episode-controls {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--bg3) 64%, transparent);
+  display: grid;
+  gap: 8px;
+}
+
+.dataset-episode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dataset-episode-row-secondary {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.dataset-episode-row label {
+  margin: 0;
+  font-size: 11px;
+}
+
+.dataset-secondary-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(220px, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+.dataset-inline-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.dataset-inline-field label {
+  margin: 0;
+  font-size: 11px;
+}
+
+.dataset-inline-field input,
+.dataset-inline-field select {
+  width: 100%;
+}
+
+.dataset-page-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg3) 74%, transparent);
+}
+
+.dataset-page-indicator {
+  margin-bottom: 0;
+  font-size: 11px;
+  min-width: 56px;
+  text-align: center;
+}
+
+.dataset-ep-nav-btn {
+  min-width: 72px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg2) 82%, transparent);
+  color: var(--text2);
+  padding: 3px 9px;
+}
+
+.dataset-episode-select {
+  min-width: 240px;
+}
+
+.dataset-episode-tag-badge {
+  text-transform: capitalize;
+}
+
+.dataset-episode-page-indicator,
+.dataset-episode-count {
+  margin-bottom: 0;
+  font-size: 11px;
+}
+
+.dataset-episode-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.dataset-episode-count {
+  text-align: right;
+}
+
+.dataset-tag-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.dataset-tag-label {
+  font-size: 11px;
+  color: var(--text2);
+  min-width: 28px;
+}
+
+.dataset-tag-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dataset-tag-btn {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg3) 88%, transparent);
+  color: var(--text2);
+  padding: 3px 10px;
+}
+
+.dataset-tag-btn.active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg3));
+}
+
+.dataset-auto-next {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0 4px;
+  font-size: 11px;
+  color: var(--text2);
+}
+
+@media (max-width: 900px) {
+  .dataset-detail-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  #ds-detail-actions {
+    align-self: flex-end;
+  }
+
+  .dataset-episode-select {
+    min-width: 180px;
+  }
+
+  .dataset-secondary-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .dataset-page-nav {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dataset-episode-summary {
+    width: 100%;
+  }
+}
+
 
 /* ─── Teleop Arm Grid (#10) ──────────────────────────────────────────────── */
 .teleop-arm-grid {

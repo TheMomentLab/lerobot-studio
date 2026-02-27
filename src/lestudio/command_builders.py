@@ -78,6 +78,7 @@ def build_record_args(python_exe: str, cfg: dict, resume_enabled: bool) -> list[
         f'--dataset.single_task={cfg.get("record_task", "task")}',
         "--display_data=false",
         "--dataset.vcodec=h264",
+        "--dataset.push_to_hub=true" if cfg.get("record_push_to_hub") else "--dataset.push_to_hub=false",
     ]
     if resume_enabled:
         base.append("--resume=true")
@@ -249,4 +250,28 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
     if task:
         args.append(f"--env.task={task}")
 
+    return args
+
+
+def build_derive_args(python_exe: str, cfg: dict) -> list[str]:
+    """Build args for lerobot_edit_dataset delete_episodes to derive a new dataset.
+
+    cfg keys:
+      source_repo_id  – original dataset (user/repo)
+      new_repo_id     – target dataset   (user/new-repo)
+      delete_indices  – list[int] episode indices to remove
+      root            – optional local cache root override
+    """
+    delete_indices = cfg.get("delete_indices", [])
+    args = [
+        python_exe, "-m", "lerobot.scripts.lerobot_edit_dataset",
+        f'--repo_id={cfg["source_repo_id"]}',
+        f'--new_repo_id={cfg["new_repo_id"]}',
+        "--operation.type=delete_episodes",
+        f"--operation.episode_indices={delete_indices}",
+        "--push_to_hub=false",
+    ]
+    root = cfg.get("root")
+    if root:
+        args.append(f"--root={root}")
     return args
