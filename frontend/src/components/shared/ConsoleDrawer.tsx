@@ -426,6 +426,19 @@ export function ConsoleDrawer() {
     [setActiveTab],
   )
 
+  const handleCopy = useCallback(
+    (n?: number) => {
+      const target = n ? lines.slice(-n) : lines
+      const text = target.map((l) => l.text).join('\n')
+      navigator.clipboard.writeText(text).then(() => {
+        addToast(`Copied ${target.length} line${target.length !== 1 ? 's' : ''}`, 'success')
+      }).catch(() => {
+        addToast('Failed to copy to clipboard', 'error')
+      })
+    },
+    [lines, addToast],
+  )
+
   return (
     <section
       id="console-drawer"
@@ -477,6 +490,27 @@ export function ConsoleDrawer() {
           <span className={`dbadge ${stateBadgeClass}`}>{processState}</span>
         </div>
         <div className="console-actions">
+          <div className="copy-actions">
+            <span className="copy-label">Copy</span>
+            <button
+              className="btn-xs btn-copy"
+              title="Copy all log lines"
+              onClick={(e) => { e.stopPropagation(); handleCopy() }}
+            >
+              All
+            </button>
+            {([20, 50, 100] as const).map((n) => (
+              <button
+                key={n}
+                className="btn-xs btn-copy copy-last-btn"
+                title={`Copy last ${n} lines`}
+                onClick={(e) => { e.stopPropagation(); handleCopy(n) }}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <span className="console-action-sep" />
           <button
             className="btn-xs"
             onClick={(e) => {

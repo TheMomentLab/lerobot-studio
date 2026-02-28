@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { getProcessConflict } from '../lib/processConflicts'
+import { useMappedCameras } from '../hooks/useMappedCameras'
 import { useConfig } from '../hooks/useConfig'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
@@ -19,6 +20,16 @@ interface CheckpointItem {
   path: string
   display?: string
   step?: number | null
+  env_type?: string | null
+  env_task?: string | null
+  image_keys?: string[]
+}
+
+interface EnvTypeItem {
+  type: string
+  label: string
+  module: string
+  installed: boolean
 }
 
 type EvalProgressStatus = 'idle' | 'starting' | 'running' | 'stopped' | 'completed' | 'error'
@@ -28,7 +39,7 @@ interface EpisodeReward {
   reward: number
 }
 
-const COMPLETE_MARKER = /evaluation complete|end of evaluation|eval complete/i
+const COMPLETE_MARKER = /evaluation complete|end of evaluation|eval complete|end of eval/i
 const END_MARKER = /\[eval process ended\]/i
 const ERROR_MARKER = /\[ERROR\]|Traceback|RuntimeError|Exception|failed/i
 
@@ -73,9 +84,13 @@ export function EvalTab({ active }: EvalTabProps) {
   const addToast = useLeStudioStore((s) => s.addToast)
   const setActiveTab = useLeStudioStore((s) => s.setActiveTab)
   const hfUsername = useLeStudioStore((s) => s.hfUsername)
+  const { mappedCameras } = useMappedCameras()
+  const mappedCamEntries = useMemo(() => Object.entries(mappedCameras), [mappedCameras])
+  // Camera mapping: checkpoint image_key → mapped camera symlink
+  const [cameraMapping, setCameraMapping] = useState<Record<string, string>>({})
   const [checkpoints, setCheckpoints] = useState<CheckpointItem[]>([])
   const [policySource, setPolicySource] = useState<'local' | 'hf'>('local')
-  const [datasetSource, setDatasetSource] = useState<'local' | 'hf'>('local')
+  const [datasetSource, setDatasetSource] = useState<'local' | 'hf'>('hf')
   const [datasets, setDatasets] = useState<DatasetListItem[]>([])
   const [progressStatus, setProgressStatus] = useState<EvalProgressStatus>('idle')
   const [doneEpisodes, setDoneEpisodes] = useState(0)
@@ -94,6 +109,9 @@ export function EvalTab({ active }: EvalTabProps) {
   const perEpisodeRewardRef = useRef<Record<number, number>>({})
   const autoInstallCommandRef = useRef('')
   const [preflightOk, setPreflightOk] = useState(true)
+  const [gymInstallCommand, setGymInstallCommand] = useState('')
+  const [gymModuleName, setGymModuleName] = useState('')
+  const [envTypes, setEnvTypes] = useState<EnvTypeItem[]>([])
 
   const [preflightReason, setPreflightReason] = useState('')
   const [preflightAction, setPreflightAction] = useState('')
@@ -130,6 +148,21 @@ export function EvalTab({ active }: EvalTabProps) {
     }
   }
 
+  const installGymPlugin = async () => {
+    if (!gymInstallCommand) return
+    appendLog('eval', `[INFO] Installing ${gymModuleName}: ${gymInstallCommand}`, 'info')
+    try {
+      const res = await apiPost<{ ok: boolean; error?: string }>('/api/train/install_torchcodec_fix', { command: gymInstallCommand })
+      if (!res.ok) {
+        appendLog('eval', `[ERROR] ${res.error ?? 'Failed to start gym plugin installer.'}`, 'error')
+        return
+      }
+      addToast(`Installing ${gymModuleName} — check console`, 'info')
+    } catch (e) {
+      appendLog('eval', `[ERROR] ${e instanceof Error ? e.message : 'Installer request failed.'}`, 'error')
+    }
+  }
+
   const runPreflightFix = useCallback(async (opts?: { auto?: boolean }) => {
     if (!preflightCommand) return
     const isAuto = !!opts?.auto
@@ -157,32 +190,52 @@ export function EvalTab({ active }: EvalTabProps) {
   const totalEpisodes = Number(config.eval_episodes ?? 10)
   const progressTotal = targetEpisodes && targetEpisodes > 0 ? targetEpisodes : null
   const progressPct = Math.max(0, Math.min(100, progressTotal ? (doneEpisodes / progressTotal) * 100 : 0))
+  const configuredDatasetId = useMemo(() => {
+    const configured = ((config.eval_repo_id as string) ?? '').trim()
+    if (configured === 'user/my-dataset' || configured === '__none__') return ''
+    return configured
+  }, [config.eval_repo_id])
   const localDatasetId = useMemo(() => {
-    const configured = (config.eval_repo_id as string) ?? ''
+    const configured = configuredDatasetId
     if (configured && datasets.some((ds) => ds.id === configured)) return configured
-    return datasets[0]?.id ?? '__none__'
-  }, [config.eval_repo_id, datasets])
-  const repoId = datasetSource === 'local' ? localDatasetId : ((config.eval_repo_id as string) ?? '')
+    return '__none__'
+  }, [configuredDatasetId, datasets])
+  const repoId = datasetSource === 'local'
+    ? (localDatasetId === '__none__' ? '' : localDatasetId)
+    : configuredDatasetId
   const repoError = useMemo(() => {
-    if (datasetSource === 'local') return ''
     const repo = repoId.trim()
-    if (!repo) return 'Dataset Repo ID is required'
+    if (!repo) return ''
     if (!/^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repo)) return 'Dataset Repo ID must be username/dataset format.'
     return ''
-  }, [repoId, datasetSource])
+  }, [repoId])
+  const datasetOverrideValue = repoId.trim()
+  const datasetOverrideActive = datasetOverrideValue.length > 0
   const noLocalCheckpoint = policySource === 'local' && !(config.eval_policy_path as string)
-  const noLocalDataset = datasetSource === 'local' && localDatasetId === '__none__'
-  const evalReady = preflightOk && !repoError && !conflictReason && !noLocalCheckpoint && !noLocalDataset
+  const selectedCheckpoint = useMemo(() => {
+    if (policySource !== 'local') return undefined
+    const path = (config.eval_policy_path as string) ?? ''
+    return checkpoints.find((cp) => cp.path === path)
+  }, [checkpoints, config.eval_policy_path, policySource])
+  const envTypeFromCheckpoint = selectedCheckpoint?.env_type ?? null
+  const envTaskFromCheckpoint = selectedCheckpoint?.env_task ?? null
+  const imageKeysFromCheckpoint = selectedCheckpoint?.image_keys ?? []
+  const envTypeValue = ((config.eval_env_type as string) ?? '').trim()
+  const envTaskValue = (config.eval_task as string) ?? ''
+  const envTypeMissing = !envTypeValue && !envTypeFromCheckpoint
+  const envTaskMissing = !envTaskValue && !envTaskFromCheckpoint
+  const evalReady = preflightOk && !repoError && !conflictReason && !noLocalCheckpoint && !envTypeMissing && !envTaskMissing
   const preflightFixLabel = preflightAction === 'install_python_dep' ? 'Install Missing Python Packages' : 'Run Fix'
   const evalBlockers = useMemo(() => {
     const blockers: string[] = []
     if (!preflightOk) blockers.push(preflightReason || 'Device preflight failed')
     if (repoError) blockers.push(repoError)
     if (noLocalCheckpoint) blockers.push('No checkpoint selected')
-    if (noLocalDataset) blockers.push('No local dataset selected')
+    if (envTypeMissing) blockers.push('Env Type is required')
+    if (envTaskMissing) blockers.push('Task is required')
     if (conflictReason) blockers.push(`${conflictReason} process running`)
     return blockers
-  }, [preflightOk, preflightReason, repoError, noLocalCheckpoint, noLocalDataset, conflictReason])
+  }, [preflightOk, preflightReason, repoError, noLocalCheckpoint, envTypeMissing, envTaskMissing, conflictReason])
   const showProgressDetails = progressStatus === 'running' || progressStatus === 'completed' || progressStatus === 'stopped' || progressStatus === 'error' || doneEpisodes > 0
 
   const progressStatusStyle = useMemo(() => {
@@ -226,10 +279,23 @@ export function EvalTab({ active }: EvalTabProps) {
     perEpisodeRewardRef.current = {}
   }
 
+  const loadEnvTypes = useCallback(async () => {
+    const res = await apiGet<{ ok: boolean; env_types: EnvTypeItem[] }>('/api/eval/env-types')
+    if (res.ok) setEnvTypes(res.env_types ?? [])
+  }, [])
+
   const refreshDatasets = useCallback(async () => {
     const res = await apiGet<{ datasets: DatasetListItem[] }>('/api/datasets')
     setDatasets(res.datasets ?? [])
   }, [])
+
+  const applyCheckpointEnv = useCallback((cp: CheckpointItem | undefined) => {
+    if (!cp) return
+    const updates: Record<string, string> = {}
+    if (cp.env_type && !(config.eval_env_type as string)) updates.eval_env_type = cp.env_type
+    if (cp.env_task && !(config.eval_task as string)) updates.eval_task = cp.env_task
+    if (Object.keys(updates).length > 0) void buildConfig(updates)
+  }, [buildConfig, config.eval_env_type, config.eval_task])
 
   const loadCheckpoints = useCallback(async () => {
     const res = await apiGet<{ ok: boolean; checkpoints: CheckpointItem[] }>('/api/checkpoints')
@@ -238,9 +304,10 @@ export function EvalTab({ active }: EvalTabProps) {
       setCheckpoints(list)
       if (policySource === 'local' && !(config.eval_policy_path as string) && list.length > 0) {
         void buildConfig({ eval_policy_path: list[0].path })
+        applyCheckpointEnv(list[0])
       }
     }
-  }, [buildConfig, config.eval_policy_path, policySource])
+  }, [applyCheckpointEnv, buildConfig, config.eval_policy_path, policySource])
 
   const handleSetPolicySource = (newSource: 'local' | 'hf') => {
     setPolicySource(newSource)
@@ -261,7 +328,7 @@ export function EvalTab({ active }: EvalTabProps) {
       const currentId = (config.eval_repo_id as string) ?? ''
       const isValidLocal = datasets.some((ds) => ds.id === currentId)
       if (!isValidLocal) {
-        void buildConfig({ eval_repo_id: datasets[0]?.id ?? '' })
+        void buildConfig({ eval_repo_id: '' })
       }
     } else {
       void buildConfig({ eval_repo_id: '' })
@@ -273,7 +340,8 @@ export function EvalTab({ active }: EvalTabProps) {
     loadCheckpoints()
     refreshDatasets()
     refreshPreflight()
-  }, [active, loadCheckpoints, refreshDatasets, refreshPreflight])
+    loadEnvTypes()
+  }, [active, loadCheckpoints, loadEnvTypes, refreshDatasets, refreshPreflight])
 
   useEffect(() => {
     if (!active || preflightOk) return
@@ -318,6 +386,16 @@ export function EvalTab({ active }: EvalTabProps) {
       }
 
       setLastMetricUpdateMs(lineItem.ts ?? Date.now())
+
+      const tqdmMatch = line.match(/Stepping through eval batches:\s*(\d+)%\|.*\|\s*(\d+)\/(\d+)/)
+      if (tqdmMatch) {
+        const pct = parseInt(tqdmMatch[1], 10)
+        const done = parseInt(tqdmMatch[2], 10)
+        const total = parseInt(tqdmMatch[3], 10)
+        if (Number.isFinite(done)) setDoneEpisodes((prev) => Math.max(prev, done))
+        if (Number.isFinite(total) && total > 0) setTargetEpisodes(total)
+        if (!hadError && pct > 0) setProgressStatus('running')
+      }
 
       const epTotalMatch = line.match(/(?:^|\s)(?:n_episodes|episodes)\s*[:=]\s*([0-9]+)/i)
         || line.match(/episode\s*\d+\s*\/\s*([0-9]+)/i)
@@ -376,6 +454,17 @@ export function EvalTab({ active }: EvalTabProps) {
         if (parsed !== null) setFinalSuccess(parsed)
       }
 
+      const aggregatedMatch = line.match(/['"](?:sum_reward|avg_reward|mean_reward)['"]\s*:\s*([+-]?\d*\.?\d+(?:e[+-]?\d+)?)/i)
+      if (aggregatedMatch) {
+        const val = Number(aggregatedMatch[1])
+        if (Number.isFinite(val)) setFinalReward((prev) => prev ?? val)
+      }
+      const aggregatedSuccessMatch = line.match(/['"]pc_success['"]\s*:\s*([+-]?\d*\.?\d+(?:e[+-]?\d+)?)/i)
+      if (aggregatedSuccessMatch) {
+        const val = Number(aggregatedSuccessMatch[1])
+        if (Number.isFinite(val)) setFinalSuccess((prev) => prev ?? (val > 1 ? val : val * 100))
+      }
+
       if (COMPLETE_MARKER.test(line)) {
         setProgressStatus((prev) => (prev === 'error' ? 'error' : 'completed'))
         setEndedAtMs((prev) => prev ?? lineItem.ts ?? Date.now())
@@ -412,13 +501,49 @@ export function EvalTab({ active }: EvalTabProps) {
     }
   }, [running, startedAtMs, endedAtMs, doneEpisodes])
 
+  // Auto-populate camera mapping when checkpoint or mapped cameras change
+  useEffect(() => {
+    if (!imageKeysFromCheckpoint.length) { setCameraMapping({}); return }
+    setCameraMapping((prev) => {
+      const next: Record<string, string> = {}
+      for (const key of imageKeysFromCheckpoint) {
+        if (prev[key] && mappedCamEntries.some(([sym]) => sym === prev[key])) {
+          next[key] = prev[key]  // keep existing valid selection
+        } else {
+          // auto-match: exact symlink match or first available
+          const exact = mappedCamEntries.find(([sym]) => sym === key)
+          next[key] = exact ? exact[0] : (mappedCamEntries[0]?.[0] ?? '')
+        }
+      }
+      return next
+    })
+  }, [imageKeysFromCheckpoint, mappedCamEntries])
+
   const start = async (episodesOverride?: number) => {
+    try {
     const cfg = {
       eval_policy_path: (config.eval_policy_path as string) ?? 'outputs/train/checkpoints/last/pretrained_model',
       eval_repo_id: repoId,
+      eval_env_type: (config.eval_env_type as string) ?? '',
       eval_episodes: Number(episodesOverride ?? Number(config.eval_episodes ?? 10)),
       eval_device: (config.eval_device as string) ?? 'cuda',
       eval_task: (config.eval_task as string) ?? '',
+      eval_robot_type: (config.eval_robot_type as string) ?? 'so101_follower',
+      eval_teleop_type: (config.eval_teleop_type as string) ?? 'so101_leader',
+      // port/id forwarded from shared device config
+      follower_port: (config.follower_port as string) ?? '/dev/follower_arm_1',
+      leader_port: (config.leader_port as string) ?? '/dev/leader_arm_1',
+      robot_id: (config.robot_id as string) ?? 'my_so101_follower_1',
+      teleop_id: (config.teleop_id as string) ?? 'my_so101_leader_1',
+      // camera config: use checkpoint image_key → camera mapping
+      cameras: Object.fromEntries(
+        Object.entries(cameraMapping)
+          .filter(([, sym]) => sym && mappedCameras[sym])
+          .map(([imageKey, sym]) => [imageKey, mappedCameras[sym]])
+      ),
+      record_cam_width: config.record_cam_width ?? 640,
+      record_cam_height: config.record_cam_height ?? 480,
+      record_cam_fps: config.record_cam_fps ?? 30,
     }
     if (!cfg.eval_policy_path) {
       appendLog('eval', '[ERROR] Policy path is required.', 'error')
@@ -445,7 +570,7 @@ export function EvalTab({ active }: EvalTabProps) {
       return
     }
 
-    const res = await apiPost<{ ok: boolean; error?: string; auto_install_started?: boolean }>('/api/eval/start', cfg)
+    const res = await apiPost<{ ok: boolean; error?: string; auto_install_started?: boolean; action?: string; command?: string; module_name?: string }>('/api/eval/start', cfg)
     if (!res.ok) {
       if (res.auto_install_started) {
         appendLog('eval', `[INFO] ${res.error ?? 'Auto-install started. Retry evaluation after installer finishes.'}`, 'info')
@@ -455,14 +580,30 @@ export function EvalTab({ active }: EvalTabProps) {
         setEndedAtMs(Date.now())
         return
       }
-      appendLog('eval', `[ERROR] ${res.error ?? 'failed to start eval'}`, 'error')
+      if (res.action === 'install_gym_plugin' && res.command) {
+        setGymInstallCommand(res.command)
+        setGymModuleName(res.module_name ?? res.command)
+        appendLog('eval', `[ERROR] ${res.error ?? 'Missing gym plugin.'}`, 'error')
+        appendLog('eval', `[INFO] Install command: ${res.command}`, 'info')
+        addToast(`${res.module_name ?? 'Gym plugin'} not installed`, 'warning')
+      } else {
+        appendLog('eval', `[ERROR] ${res.error ?? 'failed to start eval'}`, 'error')
+      }
       setHadError(true)
       setProgressStatus('error')
       setEndedAtMs(Date.now())
       return
     }
     setProgressStatus('running')
+    setGymInstallCommand('')
+    setGymModuleName('')
     addToast('Eval started', 'success')
+  } catch (e) {
+    appendLog('eval', `[ERROR] ${e instanceof Error ? e.message : 'Unexpected error starting eval.'}`, 'error')
+    setHadError(true)
+    setProgressStatus('error')
+    setEndedAtMs(Date.now())
+  }
   }
 
   const rerunQuickEval = async () => {
@@ -534,7 +675,12 @@ export function EvalTab({ active }: EvalTabProps) {
               )}
               <select
                 value={(config.eval_policy_path as string) ?? ''}
-                onChange={(e) => buildConfig({ eval_policy_path: e.target.value })}
+                onChange={(e) => {
+                  const path = e.target.value
+                  void buildConfig({ eval_policy_path: path, eval_env_type: '', eval_task: '' })
+                  const cp = checkpoints.find((c) => c.path === path)
+                  if (cp) applyCheckpointEnv(cp)
+                }}
               >
                 {checkpoints.length === 0 ? <option value="">No checkpoints — train first</option> : null}
                 {checkpoints.map((cp) => (
@@ -555,45 +701,6 @@ export function EvalTab({ active }: EvalTabProps) {
                 onChange={(e) => buildConfig({ eval_policy_path: e.target.value })}
               />
               <div className="field-help">Hugging Face Hub model ID to evaluate.</div>
-            </>
-          )}
-          <label>Dataset Source</label>
-          <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
-            <button className={`toggle ${datasetSource === 'local' ? 'active' : ''}`} onClick={() => handleSetDatasetSource('local')}>
-              Local
-            </button>
-            <button className={`toggle ${datasetSource === 'hf' ? 'active' : ''}`} onClick={() => handleSetDatasetSource('hf')}>
-              Hugging Face
-            </button>
-          </div>
-          {datasetSource === 'local' ? (
-            <>
-              <label>Local Dataset</label>
-              {datasets.length === 0 && (
-                <div className="field-help" style={{ marginBottom: 8, color: 'var(--yellow)' }}>No local datasets found. Record episodes first.</div>
-              )}
-              <select
-                value={localDatasetId}
-                onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
-              >
-                {datasets.length === 0 ? <option value="__none__">No local datasets — record first</option> : null}
-                {datasets.map((ds) => (
-                  <option key={ds.id} value={ds.id}>{ds.id}</option>
-                ))}
-              </select>
-              <div className="field-help">Choose a dataset from local cache (`~/.cache/huggingface/lerobot`).</div>
-            </>
-          ) : (
-            <>
-              <label>Dataset Repo ID</label>
-              <input
-                type="text"
-                value={(config.eval_repo_id as string) ?? ''}
-                placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'username/dataset'}
-                onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
-                style={repoError ? { borderColor: 'var(--red)' } : undefined}
-              />
-              {repoError ? <div className="ep-guard-hint" style={{ marginTop: 4 }}>{repoError}</div> : null}
             </>
           )}
           <label>Episodes</label>
@@ -637,13 +744,207 @@ export function EvalTab({ active }: EvalTabProps) {
               ) : null}
             </div>
           ) : null}
-          <label>Task (Optional)</label>
+          {gymInstallCommand ? (
+            <div className="recovery-action" style={{ marginTop: 8 }}>
+              <div className="field-help" style={{ marginBottom: 6 }}>
+                Environment plugin <strong>{gymModuleName}</strong> is required but not installed.
+              </div>
+              <div className="field-help" style={{ marginBottom: 8, fontFamily: 'var(--mono)' }}>{gymInstallCommand}</div>
+              <button className="btn-primary" onClick={() => { void installGymPlugin() }} disabled={installing}>
+                {installing ? 'Installing...' : `Install ${gymModuleName}`}
+              </button>
+              {installing ? (
+                <button className="btn-sm" style={{ marginLeft: 8 }} onClick={() => { void stopProcess('train') }}>
+                  Stop Install
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          <label>Env Type {envTypeFromCheckpoint ? <span className="dbadge" style={{ fontSize: 10, marginLeft: 4 }}>from checkpoint</span> : envTypeMissing ? <span style={{ color: 'var(--red)', fontSize: 11 }}>(required)</span> : null}</label>
+          <select
+            value={envTypeValue || envTypeFromCheckpoint || ''}
+            onChange={(e) => buildConfig({ eval_env_type: e.target.value })}
+            style={envTypeMissing ? { borderColor: 'var(--red)' } : undefined}
+          >
+            <option value="">— Select env type —</option>
+            {envTypes.map((et) => (
+              <option key={et.type} value={et.type}>
+                {et.label}{et.installed ? '' : ' (not installed)'}
+              </option>
+            ))}
+          </select>
+          {envTypeMissing ? (
+            <div className="field-help" style={{ color: 'var(--yellow)', marginBottom: 4 }}>No env metadata found. For Hugging Face or real-robot policies, select 'gym_manipulator'.</div>
+          ) : (() => {
+            const selected = envTypes.find((et) => et.type === (envTypeValue || envTypeFromCheckpoint))
+            return selected && !selected.installed ? (
+              <div className="field-help" style={{ color: 'var(--yellow)', marginBottom: 4 }}>
+                <code>{selected.module}</code> is not installed. Click Install below or run: <code>{`pip install ${selected.module}`}</code>
+              </div>
+            ) : (
+              <div className="field-help" style={{ marginBottom: 4 }}><code>{selected?.module || `gym_${envTypeValue || envTypeFromCheckpoint || '...'}`}</code> plugin will be used.</div>
+            )
+          })()}
+          <label>Task {envTaskFromCheckpoint ? <span className="dbadge" style={{ fontSize: 10, marginLeft: 4 }}>from checkpoint</span> : envTaskMissing ? <span style={{ color: 'var(--red)', fontSize: 11 }}>(required)</span> : null}</label>
           <input
             type="text"
-            value={(config.eval_task as string) ?? ''}
-            placeholder="Optional env task override"
+            value={envTaskValue || envTaskFromCheckpoint || ''}
+            placeholder="e.g. Pick up the block"
             onChange={(e) => buildConfig({ eval_task: e.target.value })}
+            style={envTaskMissing ? { borderColor: 'var(--red)' } : undefined}
           />
+          {envTaskMissing ? (
+            <div className="field-help" style={{ color: 'var(--yellow)', marginBottom: 4 }}>Checkpoint has no task metadata. Describe the evaluation task.</div>
+          ) : null}
+          {(envTypeValue || envTypeFromCheckpoint) === 'gym_manipulator' ? (
+            <div style={{ marginTop: 8, padding: '10px 12px', background: 'var(--bg2)', borderRadius: 6, border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Real Robot Config</div>
+              <label style={{ fontSize: 12 }}>Robot Type</label>
+              <select
+                value={(config.eval_robot_type as string) || 'so101_follower'}
+                onChange={(e) => buildConfig({ eval_robot_type: e.target.value })}
+                style={{ marginBottom: 6 }}
+              >
+                <option value="so101_follower">SO-101 Follower</option>
+                <option value="bi_so_follower">Bi-SO Follower (dual arm)</option>
+              </select>
+              <label style={{ fontSize: 12 }}>Teleop Type</label>
+              <select
+                value={(config.eval_teleop_type as string) || 'so101_leader'}
+                onChange={(e) => buildConfig({ eval_teleop_type: e.target.value })}
+              >
+                <option value="so101_leader">SO-101 Leader</option>
+                <option value="bi_so_leader">Bi-SO Leader (dual arm)</option>
+              </select>
+              <div className="field-help" style={{ marginTop: 6 }}>Uses port/ID settings from Device Setup. Robot must be connected.</div>
+              {imageKeysFromCheckpoint.length > 0 ? (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Camera Mapping</div>
+                  <div className="field-help" style={{ marginBottom: 6 }}>Assign each policy camera to a mapped device. Names must match what the policy was trained on.</div>
+                  {imageKeysFromCheckpoint.map((imgKey) => (
+                    <div key={imgKey} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <code style={{ flex: '0 0 auto', fontSize: 11, minWidth: 120 }}>{imgKey}</code>
+                      <span style={{ fontSize: 11, color: 'var(--text2)' }}>&rarr;</span>
+                      <select
+                        style={{ flex: 1, fontSize: 12 }}
+                        value={cameraMapping[imgKey] ?? ''}
+                        onChange={(e) => setCameraMapping((prev) => ({ ...prev, [imgKey]: e.target.value }))}
+                      >
+                        <option value="">-- none --</option>
+                        {mappedCamEntries.map(([sym, path]) => (
+                          <option key={sym} value={sym}>{sym} ({path})</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                  {mappedCamEntries.length === 0 ? (
+                    <div className="field-help" style={{ color: 'var(--yellow)', marginTop: 4 }}>No mapped cameras. Set up camera mappings in Device Setup first.</div>
+                  ) : null}
+                  {imageKeysFromCheckpoint.length > 0 && mappedCamEntries.length > 0 && Object.values(cameraMapping).filter(v => v).length < imageKeysFromCheckpoint.length ? (
+                    <div className="field-help" style={{ color: 'var(--yellow)', marginTop: 4 }}>
+                      {imageKeysFromCheckpoint.length - Object.values(cameraMapping).filter(v => v).length} camera(s) not mapped. Policy may fail without all camera inputs.
+                    </div>
+                  ) : null}
+                </div>
+              ) : mappedCamEntries.length > 0 ? (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Cameras</div>
+                  <div className="field-help" style={{ marginBottom: 6 }}>Checkpoint has no image feature metadata. All mapped cameras will be used.</div>
+                  {mappedCamEntries.map(([sym, path]) => (
+                    <div key={sym} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <code style={{ fontSize: 11 }}>{sym}</code>
+                      <span style={{ fontSize: 11, color: 'var(--text2)' }}>{path}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <details style={{ marginTop: 8 }}>
+                <summary style={{ fontSize: 11, color: 'var(--text2)', cursor: 'pointer' }}>Camera Settings</summary>
+                <div className="settings-grid" style={{ marginTop: 6, gap: 6 }}>
+                  <div className="setting-item">
+                    <label style={{ fontSize: 11 }}>Resolution</label>
+                    <select style={{ fontSize: 12 }} value={`${config.eval_cam_width ?? config.record_cam_width ?? 640}x${config.eval_cam_height ?? config.record_cam_height ?? 480}`} onChange={(e) => { const [w, h] = e.target.value.split('x'); buildConfig({ eval_cam_width: Number(w), eval_cam_height: Number(h) }) }}>
+                      <option value="1280x720">1280 × 720</option>
+                      <option value="640x480">640 × 480</option>
+                      <option value="320x240">320 × 240</option>
+                    </select>
+                  </div>
+                  <div className="setting-item">
+                    <label style={{ fontSize: 11 }}>FPS</label>
+                    <select style={{ fontSize: 12 }} value={String(config.eval_cam_fps ?? config.record_cam_fps ?? 30)} onChange={(e) => buildConfig({ eval_cam_fps: Number(e.target.value) })}>
+                      <option value="30">30</option>
+                      <option value="15">15</option>
+                      <option value="10">10</option>
+                    </select>
+                  </div>
+                </div>
+              </details>
+            </div>
+          ) : null}
+          <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 10 }}>
+            <summary style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1 }}>Advanced Overrides</span>
+              <span
+                className="dbadge"
+                style={{
+                  background: datasetOverrideActive ? 'rgba(34,197,94,0.18)' : 'rgba(148,163,184,0.18)',
+                  color: datasetOverrideActive ? '#86efac' : 'var(--text2)',
+                }}
+              >
+                {datasetOverrideActive ? 'Dataset override ON' : 'Dataset override OFF'}
+              </span>
+              {datasetOverrideActive ? (
+                <button
+                  type="button"
+                  className="btn-xs"
+                  onClick={(e) => { e.preventDefault(); void buildConfig({ eval_repo_id: '' }) }}
+                >
+                  Clear
+                </button>
+              ) : null}
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              <label>Dataset Source</label>
+              <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
+                <button type="button" className={`toggle ${datasetSource === 'local' ? 'active' : ''}`} onClick={() => handleSetDatasetSource('local')}>
+                  Local
+                </button>
+                <button type="button" className={`toggle ${datasetSource === 'hf' ? 'active' : ''}`} onClick={() => handleSetDatasetSource('hf')}>
+                  Hugging Face
+                </button>
+              </div>
+              {datasetSource === 'local' ? (
+                <>
+                  <label>Local Dataset</label>
+                  {datasets.length === 0 && (
+                    <div className="field-help" style={{ marginBottom: 8, color: 'var(--yellow)' }}>No local datasets found. This field is optional for eval.</div>
+                  )}
+                  <select
+                    value={localDatasetId}
+                    onChange={(e) => buildConfig({ eval_repo_id: e.target.value === '__none__' ? '' : e.target.value })}
+                  >
+                    <option value="__none__">None (no override)</option>
+                    {datasets.map((ds) => (
+                      <option key={ds.id} value={ds.id}>{ds.id}</option>
+                    ))}
+                  </select>
+                  <div className="field-help">Optional override. Leave empty to evaluate without dataset repo override.</div>
+                </>
+              ) : (
+                <>
+                  <label>Dataset Repo ID (Optional)</label>
+                  <input
+                    type="text"
+                    value={configuredDatasetId}
+                    placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'username/dataset'}
+                    onChange={(e) => buildConfig({ eval_repo_id: e.target.value })}
+                    style={repoError ? { borderColor: 'var(--red)' } : undefined}
+                  />
+                  {repoError ? <div className="ep-guard-hint" style={{ marginTop: 4 }}>{repoError}</div> : null}
+                </>
+              )}
+            </div>
+          </details>
           </div>
 
           <div className="eval-side-stack">

@@ -1531,6 +1531,44 @@ button:active   { opacity: .7; }
   /* height controlled by inline style via Zustand consoleHeight */
 }
 
+.console-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.copy-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.copy-label {
+  font-size: 11px;
+  color: var(--text2);
+  margin-right: 2px;
+  user-select: none;
+}
+
+.btn-copy {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.copy-last-btn {
+  min-width: 28px;
+  padding: 2px 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.console-action-sep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
 /* ─── Running Bar (Global Process Status) ─────────────────────────────────── */
 .console-running-bar {
   display: flex;

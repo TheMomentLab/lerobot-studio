@@ -58,9 +58,6 @@ function App() {
           if (defaultPattern.test((cfg.record_repo_id as string) ?? 'user/my-dataset')) {
             prefill.record_repo_id = ((cfg.record_repo_id as string) ?? 'user/my-dataset').replace('user/', `${res.username}/`)
           }
-          if (defaultPattern.test((cfg.eval_repo_id as string) ?? 'user/my-dataset')) {
-            prefill.eval_repo_id = ((cfg.eval_repo_id as string) ?? 'user/my-dataset').replace('user/', `${res.username}/`)
-          }
           if (defaultPattern.test((cfg.train_repo_id as string) ?? 'user/my-dataset')) {
             prefill.train_repo_id = ((cfg.train_repo_id as string) ?? 'user/my-dataset').replace('user/', `${res.username}/`)
           }
