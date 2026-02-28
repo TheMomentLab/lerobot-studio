@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Badge, Box, Button, Group, NativeSelect, NumberInput, Paper, Text, Title } from '@mantine/core'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { getProcessConflict } from '../lib/processConflicts'
 import { useProcess } from '../hooks/useProcess'
@@ -252,13 +253,13 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
     : '—'
 
   return (
-    <section id="tab-motor-setup" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Motor Setup</h2>
-        <span className={`status-verdict ${running ? 'ready' : !conflictReason && devices.arms.length > 0 ? 'ready' : 'warn'}`}>
+    <Box id="tab-motor-setup" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Motor Setup</Title>
+        <Badge variant="light" color={running || (!conflictReason && devices.arms.length > 0) ? 'green' : 'yellow'}>
           {running ? 'Running' : !conflictReason && devices.arms.length > 0 ? 'Ready' : 'Action Needed'}
-        </span>
-      </div>
+        </Badge>
+      </Group>
 
       {/* Step 1 blocker */}
       {!running && conflictReason ? (
@@ -271,29 +272,16 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
       ) : null}
 
       <div className="quick-guide">
-        <h3>Motor Setup Guide</h3>
+        <Text size="sm" fw={600} c="dimmed" mb="xs">Motor Setup Guide</Text>
         <p>Assigns unique IDs to each servo motor. Run once per arm — results are saved permanently to the firmware. If the console asks for keyboard input, type in the <strong>global console drawer</strong> at the bottom. After setup, use <strong>Step 2</strong> to verify each motor responds correctly before proceeding to <strong>Calibration</strong>.</p>
       </div>
 
       {/* ── Step 1: Run CLI ── */}
       <div className="two-col">
-        <div className="card">
-          <h3>Step 1: Run Motor Setup</h3>
-          <label htmlFor="motor-role-type">Arm Role Type</label>
-          <select id="motor-role-type" value={type} onChange={(e) => setType(e.target.value)}>
-            {armTypes.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <label htmlFor="motor-port">Arm Port</label>
-          <select id="motor-port" value={port} onChange={(e) => setPort(e.target.value)}>
-            {devices.arms.length === 0 ? (
-              <option value={port}>{port}</option>
-            ) : (
-              devices.arms.map((arm, idx) => {
-                const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
-                return <option key={p} value={p}>{arm.symlink ?? p}</option>
-              })
-            )}
-          </select>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Step 1: Run Motor Setup</Text>
+          <NativeSelect id="motor-role-type" label="Arm Role Type" value={type} onChange={(e) => setType(e.target.value)} data={armTypes.map((item) => ({ value: item, label: item }))} />
+          <NativeSelect id="motor-port" label="Arm Port" value={port} onChange={(e) => setPort(e.target.value)} data={devices.arms.length === 0 ? [{ value: port, label: port }] : devices.arms.map((arm, idx) => { const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`; return { value: p, label: arm.symlink ?? p } })} />
           {!port && devices.arms.length === 0 && (
             <p style={{ color: 'var(--color-warn)', fontSize: '0.85rem', margin: '4px 0 8px' }}>
               No arm port detected. Connect an arm to begin.
@@ -301,16 +289,16 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
           )}
           <div className="spacer" />
           <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Setup" conflictReason={conflictReason} />
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>Connected Arms</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Connected Arms</Text>
           <div className="device-list">
             {devices.arms.length === 0 ? (
               <div className="device-empty-state">
                 <span>No arms detected. Connect a USB arm and click Refresh.</span>
                 <div className="device-empty-actions">
-                  <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
                 </div>
               </div>
             ) : (
@@ -325,13 +313,13 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
               ))
             )}
           </div>
-        </div>
+        </Paper>
       </div>
 
       {/* ── Step 2: Verify Motors ── */}
       <div className="motor-mon-section">
-        <div className="card">
-          <h3>Step 2: Verify Motors</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Step 2: Verify Motors</Text>
           <p style={{ fontSize: '0.85rem', color: 'var(--text2)', margin: '0 0 12px' }}>
             Connect directly to the arm to read each motor's live position, load, and current. Use this after Motor Setup to confirm all IDs are correct.
           </p>
@@ -339,48 +327,44 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
           {/* Connect bar */}
           <div className="motor-mon-connect-bar">
             <span style={{ fontSize: '0.85rem', color: 'var(--text2)', whiteSpace: 'nowrap' }}>Port:</span>
-            <select
+            <NativeSelect
               value={port}
               onChange={(e) => setPort(e.target.value)}
               disabled={monConnected || monConnecting}
               style={{ flex: 1, minWidth: 160, maxWidth: 300 }}
-            >
-              {devices.arms.length === 0 ? (
-                <option value={port}>{port || '—'}</option>
-              ) : (
-                devices.arms.map((arm, idx) => {
-                  const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
-                  return <option key={p} value={p}>{arm.symlink ?? p}</option>
-                })
-              )}
-            </select>
+              data={devices.arms.length === 0 ? [{ value: port || '—', label: port || '—' }] : devices.arms.map((arm, idx) => { const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`; return { value: p, label: arm.symlink ?? p } })}
+            />
 
             {!monConnected ? (
-              <button
+              <Button
                 type="button"
-                className="btn btn-sm"
+                className=""
+                variant="light"
+                size="compact-xs"
                 onClick={handleMonConnect}
                 disabled={monConnecting || !port || running}
                 title={running ? 'Motor Setup is running — stop it first' : ''}
               >
                 {monConnecting ? 'Connecting…' : '⚡ Connect'}
-              </button>
+              </Button>
             ) : (
               <>
-                <button
+                <Button
                   type="button"
-                  className={`btn btn-sm${monFreewheel ? ' btn-active' : ' btn-secondary'}`}
+                  className={monFreewheel ? 'btn-active' : ''}
+                  variant="light"
+                  size="compact-xs"
                   onClick={handleFreewheelToggle}
                   title="Freewheel: turn off all torque so you can move motors by hand"
                 >
                   {monFreewheel ? '🔓 Freewheel ON' : '🔒 Freewheel'}
-                </button>
-                <button type="button" className="btn btn-sm btn-secondary" onClick={handleMonDisconnect}>
+                </Button>
+                <Button type="button" variant="light" size="compact-xs" onClick={handleMonDisconnect}>
                   Disconnect
-                </button>
-                <button type="button" className="motor-mon-emergency-btn" onClick={handleEmergencyStop}>
+                </Button>
+                <Button type="button" className="motor-mon-emergency-btn" variant="light" size="compact-xs" onClick={handleEmergencyStop}>
                   ⛔ E-Stop
-                </button>
+                </Button>
               </>
             )}
 
@@ -442,49 +426,57 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
 
                     {/* Collision clear button */}
                     {isCollision && (
-                      <button
+                      <Button
                         type="button"
                         className="motor-mon-clear-collision-btn"
+                        variant="light"
+                        size="compact-xs"
                         onClick={() => handleClearCollision(id)}
                       >
                         ✓ Clear Collision
-                      </button>
+                      </Button>
                     )}
 
                     {/* Target input + ±10 + Move */}
                     <div className="motor-mon-target-row">
-                      <button
+                      <Button
                         type="button"
                         className="motor-mon-step-btn"
+                        variant="light"
+                        size="compact-xs"
                         onClick={() => adjustTarget(id, -10)}
                         title="-10"
-                      >▼</button>
-                      <input
-                        type="number"
+                      >▼</Button>
+                      <NumberInput
+                        label="Target"
                         min={0}
                         max={4095}
                         value={target}
-                        onChange={(e) => {
-                          const v = Math.max(0, Math.min(4095, Number(e.target.value)))
+                        onChange={(value) => {
+                          const v = Math.max(0, Math.min(4095, Number(value)))
                           setMonTargets((prev) => ({ ...prev, [id]: v }))
                         }}
                       />
-                      <button
+                      <Button
                         type="button"
                         className="motor-mon-step-btn"
+                        variant="light"
+                        size="compact-xs"
                         onClick={() => adjustTarget(id, 10)}
                         title="+10"
-                      >▲</button>
+                      >▲</Button>
                     </div>
-                    <button
+                    <Button
                       type="button"
                       className="motor-mon-move-btn"
+                      variant="light"
+                      size="compact-xs"
                       onClick={() => moveMotor(id)}
                       disabled={monFreewheel || isCollision}
                       title={monFreewheel ? 'Exit freewheel first' : isCollision ? 'Clear collision first' : ''}
                     >
                       Move →
-                    </button>
+                    </Button>
                   </div>
                 )
               })}
@@ -499,16 +491,16 @@ export function MotorSetupTab({ active }: MotorSetupTabProps) {
                 : 'Click ⚡ Connect to open the motor monitor on the selected port.'}
             </p>
           )}
-        </div>
+        </Paper>
       </div>
 
       {/* Step 1 completion prompt */}
       {!running && hasRun && (
-        <div className="card" style={{ marginTop: 12, textAlign: 'center' }}>
+        <Paper withBorder p="md" mb="md" className="card" style={{ marginTop: 12, textAlign: 'center' }}>
           <p style={{ margin: '0 0 8px', color: 'var(--color-text-secondary)' }}>Motor setup complete? Verify motors above, then continue to calibration.</p>
-          <button type="button" className="link-btn" onClick={() => setActiveTab('calibrate')}>→ Proceed to Calibration</button>
-        </div>
+          <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('calibrate')}>→ Proceed to Calibration</Button>
+        </Paper>
       )}
-    </section>
+    </Box>
   )
 }

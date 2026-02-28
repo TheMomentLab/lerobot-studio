@@ -48,7 +48,7 @@ jobs:
           fi
 
       - name: Run tests
-        run: python -m pytest -q -m "not smoke_hw" --cov=lestudio --cov-report=term-missing --cov-report=xml tests
+        run: python -m pytest -q -p pytest_cov -m "not smoke_hw" --cov=lestudio --cov-report=term-missing --cov-report=xml tests
 
   frontend:
     runs-on: ubuntu-latest

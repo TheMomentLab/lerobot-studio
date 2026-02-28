@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ActionIcon, Button, NativeSelect, TextInput, Tooltip } from '@mantine/core'
 import { useLeStudioStore } from '../../store'
 import { useProcess } from '../../hooks/useProcess'
 import { toastError } from '../../lib/errors'
@@ -263,12 +264,16 @@ function RunningBar({ info, onStop, onOpen }: { info: RunningBarInfo; onStop: ()
         )}
         <span className="progress-text">{info.text}</span>
       </div>
-      <button className="btn-goto" onClick={onOpen} title={`${PROCESS_LABELS[info.process]} 탭으로 이동`}>
-        Open ↗
-      </button>
-      <button className="btn-stop" onClick={onStop}>
-        ■ Stop
-      </button>
+      <Tooltip label={`${PROCESS_LABELS[info.process]} 탭으로 이동`}>
+        <ActionIcon className="btn-goto" variant="light" color="blue" onClick={onOpen}>
+          ↗
+        </ActionIcon>
+      </Tooltip>
+      <Tooltip label="Stop">
+        <ActionIcon className="btn-stop" variant="light" color="red" onClick={onStop}>
+          ■
+        </ActionIcon>
+      </Tooltip>
     </div>
   )
 }
@@ -474,51 +479,53 @@ export function ConsoleDrawer() {
         >
           <span className="console-title">Console</span>
           <span className="console-chevron">▼</span>
-          <select
+          <NativeSelect
             className="console-process-select"
             value={selectedProcess}
             onClick={(e) => e.stopPropagation()}
             onChange={(e) => setSelectedProcess(e.target.value)}
-          >
-            {PROCESSES.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+            data={PROCESSES.map((p) => ({ value: p, label: p }))}
+          />
           <span className={`dbadge ${stateBadgeClass}`}>{processState}</span>
         </div>
         <div className="console-actions">
           <div className="copy-actions">
             <span className="copy-label">Copy</span>
-            <button
-              className="btn-xs btn-copy"
-              title="Copy all log lines"
-              onClick={(e) => { e.stopPropagation(); handleCopy() }}
-            >
-              All
-            </button>
+            <Tooltip label="Copy all log lines">
+              <ActionIcon
+                className="btn-copy"
+                variant="light"
+                color="blue"
+                onClick={(e) => { e.stopPropagation(); handleCopy() }}
+              >
+                ⧉
+              </ActionIcon>
+            </Tooltip>
             {([20, 50, 100] as const).map((n) => (
-              <button
+              <Button
                 key={n}
-                className="btn-xs btn-copy copy-last-btn"
+                className="btn-copy copy-last-btn"
+                variant="light"
+                color="blue"
+                size="compact-xs"
                 title={`Copy last ${n} lines`}
                 onClick={(e) => { e.stopPropagation(); handleCopy(n) }}
               >
                 {n}
-              </button>
+              </Button>
             ))}
           </div>
           <span className="console-action-sep" />
-          <button
-            className="btn-xs"
+          <ActionIcon
+            variant="light"
+            color="gray"
             onClick={(e) => {
               e.stopPropagation()
               clearLog(selectedProcess)
             }}
           >
-            Clear
-          </button>
+            ✕
+          </ActionIcon>
         </div>
       </div>
       {!collapsed && (
@@ -547,20 +554,19 @@ export function ConsoleDrawer() {
             )}
           </div>
           <div className="stdin-row">
-            <input
-              type="text"
+            <TextInput
               placeholder={running ? 'Send stdin (empty Enter sends newline/default)' : 'Run command in selected process environment'}
               value={stdinValue}
               onChange={(e) => setStdinValue(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            <button className="btn-sm" onClick={sendInput}>
+            <Button size="xs" variant="light" onClick={sendInput}>
               Send ↵
-            </button>
+            </Button>
             {running ? (
-              <button className="btn-sm" onClick={() => void handleStopProcess(selectedProcess)}>
+              <Button size="xs" variant="light" color="red" onClick={() => void handleStopProcess(selectedProcess)}>
                 Ctrl+C (Stop)
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>

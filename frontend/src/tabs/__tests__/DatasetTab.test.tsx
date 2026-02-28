@@ -14,6 +14,7 @@
  */
 import { render, screen, cleanup, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MantineProvider } from '@mantine/core'
 import { DatasetTab } from '../DatasetTab'
 
 // ─── Mock heavy sub-components ───────────────────────────────────────────────
@@ -65,20 +66,23 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
+const renderWithMantine = (ui: React.ReactNode) =>
+  render(<MantineProvider>{ui}</MantineProvider>)
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('DatasetTab — inactive (active=false)', () => {
   it('renders without crashing', async () => {
     let container!: HTMLElement
     await act(async () => {
-      ;({ container } = render(<DatasetTab active={false} />))
+      ;({ container } = renderWithMantine(<DatasetTab active={false} />))
     })
     expect(container).toBeInTheDocument()
   })
 
   it('section is present but without the "active" class', async () => {
     await act(async () => {
-      render(<DatasetTab active={false} />)
+      renderWithMantine(<DatasetTab active={false} />)
     })
     const section = document.getElementById('tab-dataset')
     expect(section).toBeInTheDocument()
@@ -93,7 +97,7 @@ describe('DatasetTab — inactive (active=false)', () => {
       }),
     )
     await act(async () => {
-      render(<DatasetTab active={false} />)
+      renderWithMantine(<DatasetTab active={false} />)
     })
     // /api/datasets must NOT be called when inactive (useEffect guards on `active`)
     const datasetCalls = spy.mock.calls.filter((args) => {
@@ -108,7 +112,7 @@ describe('DatasetTab — active (active=true)', () => {
   it('section has the "active" class', async () => {
     stubMountFetch()
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     const section = document.getElementById('tab-dataset')
     expect(section?.className).toContain('active')
@@ -117,7 +121,7 @@ describe('DatasetTab — active (active=true)', () => {
   it('renders "Dataset Viewer" heading', async () => {
     stubMountFetch()
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     expect(screen.getByRole('heading', { name: /Dataset Viewer/i })).toBeInTheDocument()
   })
@@ -125,15 +129,15 @@ describe('DatasetTab — active (active=true)', () => {
   it('renders "Local Datasets" heading', async () => {
     stubMountFetch()
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
-    expect(screen.getByRole('heading', { name: /Local Datasets/i })).toBeInTheDocument()
+    expect(screen.getByText(/Local Datasets/i)).toBeInTheDocument()
   })
 
   it('shows "No datasets found" message when API returns empty list', async () => {
     stubMountFetch({ datasets: [] })
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     expect(screen.getByText(/No datasets found/i)).toBeInTheDocument()
   })
@@ -141,7 +145,7 @@ describe('DatasetTab — active (active=true)', () => {
   it('shows Refresh List button', async () => {
     stubMountFetch()
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     expect(screen.getByRole('button', { name: /Refresh List/i })).toBeInTheDocument()
   })
@@ -149,7 +153,7 @@ describe('DatasetTab — active (active=true)', () => {
   it('renders HuggingFace Hub section (hubCard)', async () => {
     stubMountFetch()
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     // The hub h3 and the <strong> in the empty-state note both match.
     // Use getAllByText to tolerate multiple occurrences.
@@ -160,7 +164,7 @@ describe('DatasetTab — active (active=true)', () => {
   it('shows "No dataset selected" state in episode viewer area', async () => {
     stubMountFetch()
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     // When no dataset is selected, the right panel shows a placeholder
     expect(screen.getByText(/No dataset selected/i)).toBeInTheDocument()
@@ -176,7 +180,7 @@ describe('DatasetTab — dataset list rendering', () => {
       ],
     })
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     expect(screen.getByText('user/dataset-alpha')).toBeInTheDocument()
     expect(screen.getByText('user/dataset-beta')).toBeInTheDocument()
@@ -190,7 +194,7 @@ describe('DatasetTab — dataset list rendering', () => {
       ],
     })
     await act(async () => {
-      render(<DatasetTab active={true} />)
+      renderWithMantine(<DatasetTab active={true} />)
     })
     expect(screen.getByText('2 Datasets')).toBeInTheDocument()
   })

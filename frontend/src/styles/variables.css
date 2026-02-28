@@ -23,7 +23,7 @@
   --mono:      'SFMono-Regular', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
 }
 
-[data-theme="light"] {
+[data-mantine-color-scheme="light"] {
   --bg:        #ffffff;
   --bg2:       #f6f8fa;
   --bg3:       #eaeef2;
@@ -56,7 +56,7 @@
   --cta-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent) inset;
 }
 
-[data-theme="light"][data-cta-style="strong"] {
+[data-mantine-color-scheme="light"][data-cta-style="strong"] {
   --cta-color: #ffffff;
 }
 

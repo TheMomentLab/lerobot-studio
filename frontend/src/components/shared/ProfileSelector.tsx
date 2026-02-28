@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { apiGet, apiPost, apiDelete } from '../../lib/api'
+import { useCallback, useEffect, useState } from 'react'
+import { ActionIcon, Button, FileButton, Group, Menu, Select } from '@mantine/core'
+import { apiDelete, apiGet, apiPost } from '../../lib/api'
 import { useLeStudioStore } from '../../store'
 
 interface ProfileListResponse {
@@ -19,35 +20,18 @@ export function ProfileSelector() {
 
   const [profiles, setProfiles] = useState<string[]>(['default'])
   const [activeProfile, setActiveProfile] = useState('default')
-  const [moreOpen, setMoreOpen] = useState(false)
-  const moreRef = useRef<HTMLDivElement>(null)
-  const importRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
     try {
       const res = await apiGet<ProfileListResponse>('/api/profiles')
       if (res.profiles) setProfiles(res.profiles)
       if (res.active) setActiveProfile(res.active)
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }, [])
 
   useEffect(() => {
     refresh()
   }, [refresh])
-
-  /* close more-menu on outside click */
-  useEffect(() => {
-    if (!moreOpen) return
-    const handler = (e: MouseEvent) => {
-      if (moreRef.current && !moreRef.current.contains(e.target as Node)) {
-        setMoreOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [moreOpen])
 
   const applySelected = async (name: string) => {
     try {
@@ -100,10 +84,6 @@ export function ProfileSelector() {
     }
   }
 
-  const triggerImport = () => {
-    importRef.current?.click()
-  }
-
   const handleImportFile = async (file: File) => {
     try {
       const text = await file.text()
@@ -134,82 +114,46 @@ export function ProfileSelector() {
   }
 
   return (
-    <div className="header-profile-controls">
-      <select
+    <Group className="header-profile-controls" gap="xs" wrap="nowrap">
+      <Select
         id="profile-select"
-        value={activeProfile}
-        onChange={(e) => applySelected(e.target.value)}
         aria-label="Profile selector"
-      >
-        {profiles.map((p) => (
-          <option key={p} value={p}>
-            {p}
-          </option>
-        ))}
-      </select>
-
-      <button className="btn-xs" onClick={saveCurrent}>
-        Save
-      </button>
-      <div className="profile-more-wrap" ref={moreRef}>
-        <button
-          className="btn-xs profile-more-btn"
-          onClick={() => setMoreOpen(!moreOpen)}
-          title="More profile actions"
-          aria-label="More profile actions"
-        >
-          ⋮
-        </button>
-        {moreOpen && (
-          <div className="profile-more-menu">
-            <button
-              onClick={() => {
-                saveAs()
-                setMoreOpen(false)
-              }}
-            >
-              Save As…
-            </button>
-            <button
-              onClick={() => {
-                exportCurrent()
-                setMoreOpen(false)
-              }}
-            >
-              Export…
-            </button>
-            <button
-              onClick={() => {
-                triggerImport()
-                setMoreOpen(false)
-              }}
-            >
-              Import…
-            </button>
-            <hr />
-            <button
-              className="danger"
-              onClick={() => {
-                deleteCurrent()
-                setMoreOpen(false)
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        )}
-      </div>
-      <input
-        ref={importRef}
-        type="file"
-        accept="application/json"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          if (file) handleImportFile(file)
-          e.target.value = ''
+        data={profiles.map((p) => ({ value: p, label: p }))}
+        value={activeProfile}
+        onChange={(value) => {
+          if (value) void applySelected(value)
         }}
+        w={180}
       />
-    </div>
+
+      <Button size="xs" variant="light" onClick={saveCurrent}>
+        Save
+      </Button>
+
+      <Menu shadow="md" width={180} position="bottom-end">
+        <Menu.Target>
+          <ActionIcon variant="light" size="md" aria-label="More profile actions">
+            ⋮
+          </ActionIcon>
+        </Menu.Target>
+        <Menu.Dropdown>
+          <Menu.Item onClick={() => void saveAs()}>Save As…</Menu.Item>
+          <Menu.Item onClick={() => void exportCurrent()}>Export…</Menu.Item>
+          <FileButton
+            onChange={(file) => {
+              if (file) void handleImportFile(file)
+            }}
+            accept="application/json"
+          >
+            {(props) => <Menu.Item {...props}>Import…</Menu.Item>}
+          </FileButton>
+          <Menu.Divider />
+          <Menu.Item color="red" onClick={() => void deleteCurrent()}>
+            Delete
+          </Menu.Item>
+        </Menu.Dropdown>
+      </Menu>
+
+    </Group>
   )
 }

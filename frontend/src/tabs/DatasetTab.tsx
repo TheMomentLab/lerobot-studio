@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ActionIcon, Badge, Box, Button, Checkbox, Group, Menu, NativeSelect, Paper, Slider, Text, TextInput, Title } from '@mantine/core'
 import { DatasetCurationPanel } from '../components/dataset/DatasetCurationPanel'
 import { DatasetAutoFlagPanel } from '../components/dataset/DatasetAutoFlagPanel'
 import { HubSearchCard } from '../components/dataset/HubSearchCard'
@@ -559,22 +560,22 @@ export function DatasetTab({ active }: DatasetTabProps) {
 
 
   return (
-    <section id="tab-dataset" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Dataset Viewer</h2>
-        <span className={`status-verdict ${selected ? 'ready' : datasets.length > 0 ? 'warn' : 'warn'}`}>
+    <Box id="tab-dataset" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Dataset Viewer</Title>
+        <Badge variant="light" color={selected ? 'green' : 'yellow'}>
           {selected ? `${selected.total_episodes} Episodes` : datasets.length > 0 ? `${datasets.length} Datasets` : 'No Datasets'}
-        </span>
-        <button onClick={refreshList} className="btn-sm">
+        </Badge>
+        <Button onClick={refreshList} size="xs" variant="light">
           ↺ Refresh List
-        </button>
-      </div>
+        </Button>
+      </Group>
 
       <HubSearchCard onDownloadComplete={refreshList} />
 
       <div className="two-col">
-        <div className="card" style={{ maxHeight: 800, display: 'flex', flexDirection: 'column' }}>
-          <h3>Local Datasets</h3>
+        <Paper withBorder p="md" mb="md" className="card" style={{ maxHeight: 800, display: 'flex', flexDirection: 'column' }}>
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Local Datasets</Text>
           <div id="dataset-list" className="device-list" style={{ overflowY: 'auto', flex: 1 }}>
             {datasets.length === 0 && loadingDatasets
               ? <div className="device-empty-note">Loading datasets...</div>
@@ -603,49 +604,52 @@ export function DatasetTab({ active }: DatasetTabProps) {
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text2)' }}>Modified: {ds.modified || (ds.timestamp ? new Date(ds.timestamp * 1000).toLocaleString() : '--')}</div>
                     </div>
-                    <details className="ds-actions-menu" onClick={(e) => e.stopPropagation()}>
-                      <summary className="btn-xs ds-actions-summary" title="Dataset actions">
-                        Actions ▾
-                      </summary>
-                      <div className="ds-actions-panel">
-                        <button
-                          className="btn-xs"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            void inspectQuality(ds.id)
-                          }}
-                        >
-                          Inspect Quality
-                        </button>
-                        <button
-                          className="btn-xs ds-action-btn-push"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            void pushToHub(ds.id)
-                          }}
-                        >
-                          Push to Hub
-                        </button>
-                        <button
-                          className="btn-xs ds-action-btn-danger"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            void deleteDataset(ds.id)
-                          }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </details>
+                    <div className="ds-actions-menu">
+                      <Menu shadow="md" position="bottom-end" withinPortal>
+                        <Menu.Target>
+                          <ActionIcon className="ds-actions-summary" size="sm" variant="subtle" title="Dataset actions" onClick={(e) => e.stopPropagation()}>
+                            ⋮
+                          </ActionIcon>
+                        </Menu.Target>
+                        <Menu.Dropdown className="ds-actions-panel" onClick={(e) => e.stopPropagation()}>
+                          <Menu.Item
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              void inspectQuality(ds.id)
+                            }}
+                          >
+                            Inspect Quality
+                          </Menu.Item>
+                          <Menu.Item
+                            className="ds-action-btn-push"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              void pushToHub(ds.id)
+                            }}
+                          >
+                            Push to Hub
+                          </Menu.Item>
+                          <Menu.Item
+                            className="ds-action-btn-danger"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              void deleteDataset(ds.id)
+                            }}
+                          >
+                            Delete
+                          </Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    </div>
                   </div>
                 ))}
           </div>
-        </div>
+        </Paper>
 
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Paper withBorder p="md" mb="md" className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {!selected ? (
             <div id="dataset-detail-empty" className="dataset-empty-state">
               <div className="dataset-empty-icon">📂</div>
@@ -653,22 +657,22 @@ export function DatasetTab({ active }: DatasetTabProps) {
               <div className="dataset-empty-hint">Select a dataset from the list to view details and replay episodes.</div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8 }}>
                 {latestDatasetId ? (
-                  <button className="btn-sm" onClick={() => void loadDataset(latestDatasetId)}>
+                  <Button size="compact-xs" variant="light" onClick={() => void loadDataset(latestDatasetId)}>
                     Select Latest Dataset
-                  </button>
+                  </Button>
                 ) : null}
-                <button className="btn-sm" onClick={() => setActiveTab('record')}>
+                <Button size="compact-xs" variant="light" onClick={() => setActiveTab('record')}>
                   Go to Record
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
             <div id="dataset-detail-view" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="dataset-detail-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                 <div>
-                  <h3 id="ds-title" style={{ marginBottom: 4 }}>
+                  <Text id="ds-title" size="sm" fw={600} c="dimmed" mb="xs" style={{ marginBottom: 4 }}>
                     {selected.dataset_id}
-                  </h3>
+                  </Text>
                   <div id="ds-stats" className="muted dataset-detail-stats" style={{ fontSize: 13 }}>
                     {selected.total_episodes} episodes · {selected.total_frames} frames · {selected.fps} FPS
                   </div>
@@ -692,29 +696,33 @@ export function DatasetTab({ active }: DatasetTabProps) {
                   </div>
                 </div>
                 <div id="ds-detail-actions">
-                  <details className="ds-actions-menu">
-                    <summary className="btn-xs ds-actions-summary" title="Dataset actions">
-                      Actions ▾
-                    </summary>
-                    <div className="ds-actions-panel">
-                      <button className="btn-xs" onClick={() => void inspectQuality(selected.dataset_id)}>
-                        Inspect Quality
-                      </button>
-                      <button className="btn-xs ds-action-btn-push" onClick={() => void pushToHub(selected.dataset_id)}>
-                        Push to Hub
-                      </button>
-                      <button className="btn-xs ds-action-btn-danger" onClick={() => void deleteDataset(selected.dataset_id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </details>
+                  <div className="ds-actions-menu">
+                    <Menu shadow="md" position="bottom-end" withinPortal>
+                      <Menu.Target>
+                        <ActionIcon className="ds-actions-summary" size="sm" variant="subtle" title="Dataset actions" onClick={(e) => e.stopPropagation()}>
+                          ⋮
+                        </ActionIcon>
+                      </Menu.Target>
+                      <Menu.Dropdown className="ds-actions-panel" onClick={(e) => e.stopPropagation()}>
+                        <Menu.Item onClick={() => void inspectQuality(selected.dataset_id)}>
+                          Inspect Quality
+                        </Menu.Item>
+                        <Menu.Item className="ds-action-btn-push" onClick={() => void pushToHub(selected.dataset_id)}>
+                          Push to Hub
+                        </Menu.Item>
+                        <Menu.Item className="ds-action-btn-danger" onClick={() => void deleteDataset(selected.dataset_id)}>
+                          Delete
+                        </Menu.Item>
+                      </Menu.Dropdown>
+                    </Menu>
+                  </div>
                 </div>
               </div>
 
               {!quality ? (
                 <div className="dataset-workflow-banner">
                   <span className="dsub">Run quality inspection before training to validate episodes, frames, and video integrity.</span>
-                  <button type="button" className="link-btn" onClick={() => void inspectQuality(selected.dataset_id)}>→ Inspect Quality Now</button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => void inspectQuality(selected.dataset_id)}>→ Inspect Quality Now</Button>
                 </div>
               ) : null}
 
@@ -731,9 +739,9 @@ export function DatasetTab({ active }: DatasetTabProps) {
                 </div>
                 {pushStatus.status === 'error' ? (
                   <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                    <button className="btn-xs" onClick={() => void pushToHub(selected.dataset_id)}>
+                    <Button size="compact-xs" variant="light" onClick={() => void pushToHub(selected.dataset_id)}>
                       Retry Push
-                    </button>
+                    </Button>
                   </div>
                 ) : null}
               </div>
@@ -742,49 +750,46 @@ export function DatasetTab({ active }: DatasetTabProps) {
 
               {quality && quality.score >= 60 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                  <button type="button" className="link-btn" onClick={() => setActiveTab('train')}>→ Proceed to Train</button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('train')}>→ Proceed to Train</Button>
                 </div>
               )}
 
 
               <div className="dataset-episode-controls">
                 <div className="dataset-episode-row dataset-episode-row-primary">
-                  <label htmlFor="ds-ep-select">Episode</label>
-                  <select
+                  <NativeSelect
                     id="ds-ep-select"
                     className="dataset-episode-select"
-                    value={selectedEpisode}
+                    label="Episode"
+                    value={String(selectedEpisode)}
                     onChange={(e) => setSelectedEpisode(Number(e.target.value))}
                     style={{ flex: 1, minWidth: 220 }}
-                  >
-                    {pagedEpisodes.length > 0 ? (
-                      pagedEpisodes.map((ep) => (
-                        <option key={ep.episode_index} value={ep.episode_index}>
-                          Episode {ep.episode_index} ({ep.length ?? 0} frames)
-                        </option>
-                      ))
-                    ) : (
-                      <option value={selectedEpisode}>No matching episodes</option>
-                    )}
-                  </select>
+                    data={pagedEpisodes.length > 0
+                      ? pagedEpisodes.map((ep) => ({ value: String(ep.episode_index), label: `Episode ${ep.episode_index} (${ep.length ?? 0} frames)` }))
+                      : [{ value: String(selectedEpisode), label: 'No matching episodes' }]}
+                  />
 
                   <div className="dataset-page-nav" aria-label="Episode page navigation">
-                  <button
-                    className="btn-xs dataset-ep-nav-btn"
+                  <Button
+                    className="dataset-ep-nav-btn"
+                    size="compact-xs"
+                    variant="light"
                     title="Previous page"
                     onClick={() => jumpEpisodePage(episodePage - 1)}
                     disabled={episodePage <= 1}
                   >
                     Prev {EP_SELECT_PAGE_SIZE}
-                  </button>
-                  <button
-                    className="btn-xs dataset-ep-nav-btn"
+                  </Button>
+                  <Button
+                    className="dataset-ep-nav-btn"
+                    size="compact-xs"
+                    variant="light"
                     title="Next page"
                     onClick={() => jumpEpisodePage(episodePage + 1)}
                     disabled={episodePage >= episodePageCount}
                   >
                     Next {EP_SELECT_PAGE_SIZE}
-                  </button>
+                  </Button>
                     <span className="muted dataset-page-indicator">
                       Page {episodePage}/{episodePageCount}
                     </span>
@@ -803,10 +808,9 @@ export function DatasetTab({ active }: DatasetTabProps) {
                 <div className="dataset-episode-row dataset-episode-row-secondary">
                   <div className="dataset-secondary-fields">
                     <div className="dataset-inline-field">
-                      <label htmlFor="ds-ep-query">Find</label>
-                      <input
+                      <TextInput
                         id="ds-ep-query"
-                        type="text"
+                        label="Find"
                         value={episodeQuery}
                         onChange={(e) => setEpisodeQuery(e.target.value)}
                         placeholder="episode index"
@@ -814,14 +818,19 @@ export function DatasetTab({ active }: DatasetTabProps) {
                     </div>
 
                     <div className="dataset-inline-field">
-                      <label htmlFor="ds-tag-filter">Filter</label>
-                      <select id="ds-tag-filter" value={filter} onChange={(e) => setFilter(e.target.value as TagFilter)}>
-                        <option value="all">All episodes</option>
-                        <option value="good">👍 Good</option>
-                        <option value="bad">👎 Bad</option>
-                        <option value="review">🔍 Review</option>
-                        <option value="untagged">Untagged</option>
-                      </select>
+                      <NativeSelect
+                        id="ds-tag-filter"
+                        label="Filter"
+                        value={filter}
+                        onChange={(e) => setFilter(e.target.value as TagFilter)}
+                        data={[
+                          { value: 'all', label: 'All episodes' },
+                          { value: 'good', label: '👍 Good' },
+                          { value: 'bad', label: '👎 Bad' },
+                          { value: 'review', label: '🔍 Review' },
+                          { value: 'untagged', label: 'Untagged' },
+                        ]}
+                      />
                     </div>
                   </div>
 
@@ -880,95 +889,96 @@ export function DatasetTab({ active }: DatasetTabProps) {
                   <span id="ds-time-current" style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text2)', minWidth: 48, textAlign: 'right' }}>
                     {formatTime(currentTime)}
                   </span>
-                  <input
-                    id="ds-scrubber"
-                    type="range"
-                    min={0}
-                    max={Math.max(duration, 0)}
-                    value={Math.min(currentTime, Math.max(duration, 0))}
-                    step={0.01}
-                    onChange={(e) => handleScrub(Number(e.target.value))}
-                    style={{ flex: 1, cursor: 'pointer', accentColor: 'var(--accent)' }}
-                  />
+                  <Box style={{ flex: 1 }}>
+                    <Slider
+                      id="ds-scrubber"
+                      min={0}
+                      max={Math.max(duration, 0.01)}
+                      value={Math.min(currentTime, Math.max(duration, 0.01))}
+                      step={0.01}
+                      onChange={handleScrub}
+                      color="blue"
+                    />
+                  </Box>
                   <span id="ds-time-total" style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--text2)', minWidth: 48 }}>
                     {formatTime(duration)}
                   </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                  <button className="btn-sm" title="Previous episode" onClick={() => {
+                  <ActionIcon variant="light" title="Previous episode" onClick={() => {
                     const eps = filteredEpisodes
                     const idx = eps.findIndex((ep) => ep.episode_index === selectedEpisode)
                     if (idx > 0) setSelectedEpisode(eps[idx - 1].episode_index)
                   }}>
                     ⏮
-                  </button>
-                  <button id="ds-play-btn" className="btn-sm" style={{ minWidth: 74 }} onClick={togglePlay}>
+                  </ActionIcon>
+                  <Button id="ds-play-btn" size="compact-xs" variant="light" style={{ minWidth: 74 }} onClick={togglePlay}>
                     {isPlaying ? '⏸ Pause' : '▶ Play'}
-                  </button>
-                  <button className="btn-sm" title="Next episode" onClick={() => {
+                  </Button>
+                  <ActionIcon variant="light" title="Next episode" onClick={() => {
                     const eps = filteredEpisodes
                     const idx = eps.findIndex((ep) => ep.episode_index === selectedEpisode)
                     if (idx >= 0 && idx < eps.length - 1) setSelectedEpisode(eps[idx + 1].episode_index)
                   }}>
                     ⏭
-                  </button>
-                  <select
+                  </ActionIcon>
+                  <NativeSelect
                     id="ds-speed-select"
-                    value={playbackSpeed}
+                    value={String(playbackSpeed)}
                     onChange={(e) => handleSpeedChange(Number(e.target.value))}
                     style={{ fontSize: 11, padding: '4px 6px', borderRadius: 4, background: 'var(--bg3)', color: 'var(--text)', border: '1px solid var(--border)', cursor: 'pointer' }}
-                  >
-                    <option value={0.25}>0.25×</option>
-                    <option value={0.5}>0.5×</option>
-                    <option value={1}>1×</option>
-                    <option value={1.5}>1.5×</option>
-                    <option value={2}>2×</option>
-                  </select>
+                    data={[
+                      { value: '0.25', label: '0.25×' },
+                      { value: '0.5', label: '0.5×' },
+                      { value: '1', label: '1×' },
+                      { value: '1.5', label: '1.5×' },
+                      { value: '2', label: '2×' },
+                    ]}
+                  />
                 </div>
               </div>
 
               <div className="dataset-tag-row">
                 <span className="dataset-tag-label">Tag</span>
                 <div className="dataset-tag-actions">
-                  <button
+                  <Button
                     id="ds-tag-good"
-                    className={`btn-xs dataset-tag-btn ${selectedEpisodeTag === 'good' ? 'active' : ''}`}
+                    className={`dataset-tag-btn ${selectedEpisodeTag === 'good' ? 'active' : ''}`}
+                    size="compact-xs"
+                    variant="light"
                     onClick={() => tagEpisode('good')}
                   >
                     👍 Good
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     id="ds-tag-bad"
-                    className={`btn-xs dataset-tag-btn ${selectedEpisodeTag === 'bad' ? 'active' : ''}`}
+                    className={`dataset-tag-btn ${selectedEpisodeTag === 'bad' ? 'active' : ''}`}
+                    size="compact-xs"
+                    variant="light"
                     onClick={() => tagEpisode('bad')}
                   >
                     👎 Bad
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     id="ds-tag-review"
-                    className={`btn-xs dataset-tag-btn ${selectedEpisodeTag === 'review' ? 'active' : ''}`}
+                    className={`dataset-tag-btn ${selectedEpisodeTag === 'review' ? 'active' : ''}`}
+                    size="compact-xs"
+                    variant="light"
                     onClick={() => tagEpisode('review')}
                   >
                     🔍 Review
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     id="ds-tag-clear"
-                    className={`btn-xs dataset-tag-btn ${selectedEpisodeIsUntagged ? 'active' : ''}`}
+                    className={`dataset-tag-btn ${selectedEpisodeIsUntagged ? 'active' : ''}`}
+                    size="compact-xs"
+                    variant="light"
                     onClick={() => tagEpisode('untagged')}
                   >
                     ✕ Clear
-                  </button>
+                  </Button>
                 </div>
-                <label htmlFor="ds-auto-next" className="dataset-auto-next">
-                  <input
-                    id="ds-auto-next"
-                    type="checkbox"
-                    checked={autoNextOnTag}
-                    onChange={(e) => setAutoNextOnTag(e.target.checked)}
-                    style={{ width: 'auto' }}
-                  />
-                  Auto-next after tag
-                </label>
+                <Checkbox id="ds-auto-next" className="dataset-auto-next" checked={autoNextOnTag} onChange={(e) => setAutoNextOnTag(e.target.checked)} label="Auto-next after tag" />
               </div>
 
               {selected && (
@@ -995,9 +1005,9 @@ export function DatasetTab({ active }: DatasetTabProps) {
               )}
             </div>
           )}
-        </div>
+        </Paper>
       </div>
 
-    </section>
+    </Box>
   )
 }

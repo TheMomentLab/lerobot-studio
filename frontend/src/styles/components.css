@@ -1,149 +1,17 @@
-/* ── Profile More Menu ── */
-.profile-more-wrap {
-  position: relative;
-}
-.profile-more-btn {
-  font-size: 16px;
-  line-height: 1;
-  padding: 2px 6px;
-  letter-spacing: 0;
-}
-.profile-more-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 1000;
-  min-width: 140px;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-  padding: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.profile-more-menu button {
-  width: 100%;
-  text-align: left;
-  padding: 7px 12px;
-  font-size: 13px;
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  color: var(--text);
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.profile-more-menu button:hover {
-  background: var(--bg3);
-}
-.profile-more-menu button.danger {
-  color: var(--red);
-}
-.profile-more-menu button.danger:hover {
-  background: rgba(248,81,73,0.15);
-}
-.profile-more-menu hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 4px 0;
-}
+/* ── Profile More Menu ── (replaced by Mantine Menu in ProfileSelector) */
 
 
 
-.toast-root {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 9999;
-  pointer-events: none;
-}
-
-.toast {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  min-width: 220px;
-  max-width: 360px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg2);
-  color: var(--text);
-  padding: 10px 12px;
-  font-size: 12px;
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
-  opacity: 0;
-  transform: translateY(8px);
-  transition: opacity 0.15s, transform 0.15s;
-  pointer-events: auto;
-}
-
-.toast-message {
-  flex: 1;
-  line-height: 1.45;
-}
-
-.toast-close {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text2);
-  border-radius: 4px;
-  width: 20px;
-  height: 20px;
-  line-height: 1;
-  font-size: 14px;
-  cursor: pointer;
-  padding: 0;
-}
-
-.toast-close:hover {
-  background: var(--bg3);
-  color: var(--text);
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.toast.success {
-  border-color: color-mix(in srgb, var(--green) 45%, var(--border));
-  background: color-mix(in srgb, var(--green) 14%, var(--bg2));
-}
-
-.toast.error {
-  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
-  background: color-mix(in srgb, var(--red) 14%, var(--bg2));
-}
-.github-link {
-  color: var(--text2);
-  display: flex;
-  align-items: center;
-  margin-right: 12px;
-  transition: color 0.2s ease;
-}
-.github-link:hover {
-  color: var(--text);
-}
-
-.dot {
-  width: 9px; height: 9px; border-radius: 50%;
-  display: inline-block;
-}
-.dot.green  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
-.dot.red    { background: var(--red);    box-shadow: 0 0 6px var(--red); }
-.dot.yellow { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+/* ── Toast ── (replaced by Mantine Notifications) */
+/* .github-link (replaced by Mantine ActionIcon in AppShell) */
+/* .dot.* (replaced by Mantine Indicator in AppShell) */
 
 /* ─── Section Header ────────────────────────────────────────────────────────── */
 .section-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+  /* margin-bottom handled by Mantine mb prop */
 }
 .section-header h2 { font-size: 18px; font-weight: 600; }
 .mode-toggle { display: flex; align-items: center; gap: 6px; margin-left: auto; font-size: 13px; }
@@ -202,13 +70,6 @@
   border-radius: var(--radius);
   padding: 16px;
   margin-bottom: 14px;
-}
-.card h3 {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text2);
-  letter-spacing: .2px;
-  margin-bottom: 12px;
 }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 

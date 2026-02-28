@@ -167,20 +167,6 @@ main:has(#tab-teleop.active) {
   padding: 6px;
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
-.ds-actions-panel .btn-xs {
-  width: 100%;
-  text-align: left;
-  background: var(--bg3);
-}
-.ds-actions-panel .btn-xs.ds-action-btn-push {
-  background: color-mix(in srgb, var(--accent) 18%, var(--bg3));
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
-}
-.ds-actions-panel .btn-xs.ds-action-btn-danger {
-  color: var(--red);
-  border: 1px solid rgba(248, 81, 73, 0.3);
-}
 .badge-ok   { background: color-mix(in srgb, var(--green) 20%, transparent); color: var(--green); }
 .badge-warn { background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); }
 .badge-err  { background: color-mix(in srgb, var(--red) 20%, transparent); color: var(--red); }
@@ -1150,19 +1136,11 @@ kbd {
 .eval-sticky-controls .btn-row,
 .teleop-sticky-controls .btn-row { margin-top: 0; }
 
-.record-sticky-controls .btn-primary,
 .record-sticky-controls .btn-danger,
-.train-sticky-controls .btn-primary,
 .train-sticky-controls .btn-danger,
-.eval-sticky-controls .btn-primary,
 .eval-sticky-controls .btn-danger,
-.teleop-sticky-controls .btn-primary,
 .teleop-sticky-controls .btn-danger { padding: 4px 14px; font-size: 12px; }
 
-.record-sticky-controls .btn-sm,
-.train-sticky-controls .btn-sm,
-.eval-sticky-controls .btn-sm,
-.teleop-sticky-controls .btn-sm { padding: 4px 10px; font-size: 12px; }
 
 .calibrate-mobile-controls {
   display: none;

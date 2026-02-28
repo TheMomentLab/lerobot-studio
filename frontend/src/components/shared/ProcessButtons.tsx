@@ -1,3 +1,5 @@
+import { Button, Group, Text } from '@mantine/core'
+
 interface ProcessButtonsProps {
   running: boolean
   onStart: () => void
@@ -10,21 +12,23 @@ interface ProcessButtonsProps {
 export function ProcessButtons({ running, onStart, onStop, startLabel, disabled, conflictReason }: ProcessButtonsProps) {
   const isBlocked = disabled || !!conflictReason
   return (
-    <div className="btn-row">
+    <Group className="btn-row" gap="xs" align="center">
       {!running ? (
         <>
-          <button className="btn-primary" onClick={onStart} disabled={isBlocked}>
+          <Button color="blue" variant="light" size="sm" onClick={onStart} disabled={isBlocked}>
             {startLabel}
-          </button>
+          </Button>
           {conflictReason && (
-            <span className="conflict-hint">{conflictReason} is running</span>
+            <Text size="sm" c="dimmed" className="conflict-hint">
+              {conflictReason} is running
+            </Text>
           )}
         </>
       ) : (
-        <button className="btn-danger" onClick={onStop}>
+        <Button color="red" variant="light" size="sm" onClick={onStop}>
           ■ Stop
-        </button>
+        </Button>
       )}
-    </div>
+    </Group>
   )
 }

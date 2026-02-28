@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Accordion, Badge, Box, Button, Group, NativeSelect, NumberInput, Paper, Text, TextInput, Title } from '@mantine/core'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { getProcessConflict } from '../lib/processConflicts'
 import { useConfig } from '../hooks/useConfig'
@@ -632,13 +633,13 @@ export function TrainTab({ active }: TrainTabProps) {
   }
 
   return (
-    <section id="tab-train" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Train Policy</h2>
-        <span className={`status-verdict ${running || trainReady ? 'ready' : 'warn'}`}>
+    <Box id="tab-train" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Train Policy</Title>
+        <Badge variant="light" color={running || trainReady ? 'green' : 'yellow'}>
           {running ? 'Running' : trainReady ? 'Ready to Start' : 'Action Needed'}
-        </span>
-      </div>
+        </Badge>
+      </Group>
 
       {!running && !trainReady ? (
         <div className="train-blocker-card">
@@ -650,13 +651,13 @@ export function TrainTab({ active }: TrainTabProps) {
           </div>
           <div className="train-blocker-actions">
             {!preflightOk ? (
-              <button type="button" className="link-btn" onClick={() => buildConfig({ train_device: 'cpu' })}>→ Switch to CPU</button>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => buildConfig({ train_device: 'cpu' })}>→ Switch to CPU</Button>
             ) : null}
             {!preflightOk && preflightAction === 'install_python_dep' && preflightCommand ? (
-              <button type="button" className="link-btn" onClick={() => { void runPreflightFix() }}>→ Install Missing Python Packages</button>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => { void runPreflightFix() }}>→ Install Missing Python Packages</Button>
             ) : null}
-            <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>→ Open Dataset</button>
-            <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Go to Record</button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('dataset')}>→ Open Dataset</Button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('record')}>→ Go to Record</Button>
           </div>
         </div>
       ) : null}
@@ -664,28 +665,32 @@ export function TrainTab({ active }: TrainTabProps) {
 
       <div className="train-content">
         <div className="quick-guide">
-          <h3>Training Guide</h3>
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Training Guide</Text>
           <p>Training can take <strong>hours to days</strong> depending on hardware and dataset size. Closing the GUI or restarting the server will <strong>terminate the process</strong>. Monitor real-time progress and loss values in the <strong>global console drawer</strong>.</p>
           <p className="field-help" style={{ marginTop: 8 }}>Colab runs are also not permanent: idle sessions can disconnect, and free-tier runtime length is limited. Push checkpoints frequently to avoid losing progress.</p>
         </div>
 
         <div className="train-main-grid">
-        <div className="card">
-          <h3>Configuration</h3>
-          <label>Policy Type</label>
-          <select value={config.train_policy ?? 'act'} onChange={(e) => buildConfig({ train_policy: e.target.value })}>
-            <option value="act">ACT (Action Chunking with Transformers)</option>
-            <option value="diffusion">Diffusion Policy</option>
-            <option value="tdmpc2">TD-MPC2</option>
-          </select>
-          <label>Dataset Source</label>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Configuration</Text>
+          <NativeSelect
+            label="Policy Type"
+            value={config.train_policy ?? 'act'}
+            onChange={(e) => buildConfig({ train_policy: e.target.value })}
+            data={[
+              { value: 'act', label: 'ACT (Action Chunking with Transformers)' },
+              { value: 'diffusion', label: 'Diffusion Policy' },
+              { value: 'tdmpc2', label: 'TD-MPC2' },
+            ]}
+          />
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Dataset Source</Text>
           <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
-            <button className={`toggle ${source === 'local' ? 'active' : ''}`} onClick={() => setSource('local')}>
+            <Button className={`toggle ${source === 'local' ? 'active' : ''}`} variant="light" size="compact-xs" onClick={() => setSource('local')}>
               Local
-            </button>
-            <button className={`toggle ${source === 'hf' ? 'active' : ''}`} onClick={() => setSource('hf')}>
+            </Button>
+            <Button className={`toggle ${source === 'hf' ? 'active' : ''}`} variant="light" size="compact-xs" onClick={() => setSource('hf')}>
               Hugging Face
-            </button>
+            </Button>
           </div>
           {source === 'local' ? (
             <>
@@ -694,55 +699,52 @@ export function TrainTab({ active }: TrainTabProps) {
                   <span style={{ fontSize: 16 }}>⚠️</span>
                   <span>No local datasets found. Record episodes in the <strong>Record</strong> tab first, or switch to <strong>Hugging Face</strong> source above.</span>
                   <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}>
-                    <button type="button" className="btn-xs" onClick={() => setActiveTab('record')}>Go to Record</button>
-                    <button type="button" className="btn-xs" onClick={() => setActiveTab('dataset')}>Open Dataset</button>
-                    <button type="button" className="btn-xs" onClick={() => { setSource('hf'); buildConfig({ train_dataset_source: 'hf' }) }}>Use Hugging Face</button>
+                    <Button type="button" size="compact-xs" variant="light" onClick={() => setActiveTab('record')}>Go to Record</Button>
+                    <Button type="button" size="compact-xs" variant="light" onClick={() => setActiveTab('dataset')}>Open Dataset</Button>
+                    <Button type="button" size="compact-xs" variant="light" onClick={() => { setSource('hf'); buildConfig({ train_dataset_source: 'hf' }) }}>Use Hugging Face</Button>
                   </div>
                 </div>
               )}
-              <label>Local Dataset</label>
-              <select value={repoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })}>
-                {datasets.length === 0 ? <option value="__none__">No local datasets — record in Record tab first</option> : null}
-                {datasets.map((ds) => (
-                  <option key={ds.id} value={ds.id}>
-                    {ds.id}
-                  </option>
-                ))}
-              </select>
+              <NativeSelect
+                label="Local Dataset"
+                value={repoId}
+                onChange={(e) => buildConfig({ train_repo_id: e.target.value })}
+                data={[
+                  ...(datasets.length === 0 ? [{ value: '__none__', label: 'No local datasets — record in Record tab first' }] : []),
+                  ...datasets.map((ds) => ({ value: ds.id, label: ds.id })),
+                ]}
+              />
               <div className="field-help" style={{ marginTop: 4 }}>Choose a dataset from local cache (`~/.cache/huggingface/lerobot`).</div>
             </>
           ) : (
             <>
-              <label>Dataset Repo ID</label>
-              <input type="text" value={config.train_repo_id ?? defaultRepoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
+              <TextInput label="Dataset Repo ID" value={config.train_repo_id ?? defaultRepoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
             </>
           )}
           <div className="train-steps-row">
             <label style={{ margin: 0 }}>Training Steps</label>
             <div className="train-step-presets">
-              <button className={`btn-xs${trainSteps === 1000 ? ' active' : ''}`} onClick={() => applyPreset('quick')}>
+              <Button className={`${trainSteps === 1000 ? 'active' : ''}`} size="compact-xs" variant="light" onClick={() => applyPreset('quick')}>
                 Quick (1K)
-              </button>
-              <button className={`btn-xs${trainSteps === 50000 ? ' active' : ''}`} onClick={() => applyPreset('standard')}>
+              </Button>
+              <Button className={`${trainSteps === 50000 ? 'active' : ''}`} size="compact-xs" variant="light" onClick={() => applyPreset('standard')}>
                 Standard (50K)
-              </button>
-              <button className={`btn-xs${trainSteps === 100000 ? ' active' : ''}`} onClick={() => applyPreset('full')}>
+              </Button>
+              <Button className={`${trainSteps === 100000 ? 'active' : ''}`} size="compact-xs" variant="light" onClick={() => applyPreset('full')}>
                 Full (100K)
-              </button>
+              </Button>
             </div>
           </div>
-          <input type="number" value={trainSteps} onChange={(e) => buildConfig({ train_steps: Number(e.target.value) })} />
-          <label>Batch Size</label>
+          <NumberInput label="Training Steps" value={trainSteps} min={1} onChange={(value) => buildConfig({ train_steps: Number(value) })} />
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <input
-              type="number"
+            <NumberInput
+              label="Batch Size"
               min={1}
               step={1}
               value={trainBatchSize}
-              onChange={(e) => {
-                const raw = e.target.value.trim()
-                if (!raw) return
-                const next = Number(raw)
+              onChange={(value) => {
+                if (value === '' || value === null || value === undefined) return
+                const next = Number(value)
                 if (!Number.isFinite(next) || next <= 0) return
                 buildConfig({ train_batch_size: Math.floor(next) })
               }}
@@ -750,54 +752,61 @@ export function TrainTab({ active }: TrainTabProps) {
             />
           </div>
           <div className="field-help" style={{ marginTop: 4 }}>Set any positive integer. If OOM occurs, lower this value and retry. This value is applied immediately when training starts.</div>
-          <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 8 }}>
-            <summary>Advanced Params</summary>
-            <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
-              <div className="train-advanced-grid">
-                <div>
-                  <label style={{ marginBottom: 3 }}>Learning Rate</label>
-                  <input
-                    type="text"
-                    placeholder="default (1e-4)"
-                    value={(config.train_lr as string | undefined) ?? ''}
-                    onChange={(e) => buildConfig({ train_lr: e.target.value })}
-                  />
-                  <div className="field-help">e.g. 1e-4, 0.0001</div>
+          <Accordion variant="contained" className="advanced-panel" style={{ marginTop: 8 }}>
+            <Accordion.Item value="advanced">
+              <Accordion.Control>Advanced Params</Accordion.Control>
+              <Accordion.Panel>
+                <div style={{ marginTop: 8, padding: 10, border: '1px solid var(--border)', borderRadius: 6, background: 'color-mix(in srgb, var(--bg3) 60%, transparent)' }}>
+                  <div className="train-advanced-grid">
+                    <div>
+                      <TextInput
+                        label="Learning Rate"
+                        placeholder="default (1e-4)"
+                        value={(config.train_lr as string | undefined) ?? ''}
+                        onChange={(e) => buildConfig({ train_lr: e.target.value })}
+                      />
+                      <div className="field-help">e.g. 1e-4, 0.0001</div>
+                    </div>
+                    <div>
+                      <TextInput
+                        label="Model Output Repo (Optional)"
+                        placeholder="user/my-policy"
+                        value={(config.train_output_repo as string | undefined) ?? ''}
+                        onChange={(e) => buildConfig({ train_output_repo: e.target.value })}
+                      />
+                      <div className="field-help">Used by Colab flow to choose where trained checkpoints are uploaded.</div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label style={{ marginBottom: 3 }}>Model Output Repo (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="user/my-policy"
-                    value={(config.train_output_repo as string | undefined) ?? ''}
-                    onChange={(e) => buildConfig({ train_output_repo: e.target.value })}
-                  />
-                  <div className="field-help">Used by Colab flow to choose where trained checkpoints are uploaded.</div>
-                </div>
-              </div>
-            </div>
-          </details>
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
           <div style={{ marginTop: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
 
-            <button
+            <Button
               type="button"
-              className="btn-xs"
+              variant="light"
+              size="compact-xs"
               onClick={() => { void copyColabSnippetFromForm() }}
               disabled={copyingColab || !repoId.includes('/')}
               title={repoId.includes('/') ? 'Copy Colab snippet with repo_id/config_path' : 'Select a valid dataset repo first'}
             >
               {copyingColab ? 'Copying snippet...' : 'Copy Colab Snippet'}
-            </button>
+            </Button>
           </div>
           <div className="field-help" style={{ marginTop: 4 }}>
             Use <strong>Train on Colab</strong> to upload your config and open the notebook in one step. Use <strong>Copy Colab Snippet</strong> to re-copy the load command and paste it into the first cell.
           </div>
-          <label>Compute Device</label>
-          <select value={config.train_device ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
-            <option value="cuda">CUDA (GPU)</option>
-            <option value="cpu">CPU</option>
-            <option value="mps">MPS (Apple Silicon)</option>
-          </select>
+          <NativeSelect
+            label="Compute Device"
+            value={config.train_device ?? 'cuda'}
+            onChange={(e) => buildConfig({ train_device: e.target.value })}
+            data={[
+              { value: 'cuda', label: 'CUDA (GPU)' },
+              { value: 'cpu', label: 'CPU' },
+              { value: 'mps', label: 'MPS (Apple Silicon)' },
+            ]}
+          />
           <div className="field-help" style={{ marginTop: 4 }}>
             For Colab, device is limited to CUDA/CPU. If MPS is selected, Colab flow automatically uses CUDA.
           </div>
@@ -809,9 +818,9 @@ export function TrainTab({ active }: TrainTabProps) {
           {!preflightOk && preflightAction === 'install_torch_cuda' ? (
             <div id="train-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
               <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock training:</div>
-              <button id="train-install-btn" className="btn-primary" onClick={installCudaTorch}>
+              <Button id="train-install-btn" variant="light" onClick={installCudaTorch}>
                 Install CUDA PyTorch (Nightly)
-              </button>
+              </Button>
             </div>
           ) : null}
           {!preflightOk && preflightCommand && preflightAction !== 'install_torch_cuda' ? (
@@ -824,13 +833,13 @@ export function TrainTab({ active }: TrainTabProps) {
               {preflightAction !== 'install_python_dep' ? (
                 <div className="field-help" style={{ marginBottom: 8, fontFamily: 'var(--mono)' }}>{preflightCommand}</div>
               ) : null}
-              <button className="btn-primary" onClick={() => { void runPreflightFix() }} disabled={installing}>
+              <Button variant="light" onClick={() => { void runPreflightFix() }} disabled={installing}>
                 {installing ? 'Fix Running...' : preflightFixLabel}
-              </button>
+              </Button>
               {installing ? (
-                <button className="btn-sm" style={{ marginLeft: 8 }} onClick={() => { void stopProcess('train') }}>
+                <Button size="compact-xs" variant="light" style={{ marginLeft: 8 }} onClick={() => { void stopProcess('train') }}>
                   Stop Fix
-                </button>
+                </Button>
               ) : null}
             </div>
           ) : null}
@@ -879,21 +888,21 @@ export function TrainTab({ active }: TrainTabProps) {
               </div>
             )}
           </div>
-        </div>
+        </Paper>
           <div className="train-info-stack">
-          <div className="card">
+          <Paper withBorder p="md" mb="md" className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0 }}>Checkpoints</h3>
-              <button className="btn-xs" onClick={refreshCheckpoints}>
+              <Text size="sm" fw={600} c="dimmed" mb="xs" style={{ margin: 0 }}>Checkpoints</Text>
+              <Button size="compact-xs" variant="light" onClick={refreshCheckpoints}>
                 ↺ Refresh
-              </button>
+              </Button>
             </div>
             <div id="train-checkpoints-list" className="device-list">
               {checkpointsLoading ? (
               checkpointsTimedOut ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span className="muted">Couldn't load checkpoints</span>
-                  <button className="btn-xs" onClick={refreshCheckpoints}>Retry</button>
+                  <Button size="compact-xs" variant="light" onClick={refreshCheckpoints}>Retry</Button>
                 </div>
               ) : (
                 <div className="muted">Loading checkpoints...</div>
@@ -909,21 +918,21 @@ export function TrainTab({ active }: TrainTabProps) {
                   ))
                 : null}
             </div>
-          </div>
+          </Paper>
 
-          <div className="card">
+          <Paper withBorder p="md" mb="md" className="card">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0 }}>GPU Status</h3>
-              <button onClick={refreshGpu} className="btn-xs">
+              <Text size="sm" fw={600} c="dimmed" mb="xs" style={{ margin: 0 }}>GPU Status</Text>
+              <Button onClick={refreshGpu} size="compact-xs" variant="light">
                 ↺ Refresh
-              </button>
+              </Button>
             </div>
             <div id="train-gpu-status" className="device-list">
               {!gpuStatus ? (
                 gpuTimedOut ? (
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="muted">Couldn't load GPU info</span>
-                    <button className="btn-xs" onClick={refreshGpu}>Retry</button>
+                    <Button size="compact-xs" variant="light" onClick={refreshGpu}>Retry</Button>
                   </div>
                 ) : (
                   <div className="muted">Loading GPU info...</div>
@@ -957,20 +966,20 @@ export function TrainTab({ active }: TrainTabProps) {
                 </div>
               ) : null}
             </div>
-          </div>
+          </Paper>
           </div>
         </div>
         {oomDetected && !running ? (
           <div className="train-device-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, width: '100%', maxWidth: 600 }}>
             <span>GPU out of memory. Current batch size: {trainBatchSize}. Reduce to {Math.max(1, Math.floor(trainBatchSize / 2))} and retry?</span>
-            <button className="btn-sm" style={{ flexShrink: 0 }} onClick={reduceAndRetry}>
+            <Button size="compact-xs" variant="light" style={{ flexShrink: 0 }} onClick={reduceAndRetry}>
               Reduce &amp; Retry
-            </button>
+            </Button>
           </div>
         ) : null}
         {!running && checkpoints.length > 0 && (
           <div className="workflow-cta" style={{ marginTop: 12 }}>
-            <button className="btn-sm" onClick={() => setActiveTab('eval')}>→ Proceed to Eval</button>
+            <Button size="compact-xs" variant="subtle" onClick={() => setActiveTab('eval')}>→ Proceed to Eval</Button>
           </div>
         )}
       </div>
@@ -988,9 +997,11 @@ export function TrainTab({ active }: TrainTabProps) {
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
+          <Button
             type="button"
-            className="btn-sm"
+            className=""
+            size="compact-xs"
+            variant="light"
             onClick={() => { void startOnColab() }}
             disabled={colabStarting || running || starting || noLocalDataset}
             title={noLocalDataset ? 'Record/download a dataset first' : 'Upload config and open Colab notebook'}
@@ -999,10 +1010,10 @@ export function TrainTab({ active }: TrainTabProps) {
               <img src="/colab-logo.png" alt="" aria-hidden="true" style={{ width: 14, height: 14, objectFit: 'contain' }} />
               {colabStarting ? 'Preparing Colab...' : 'Train on Colab'}
             </span>
-          </button>
+          </Button>
           <ProcessButtons running={running || starting} onStart={start} onStop={stop} startLabel={starting ? '⏳ Starting...' : '▶ Start Training'} disabled={startDisabled} conflictReason={conflictReason} />
         </div>
       </div>
-    </section>
+    </Box>
   )
 }

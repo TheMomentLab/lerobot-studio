@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ActionIcon, Badge, Box, Button, Group, NativeSelect, Paper, Text, TextInput, Title } from '@mantine/core'
 import { formatRobotType } from '../lib/format'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { getProcessConflict } from '../lib/processConflicts'
@@ -501,17 +502,17 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   }
 
   return (
-    <section id="tab-calibrate" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Calibration</h2>
-        <span className={`status-verdict ${!conflictReason && devices.arms.length > 0 ? 'ready' : 'warn'}`}>
+    <Box id="tab-calibrate" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Calibration</Title>
+        <Badge variant="light" color={running || (!conflictReason && devices.arms.length > 0) ? 'green' : 'yellow'}>
           {running ? 'Running' : !conflictReason && devices.arms.length > 0 ? 'Ready' : 'Action Needed'}
-        </span>
+        </Badge>
         <div className="mode-toggle">
-          <button className={`toggle${!isBiArm ? ' active' : ''}`} onClick={() => setIsBiArm(false)}>Single</button>
-          <button className={`toggle${isBiArm ? ' active' : ''}`} onClick={() => setIsBiArm(true)}>Bi-Arm</button>
+          <Button className={`toggle${!isBiArm ? ' active' : ''}`} size="compact-xs" variant="light" onClick={() => setIsBiArm(false)}>Single</Button>
+          <Button className={`toggle${isBiArm ? ' active' : ''}`} size="compact-xs" variant="light" onClick={() => setIsBiArm(true)}>Bi-Arm</Button>
         </div>
-      </div>
+      </Group>
       {!running && calibrateBlockers.length > 0 ? (
         <div className="calibrate-blocker-card">
           <div className="dsub" style={{ marginBottom: 6 }}>Calibration blocked:</div>
@@ -522,51 +523,26 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
           </div>
           <div className="calibrate-blocker-actions">
             {devices.arms.length === 0 ? (
-              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
             ) : null}
-            <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</Button>
           </div>
         </div>
       ) : null}
       <div className="two-col">
-        <div className="card">
+        <Paper withBorder p="md" mb="md" className="card">
           {isBiArm ? (
             <>
-              <h3>Bi-Arm Configuration</h3>
-              <label>Device Type</label>
-              <select value={biType} onChange={(e) => {
+              <Text size="sm" fw={600} c="dimmed" mb="xs">Bi-Arm Configuration</Text>
+              <NativeSelect value={biType} onChange={(e) => {
                 const t = e.target.value
                 setBiType(t)
                 setBiId(t.includes('leader') ? 'bimanual_leader' : 'bimanual_follower')
-              }}>
-                <option value="bi_so_follower">Bi SO-101/100 Follower</option>
-                <option value="bi_so_leader">Bi SO-101/100 Leader</option>
-              </select>
-              <label>Combined Arm ID</label>
-              <input type="text" value={biId} onChange={(e) => setBiId(e.target.value)} placeholder="e.g. bimanual_follower" />
+              }} data={[{ value: 'bi_so_follower', label: 'Bi SO-101/100 Follower' }, { value: 'bi_so_leader', label: 'Bi SO-101/100 Leader' }]} label="Device Type" />
+              <TextInput value={biId} onChange={(e) => setBiId(e.target.value)} placeholder="e.g. bimanual_follower" label="Combined Arm ID" />
               <div className="field-help">Both arms share this ID as their calibration profile name.</div>
-              <label>Left Arm Port</label>
-              <select value={biLeftPort} onChange={(e) => setBiLeftPort(e.target.value)}>
-                {devices.arms.length === 0 ? (
-                  <option value={biLeftPort}>{biLeftPort}</option>
-                ) : (
-                  devices.arms.map((arm, idx) => {
-                    const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
-                    return <option key={`left-${p}`} value={p}>{arm.symlink ?? p}</option>
-                  })
-                )}
-              </select>
-              <label>Right Arm Port</label>
-              <select value={biRightPort} onChange={(e) => setBiRightPort(e.target.value)}>
-                {devices.arms.length === 0 ? (
-                  <option value={biRightPort}>{biRightPort}</option>
-                ) : (
-                  devices.arms.map((arm, idx) => {
-                    const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
-                    return <option key={`right-${p}`} value={p}>{arm.symlink ?? p}</option>
-                  })
-                )}
-              </select>
+              <NativeSelect value={biLeftPort} onChange={(e) => setBiLeftPort(e.target.value)} data={devices.arms.length === 0 ? [{ value: biLeftPort, label: biLeftPort }] : devices.arms.map((arm, idx) => { const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`; return { value: p, label: arm.symlink ?? p } })} label="Left Arm Port" />
+              <NativeSelect value={biRightPort} onChange={(e) => setBiRightPort(e.target.value)} data={devices.arms.length === 0 ? [{ value: biRightPort, label: biRightPort }] : devices.arms.map((arm, idx) => { const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`; return { value: p, label: arm.symlink ?? p } })} label="Right Arm Port" />
               <div className="field-help" style={{ marginTop: 8 }}>Both arms are calibrated sequentially in a single run.</div>
               <div className="spacer" />
               <div className="calibrate-inline-controls">
@@ -575,17 +551,9 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
             </>
           ) : (
             <>
-              <h3>Step 1: Arm Selection</h3>
-              <label>Arm Role Type</label>
-              <select value={type} onChange={(e) => { autoMatchTriggerRef.current = 'type'; setType(e.target.value) }}>
-                {singleArmTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {formatRobotType(t)}
-                  </option>
-                ))}
-              </select>
-              <label>Arm Port</label>
-              <select value={port} onChange={(e) => {
+              <Text size="sm" fw={600} c="dimmed" mb="xs">Step 1: Arm Selection</Text>
+              <NativeSelect value={type} onChange={(e) => { autoMatchTriggerRef.current = 'type'; setType(e.target.value) }} data={singleArmTypes.map((t) => ({ value: t, label: formatRobotType(t) }))} label="Arm Role Type" />
+              <NativeSelect value={port} onChange={(e) => {
                 const nextPort = e.target.value
                 autoMatchTriggerRef.current = 'port'
                 setPort(nextPort)
@@ -597,18 +565,8 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                 if (candidateType !== type && singleArmTypes.includes(candidateType)) {
                   setType(candidateType)
                 }
-              }}>
-                {devices.arms.length === 0 ? (
-                  <option value={port}>{port}</option>
-                ) : (
-                  devices.arms.map((arm, idx) => {
-                    const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`
-                    return <option key={p} value={p}>{arm.symlink ?? p}</option>
-                  })
-                )}
-              </select>
-              <label>Arm ID</label>
-              <select value={id} onChange={(e) => {
+              }} data={devices.arms.length === 0 ? [{ value: port, label: port }] : devices.arms.map((arm, idx) => { const p = arm.path ?? `/dev/${arm.device ?? 'ttyUSB' + idx}`; return { value: p, label: arm.symlink ?? p } })} label="Arm Port" />
+              <NativeSelect value={id} onChange={(e) => {
                 const nextId = e.target.value
                 autoMatchTriggerRef.current = 'id'
                 setId(nextId)
@@ -620,33 +578,14 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                 if (candidateType !== type && armTypes.includes(candidateType)) {
                   setType(candidateType)
                 }
-              }}>
-                {files.length === 0 ? (
-                  <option value={id}>{id}</option>
-                ) : (() => {
-                  const leaderFiles = files.filter((f) => f.guessed_type.toLowerCase().includes('leader'))
-                  const followerFiles = files.filter((f) => f.guessed_type.toLowerCase().includes('follower'))
-                  const otherFiles = files.filter((f) => !f.guessed_type.toLowerCase().includes('leader') && !f.guessed_type.toLowerCase().includes('follower'))
-                  return (
-                    <>
-                      {followerFiles.length > 0 && <optgroup label="Follower">
-                        {followerFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
-                      </optgroup>}
-                      {leaderFiles.length > 0 && <optgroup label="Leader">
-                        {leaderFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
-                      </optgroup>}
-                      {otherFiles.length > 0 && <optgroup label="Other">
-                        {otherFiles.map((f) => <option key={`${f.id}-${f.guessed_type}`} value={f.id}>{f.id}</option>)}
-                      </optgroup>}
-                    </>
-                  )
-                })()}
-              </select>
+              }} data={files.length === 0 ? [{ value: id, label: id }] : Array.from(new Set(files.map((f) => f.id))).map((item) => ({ value: item, label: item }))} label="Arm ID" />
               <div className="field-help" style={{ marginTop: 6 }}>
                 Not sure which arm this port belongs to?{' '}
-                <button
+                <Button
                   type="button"
                   className="link-btn"
+                  variant="subtle"
+                  size="compact-xs"
                   onClick={() => {
                     setShowIdentifyPanel(true)
                     const panel = document.getElementById('arm-identify-panel')
@@ -654,7 +593,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                   }}
                 >
                   Open Identify Wizard
-                </button>
+                </Button>
               </div>
               {matchWarning ? (
                 <div className="field-help" style={{ marginTop: 6, color: 'var(--yellow)' }}>
@@ -675,7 +614,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
               {fileStatus === 'Found' && !running ? (
                 <div className="field-help" style={{ marginTop: 8 }}>
                   Calibration file exists.{' '}
-                  <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</Button>
                 </div>
               ) : null}
               <div className="spacer" />
@@ -684,15 +623,17 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
               </div>
             </>
           )}
-        </div>
+        </Paper>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div className="card" style={{ marginBottom: 0 }}>
+          <Paper withBorder p="md" mb="md" className="card" style={{ marginBottom: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <h3 style={{ marginBottom: 0 }}>Connected Arms</h3>
-              <button
+              <Text size="sm" fw={600} c="dimmed" mb="xs" style={{ marginBottom: 0 }}>Connected Arms</Text>
+              <Button
                 type="button"
-                className="btn-sm"
+                className=""
+                size="compact-xs"
+                variant="light"
                 onClick={() => {
                   setShowIdentifyPanel((prev) => {
                     if (prev) stopIdentify()
@@ -701,7 +642,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                 }}
               >
                 {showIdentifyPanel ? 'Hide Identify' : '🔍 Identify Arm'}
-              </button>
+              </Button>
             </div>
             {!showIdentifyPanel && devices.arms.length > 1 ? (
               <div className="field-help" style={{ marginBottom: 10 }}>
@@ -726,24 +667,25 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                 {identifyMessage}
               </div>
               <div style={{ marginTop: 10, display: 'flex', gap: 6 }}>
-                <button
+                <Button
                   id="arm-identify-start-btn"
                   type="button"
-                  className="btn-primary"
+                  variant="light"
                   style={{ display: identifyRunning ? 'none' : 'inline-flex' }}
                   onClick={startIdentify}
                 >
                   Start Identify
-                </button>
-                <button
+                </Button>
+                <Button
                   id="arm-identify-stop-btn"
                   type="button"
                   className="btn-danger"
+                  variant="light"
                   style={{ display: identifyRunning ? 'inline-flex' : 'none' }}
                   onClick={stopIdentify}
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
               <div
                 id="arm-identify-result"
@@ -763,7 +705,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                 <div className="device-empty-state">
                   <span className="dsub">No arms detected. Connect a USB arm to see it here.</span>
                   <div className="device-empty-actions">
-                    <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+                    <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
                   </div>
                 </div>
               ) : (
@@ -778,34 +720,28 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                 ))
               )}
             </div>
-          </div>
+          </Paper>
 
-          <div className="card" style={{ marginBottom: 0 }}>
+          <Paper withBorder p="md" mb="md" className="card" style={{ marginBottom: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ marginBottom: 0 }}>Existing Files</h3>
+              <Text size="sm" fw={600} c="dimmed" mb="xs" style={{ marginBottom: 0 }}>Existing Files</Text>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <select
-                  className="btn-sm"
+                <NativeSelect
+                  className=""
                   style={{ padding: '4px 8px', fontSize: 11 }}
                   value={fileFilter}
                   onChange={(e) => setFileFilter(e.target.value)}
-                >
-                  <option value="all">All Types</option>
-                  {armTypes.map((t) => (
-                    <option key={`filter-${t}`} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-                <button
+                  data={[{ value: 'all', label: 'All Types' }, ...armTypes.map((t) => ({ value: t, label: t }))]}
+                />
+                <ActionIcon
                   type="button"
-                  className="btn-xs"
+                  variant="light"
                   style={{ padding: '4px 6px' }}
                   aria-label="Refresh calibration files"
                   onClick={refreshFiles}
                 >
                   ↺
-                </button>
+                </ActionIcon>
               </div>
             </div>
             <div className="device-list">
@@ -834,7 +770,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                               <div className="dname">{f.id}</div>
                               <div className="dsub">{f.modified ?? ''}</div>
                             </div>
-                            <button type="button" className="btn-xs" style={{ color: 'var(--red)', border: '1px solid rgba(248,81,73,0.3)' }} onClick={(e) => { e.stopPropagation(); deleteFile(f.id, f.guessed_type, f.modified) }}>Delete…</button>
+                            <Button type="button" size="compact-xs" variant="light" style={{ color: 'var(--red)', border: '1px solid rgba(248,81,73,0.3)' }} onClick={(e) => { e.stopPropagation(); deleteFile(f.id, f.guessed_type, f.modified) }}>Delete…</Button>
                           </div>
                         ))}
                       </div>
@@ -851,11 +787,11 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
                         <div className="dname">{f.id}</div>
                         <div className="dsub">{f.modified ?? ''}</div>
                       </div>
-                      <button type="button" className="btn-xs" style={{ color: 'var(--red)', border: '1px solid rgba(248,81,73,0.3)' }} onClick={(e) => { e.stopPropagation(); deleteFile(f.id, f.guessed_type, f.modified) }}>Delete…</button>
+                      <Button type="button" size="compact-xs" variant="light" style={{ color: 'var(--red)', border: '1px solid rgba(248,81,73,0.3)' }} onClick={(e) => { e.stopPropagation(); deleteFile(f.id, f.guessed_type, f.modified) }}>Delete…</Button>
                     </div>
                   ))}
             </div>
-          </div>
+          </Paper>
         </div>
       </div>
 
@@ -863,8 +799,8 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
         <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Calibration" conflictReason={conflictReason} />
       </div>
 
-      <div className="card" id="cal-live-table">
-        <h3>Live Motor Ranges</h3>
+      <Paper withBorder p="md" mb="md" className="card" id="cal-live-table">
+        <Text size="sm" fw={600} c="dimmed" mb="xs">Live Motor Ranges</Text>
         {motorRows.length === 0 ? (
           <div id="cal-motor-placeholder" className="muted" style={{ textAlign: 'center', padding: '14px 0' }}>
             Waiting for calibration…<br />Start process to see live ranges.
@@ -909,7 +845,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
             })}
           </div>
         )}
-      </div>
-    </section>
+      </Paper>
+    </Box>
   )
 }

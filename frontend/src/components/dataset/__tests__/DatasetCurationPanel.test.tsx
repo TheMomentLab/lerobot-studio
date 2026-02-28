@@ -13,6 +13,12 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { DatasetCurationPanel } from '../DatasetCurationPanel'
 import type { DatasetEpisode } from '../../../lib/types'
+import { MantineProvider } from '@mantine/core'
+import type React from 'react'
+
+const MantineWrapper = ({ children }: { children: React.ReactNode }) => (
+  <MantineProvider theme={{ components: { Accordion: { defaultProps: { transitionDuration: 0 } } } }}>{children}</MantineProvider>
+)
 
 afterEach(cleanup)
 
@@ -35,6 +41,13 @@ const goodTags = (n: number): Record<string, string> =>
 const badTags = (n: number): Record<string, string> =>
   Object.fromEntries(Array.from({ length: n }, (_, i) => [String(i), 'bad']))
 
+/** Expand the Mantine Accordion to reveal panel content */
+const expandAccordion = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /Curation/i }))
+  })
+}
+
 // ─── tests ──────────────────────────────────────────────────────────────────
 
 describe('DatasetCurationPanel', () => {
@@ -49,6 +62,7 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       ))
     })
     expect(container).toBeInTheDocument()
@@ -64,8 +78,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     // Keep row: 4 good → "4 episodes"; Remove row: 6 → "6 episodes"
     expect(screen.getByText('4 episodes')).toBeInTheDocument()
     expect(screen.getByText('6 episodes')).toBeInTheDocument()
@@ -81,8 +97,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     fireEvent.click(screen.getByRole('button', { name: 'Current filter' }))
     // filteredEpisodes has 3 → keep = 3, remove = 7
     expect(screen.getByText('3 episodes')).toBeInTheDocument()
@@ -99,8 +117,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     fireEvent.click(screen.getByRole('button', { name: 'Exclude bad' }))
     // 2 bad → remove 2, keep 8
     expect(screen.getByText('8 episodes')).toBeInTheDocument()
@@ -117,8 +137,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     expect(screen.getByRole('button', { name: /Create Derived Dataset/ })).toBeDisabled()
   })
 
@@ -132,8 +154,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     fireEvent.change(
       screen.getByPlaceholderText('yourname/my-dataset-curated'),
       { target: { value: 'user/my-curated' } },
@@ -151,8 +175,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     fireEvent.change(
       screen.getByPlaceholderText('yourname/my-dataset-curated'),
       { target: { value: 'user/my-curated' } },
@@ -170,8 +196,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     expect(screen.getByText(/No episodes match this selection/)).toBeInTheDocument()
   })
 
@@ -185,8 +213,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     expect(screen.getByText(/identical to the original/i)).toBeInTheDocument()
   })
 
@@ -200,8 +230,10 @@ describe('DatasetCurationPanel', () => {
           totalEpisodes={10}
           datasetId="user/repo"
         />,
+        { wrapper: MantineWrapper },
       )
     })
+    await expandAccordion()
     expect(screen.getByText(/CLI Preview/i)).toBeInTheDocument()
   })
 })

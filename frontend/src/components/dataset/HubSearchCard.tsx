@@ -10,6 +10,7 @@
  * Hub-related state here.
  */
 import { useCallback, useEffect, useState } from 'react'
+import { Button, Paper, Text } from '@mantine/core'
 import { apiDelete, apiGet, apiPost } from '../../lib/api'
 import { useLeStudioStore } from '../../store'
 
@@ -283,7 +284,7 @@ export function HubSearchCard({ onDownloadComplete }: Props) {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="card" style={{ marginTop: 16, marginBottom: 16 }}>
+    <Paper withBorder p="md" mb="md" className="card" style={{ marginTop: 16, marginBottom: 16 }}>
       <div
         style={{
           display: 'flex',
@@ -292,7 +293,7 @@ export function HubSearchCard({ onDownloadComplete }: Props) {
           marginBottom: 12,
         }}
       >
-        <h3 style={{ margin: 0 }}>HuggingFace Hub</h3>
+        <Text size="sm" fw={600} c="dimmed" mb="xs" style={{ margin: 0 }}>HuggingFace Hub</Text>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {hubStatusText !== 'Ready' && (
             <span className={`dbadge ${hubStatusClass}`} id="hub-search-status">
@@ -300,9 +301,9 @@ export function HubSearchCard({ onDownloadComplete }: Props) {
             </span>
           )}
           {hubStatusClass === 'badge-err' ? (
-            <button className="btn-xs" onClick={() => void searchHub()}>
+            <Button variant="subtle" size="compact-xs" onClick={() => void searchHub()}>
               Retry Search
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>
@@ -350,19 +351,20 @@ export function HubSearchCard({ onDownloadComplete }: Props) {
               }
             }}
           />
-          <button className="btn-xs" onClick={() => setHfTokenVisible((prev) => !prev)}>
+          <Button variant="subtle" size="compact-xs" onClick={() => setHfTokenVisible((prev) => !prev)}>
             {hfTokenVisible ? 'Hide' : 'Show'}
-          </button>
-          <button className="btn-xs" disabled={hfTokenSaving} onClick={() => void saveHfToken()}>
+          </Button>
+          <Button variant="subtle" size="compact-xs" disabled={hfTokenSaving} onClick={() => void saveHfToken()}>
             Save Token
-          </button>
-          <button
-            className="btn-xs"
+          </Button>
+          <Button
+            variant="subtle"
+            size="compact-xs"
             disabled={hfTokenSaving || !hfTokenHasSaved}
             onClick={() => void clearHfToken()}
           >
             Clear Token
-          </button>
+          </Button>
         </div>
         <div className="muted" style={{ marginTop: 6, fontSize: 11 }}>
           {hfTokenHasSaved
@@ -394,9 +396,9 @@ export function HubSearchCard({ onDownloadComplete }: Props) {
           style={{ width: 160 }}
           onChange={(e) => setHubTag(e.target.value)}
         />
-        <button className="btn-sm" onClick={() => void searchHub()}>
+        <Button variant="default" size="sm" onClick={() => void searchHub()}>
           Search
-        </button>
+        </Button>
       </div>
 
       {/* ── Search results ── */}
@@ -457,9 +459,9 @@ export function HubSearchCard({ onDownloadComplete }: Props) {
                 <div
                   style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0 }}
                 >
-                  <button className="btn-xs" onClick={() => void downloadHubDataset(item.id)}>
+                  <Button variant="subtle" size="compact-xs" onClick={() => void downloadHubDataset(item.id)}>
                     Download
-                  </button>
+                  </Button>
                 </div>
               </div>
             )
@@ -503,15 +505,16 @@ export function HubSearchCard({ onDownloadComplete }: Props) {
         </div>
         {hubDownloadStatus === 'error' && lastHubDownloadRepoId ? (
           <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              className="btn-xs"
+            <Button
+              variant="subtle"
+              size="compact-xs"
               onClick={() => void downloadHubDataset(lastHubDownloadRepoId)}
             >
               Retry Download
-            </button>
+            </Button>
           </div>
         ) : null}
       </div>
-    </div>
+    </Paper>
   )
 }

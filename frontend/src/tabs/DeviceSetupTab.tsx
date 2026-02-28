@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Accordion, Badge, Box, Button, Group, NativeSelect, Paper, Table, Text, Title } from '@mantine/core'
 import { apiGet, apiPost } from '../lib/api'
 import type { DevicesResponse } from '../lib/types'
 import { useLeStudioStore } from '../store'
@@ -525,39 +526,39 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
           <div className="rules-empty">No {title.toLowerCase()} found.</div>
         ) : (
           <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg2)' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg3)' }}>
-                  <th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>{portHeader}</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>SYMLINK</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>MODE</th>
-                  <th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>STATUS</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12 }}>
+              <Table.Thead>
+                <Table.Tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--bg3)' }}>
+                  <Table.Th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>{portHeader}</Table.Th>
+                  <Table.Th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>SYMLINK</Table.Th>
+                  <Table.Th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>MODE</Table.Th>
+                  <Table.Th style={{ padding: '8px 12px', color: 'var(--text2)', fontWeight: 600 }}>STATUS</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
                 {rows.map((row, index) => (
-                  <tr
+                  <Table.Tr
                     key={`${title}-${row.port}-${row.symlink}-${index}`}
                     style={{
                       borderBottom: index !== rows.length - 1 ? '1px solid var(--border)' : undefined,
                       opacity: row.exists === false ? 0.6 : 1,
                     }}
                   >
-                    <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{row.port}</td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)', color: 'var(--text)', fontWeight: 600 }}>
+                    <Table.Td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{row.port}</Table.Td>
+                    <Table.Td style={{ padding: '8px 12px', fontFamily: 'var(--mono)', color: 'var(--text)', fontWeight: 600 }}>
                       {row.symlink}
                       {(symlinkCounts[row.symlink] ?? 0) > 1 && (
                         <span style={{ marginLeft: 6, fontSize: 10, fontFamily: 'sans-serif', padding: '1px 6px', borderRadius: 999, background: 'color-mix(in srgb, var(--yellow) 15%, transparent)', color: 'var(--yellow)', border: '1px solid color-mix(in srgb, var(--yellow) 35%, transparent)', fontWeight: 600 }}>
                           ⚠ Duplicate
                         </span>
                       )}
-                    </td>
-                    <td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{formatModeDisplay(row.mode)}</td>
-                    <td style={{ padding: '8px 12px' }}>{statusBadge(row.exists)}</td>
-                  </tr>
+                    </Table.Td>
+                    <Table.Td style={{ padding: '8px 12px', fontFamily: 'var(--mono)' }}>{formatModeDisplay(row.mode)}</Table.Td>
+                    <Table.Td style={{ padding: '8px 12px' }}>{statusBadge(row.exists)}</Table.Td>
+                  </Table.Tr>
                 ))}
-              </tbody>
-            </table>
+              </Table.Tbody>
+            </Table>
           </div>
         )}
       </div>
@@ -565,16 +566,16 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
   }
 
   return (
-    <section id="tab-device-setup" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Device Mapping</h2>
-        <span className={`status-verdict ${mappingComplete ? 'ready' : 'warn'}`}>
+    <Box id="tab-device-setup" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Device Mapping</Title>
+        <Badge variant="light" color={mappingComplete ? 'green' : 'yellow'}>
           {mappingComplete ? 'Mapping Ready' : 'Mapping Incomplete'}
-        </span>
-        <button onClick={refresh} className="btn-sm">
+        </Badge>
+        <Button onClick={refresh} size="xs" variant="light">
           ↺ Refresh
-        </button>
-      </div>
+        </Button>
+      </Group>
 
       {!mappingComplete ? (
         <div className="mapping-blocker-card">
@@ -586,16 +587,16 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
           </div>
           <div className="mapping-blocker-actions">
             {rulesStatus && !rulesStatus.rules_installed ? (
-              <button type="button" className="link-btn" onClick={() => setRulesPanelOpen(true)}>→ Open Rules Details</button>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setRulesPanelOpen(true)}>→ Open Rules Details</Button>
             ) : null}
-            <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
-            <button type="button" className="link-btn" onClick={() => setActiveTab('calibrate')}>→ Go to Calibration</button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</Button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('calibrate')}>→ Go to Calibration</Button>
           </div>
         </div>
       ) : null}
 
-      <div className="card" id="rules-card">
-        <h3>udev Rules</h3>
+      <Paper withBorder p="md" mb="md" className="card" id="rules-card">
+        <Text size="sm" fw={600} c="dimmed" mb="xs">udev Rules</Text>
         <div id="rules-install-status">
           {rulesStatus ? (
             rulesStatus.rules_installed ? (
@@ -649,16 +650,16 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                   <div className="rules-item">
                     <div className="rules-item-key">One-click</div>
                     <div className="rules-item-value">
-                      <button
+                      <Button
                         type="button"
-                        className="btn-primary"
+                        variant="light"
                         disabled={applyState === 'applying'}
                         onClick={() => {
                           void applyRules(cameraAssignments, armAssignments, false)
                         }}
                       >
                         {applyState === 'applying' ? 'Installing...' : 'Install Rules Now'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -667,45 +668,56 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
           </div>
         )}
 
-        <details className="advanced-panel" id="rules-advanced-panel" open={rulesPanelOpen} style={{ marginTop: 16, padding: 0 }}>
-          <summary onClick={(e) => { e.preventDefault(); setRulesPanelOpen((prev) => !prev) }}>
-            <span className="rules-summary-title">
-              <span>Current Active Rules</span>
-              <span className="rules-summary-caret" aria-hidden="true">{rulesPanelOpen ? '▾' : '▸'}</span>
-            </span>
-            <span className="rules-summary-meta">{rulesPanelOpen ? 'Hide details' : 'Show details'}</span>
-          </summary>
-          {rulesPanelOpen ? (
-            <div className="rules-readable" style={{ marginTop: 10 }}>
-              <div className="mapping-rules-grid">
-                {renderRulesTable(
-                  'Camera Rules',
-                  'USB PORT (KERNELS)',
-                  cameraRules.map((row) => ({
-                    port: row.kernel ?? '?',
-                    symlink: row.symlink ?? '?',
-                    mode: row.mode ?? '?',
-                    exists: row.exists,
-                  })),
-                )}
-                {renderRulesTable(
-                  'ARM Rules',
-                  'SERIAL',
-                  armRules.map((row) => ({
-                    port: row.serial ?? '?',
-                    symlink: row.symlink ?? '?',
-                    mode: row.mode ?? '?',
-                    exists: row.exists,
-                  })),
-                )}
-              </div>
-            </div>
-          ) : null}
-        </details>
-      </div>
+        <Accordion
+          variant="contained"
+          className="advanced-panel"
+          id="rules-advanced-panel"
+          style={{ marginTop: 16, padding: 0 }}
+          value={rulesPanelOpen ? 'advanced' : null}
+          onChange={(val) => setRulesPanelOpen(val === 'advanced')}
+        >
+          <Accordion.Item value="advanced">
+            <Accordion.Control>
+              <span className="rules-summary-title">
+                <span>Current Active Rules</span>
+                <span className="rules-summary-caret" aria-hidden="true">{rulesPanelOpen ? '▾' : '▸'}</span>
+              </span>
+              <span className="rules-summary-meta">{rulesPanelOpen ? 'Hide details' : 'Show details'}</span>
+            </Accordion.Control>
+            <Accordion.Panel>
+              {rulesPanelOpen ? (
+                <div className="rules-readable" style={{ marginTop: 10 }}>
+                  <div className="mapping-rules-grid">
+                    {renderRulesTable(
+                      'Camera Rules',
+                      'USB PORT (KERNELS)',
+                      cameraRules.map((row) => ({
+                        port: row.kernel ?? '?',
+                        symlink: row.symlink ?? '?',
+                        mode: row.mode ?? '?',
+                        exists: row.exists,
+                      })),
+                    )}
+                    {renderRulesTable(
+                      'ARM Rules',
+                      'SERIAL',
+                      armRules.map((row) => ({
+                        port: row.serial ?? '?',
+                        symlink: row.symlink ?? '?',
+                        mode: row.mode ?? '?',
+                        exists: row.exists,
+                      })),
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+      </Paper>
 
-      <div className="card" style={{ marginTop: 0 }}>
-        <h3>Mapping Checklist</h3>
+      <Paper withBorder p="md" mb="md" className="card" style={{ marginTop: 0 }}>
+        <Text size="sm" fw={600} c="dimmed" mb="xs">Mapping Checklist</Text>
         <div className="device-list">
           <div className="device-item" style={{ justifyContent: 'space-between' }}>
             <div className="dname">Camera roles</div>
@@ -735,28 +747,28 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
           {mappingComplete && (
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
               {armMappable.length === 0 ? (
-                <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
+                <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</Button>
               ) : (
                 <>
-                  <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
-                  <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</Button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('record')}>→ Proceed to Record</Button>
                 </>
               )}
             </div>
           )}
         </div>
-      </div>
+      </Paper>
 
-      <div className="card">
-        <h3>Arm Port Mapping</h3>
+      <Paper withBorder p="md" mb="md" className="card">
+        <Text size="sm" fw={600} c="dimmed" mb="xs">Arm Port Mapping</Text>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div className="field-help" style={{ marginBottom: 0 }}>
             Assign stable symlink names to each detected arm by serial number.
           </div>
           {devices.arms.length > 0 ? (
-            <button className="btn-sm" onClick={() => setIdentifyPanelOpen((prev) => !prev)}>
+            <Button size="compact-xs" variant="light" onClick={() => setIdentifyPanelOpen((prev) => !prev)}>
               🔍 Identify Arm
-            </button>
+            </Button>
           ) : null}
         </div>
 
@@ -771,13 +783,13 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 {!identifyRunning ? (
-                  <button id="arm-identify-start-btn" className="btn-primary" onClick={startArmIdentify}>
+                  <Button id="arm-identify-start-btn" variant="light" onClick={startArmIdentify}>
                     Start Identify
-                  </button>
+                  </Button>
                 ) : (
-                  <button id="arm-identify-stop-btn" className="btn-sm" onClick={stopArmIdentify}>
+                  <Button id="arm-identify-stop-btn" size="compact-xs" variant="light" onClick={stopArmIdentify}>
                     Cancel
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
@@ -797,16 +809,10 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
 
                   {identifiedArmSerial ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <select id="arm-identify-role" style={{ flex: 1 }} value={identifyRole} onChange={(e) => setIdentifyRole(e.target.value)}>
-                        {ARM_ROLE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button className="btn-primary" onClick={assignIdentifiedArm}>
+                      <NativeSelect id="arm-identify-role" style={{ flex: 1 }} value={identifyRole} onChange={(e) => setIdentifyRole(e.target.value)} data={ARM_ROLE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))} />
+                      <Button variant="light" onClick={assignIdentifiedArm}>
                         Assign
-                      </button>
+                      </Button>
                     </div>
                   ) : (
                     <div style={{ color: 'var(--yellow)', fontSize: 12 }}>⚠ No serial number - cannot auto-assign. Use manual mapping below.</div>
@@ -823,8 +829,8 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
               <div className="mapping-arms-empty-state">
                 <span>No arms detected. Connect a USB arm and click Refresh.</span>
                 <div className="mapping-arms-empty-actions">
-                  <button type="button" className="link-btn" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</button>
-                  <button type="button" className="link-btn" onClick={() => setActiveTab('calibrate')}>→ Go to Calibration</button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('motor-setup')}>→ Open Motor Setup</Button>
+                  <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('calibrate')}>→ Go to Calibration</Button>
                 </div>
               </div>
             )
@@ -834,7 +840,7 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                   <div className="muted" style={{ fontSize: 12, marginBottom: 10 }}>
                     Serial: <code>{arm.serial ?? 'N/A'}</code>
                   </div>
-                  <select
+                  <NativeSelect
                     disabled={!arm.serial}
                     value={(arm.serial && armAssignments[arm.serial]) ?? '(none)'}
                     onChange={(e) => {
@@ -869,20 +875,15 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                       setArmAssignments(nextArmAssignments)
                       scheduleRulesApply(cameraAssignments, nextArmAssignments)
                     }}
-                  >
-                    {ARM_ROLE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    data={ARM_ROLE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                  />
                 </div>
               ))}
         </div>
-      </div>
+      </Paper>
 
-      <div className="card">
-        <h3>Camera Mapping</h3>
+      <Paper withBorder p="md" mb="md" className="card">
+        <Text size="sm" fw={600} c="dimmed" mb="xs">Camera Mapping</Text>
         <div
           style={{
             background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
@@ -932,15 +933,15 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                         }}
                       />
                     ) : (
-                      <button className="btn-primary" style={{ opacity: 0.9, padding: '10px 20px', fontSize: 14, borderRadius: 20, pointerEvents: 'none' }}>
+                      <Button variant="light" style={{ opacity: 0.9, padding: '10px 20px', fontSize: 14, borderRadius: 20, pointerEvents: 'none' }}>
                         ▶ View Preview
-                      </button>
+                      </Button>
                     )}
                   </div>
                   <div className="cam-info">
                     <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6, color: 'var(--text1)' }}>Where is this camera?</div>
                     <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>If this camera is not needed, choose "Not used".</div>
-                    <select
+                    <NativeSelect
                       value={cameraAssignments[camera.kernels ?? ''] ?? '(none)'}
                       disabled={!camera.kernels}
                       onChange={(e) => {
@@ -950,13 +951,8 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                         setCameraAssignments(nextCameraAssignments)
                         scheduleRulesApply(nextCameraAssignments, armAssignments)
                       }}
-                    >
-                      {CAMERA_ROLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      data={CAMERA_ROLE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+                    />
 
 
                     <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)', background: 'var(--bg-app)', padding: 8, borderRadius: 4, border: '1px solid var(--border)' }}>
@@ -972,7 +968,7 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                 </div>
               ))}
         </div>
-      </div>
-    </section>
+      </Paper>
+    </Box>
   )
 }

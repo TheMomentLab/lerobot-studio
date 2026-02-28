@@ -41,8 +41,6 @@ dev = [
     "anyio[trio]>=4.0.0",
     "httpx>=0.24.0",
     "pytest-cov>=5.0.0",
-    "mypy>=1.10.0",
-    "httpx>=0.24.0",
 ]
 
 [project.scripts]

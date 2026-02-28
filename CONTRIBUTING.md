@@ -10,7 +10,7 @@ git clone https://github.com/TheMomentLab/lestudio.git
 cd lestudio
 conda create -n lerobot python=3.10 -y
 conda activate lerobot
-pip install -e .
+make dev
 cd frontend && npm ci && cd ..
 ```
 
@@ -32,12 +32,13 @@ npm run dev
 
 ## Non-Negotiable Architecture Rule
 
-Do not import `lerobot.*` outside these 4 adapter files:
+Do not import `lerobot.*` outside these 5 adapter files:
 
 1. `src/lestudio/teleop_bridge.py`
 2. `src/lestudio/record_bridge.py`
 3. `src/lestudio/camera_patch.py`
 4. `src/lestudio/device_registry.py`
+5. `src/lestudio/motor_monitor_bridge.py`
 
 All other backend code must stay decoupled and run LeRobot through subprocess orchestration.
 
@@ -47,7 +48,10 @@ Backend:
 
 ```bash
 python3 -m compileall -q src/lestudio
+ruff check src/lestudio
+mypy src/lestudio --ignore-missing-imports
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -m "not smoke_hw" tests
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -p pytest_cov -m "not smoke_hw" --cov=lestudio --cov-report=term-missing --cov-report=xml tests
 ```
 
 Frontend:

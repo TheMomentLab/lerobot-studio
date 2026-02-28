@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useMantineColorScheme } from '@mantine/core'
 import { AppShell } from './components/layout/AppShell'
 import { ToastLayer } from './components/shared/Toast'
 import { useConfig } from './hooks/useConfig'
@@ -17,7 +18,6 @@ import { apiGet, apiPost } from './lib/api'
 import { logError, swallow } from './lib/errors'
 import { useLeStudioStore } from './store'
 
-type ThemeMode = 'dark' | 'light'
 const DEFAULT_CTA_STYLE = 'default'
 
 function App() {
@@ -30,15 +30,11 @@ function App() {
   const updateConfig = useLeStudioStore((s) => s.updateConfig)
   const { loadConfig } = useConfig()
   const { refreshDevices } = useMappedCameras()
-  const [theme, setTheme] = useState<ThemeMode>('dark')
+  const { colorScheme, toggleColorScheme } = useMantineColorScheme()
 
   useWebSocket()
 
   useEffect(() => {
-    const savedTheme = (localStorage.getItem('lestudio-theme') as ThemeMode | null) ?? 'dark'
-    const safeTheme = savedTheme === 'light' ? 'light' : 'dark'
-    setTheme(safeTheme)
-    document.documentElement.setAttribute('data-theme', safeTheme)
     document.documentElement.setAttribute('data-cta-style', DEFAULT_CTA_STYLE)
     loadConfig()
     refreshDevices()
@@ -83,8 +79,6 @@ function App() {
         return
       }
 
-
-
       if (e.code === 'Space') {
         if (activeTab === 'teleop') {
           e.preventDefault()
@@ -120,13 +114,6 @@ function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [activeTab, procStatus.record])
 
-  const toggleTheme = () => {
-    const next: ThemeMode = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    document.documentElement.setAttribute('data-theme', next)
-    localStorage.setItem('lestudio-theme', next)
-  }
-
   const renderTabs = (
     <>
       <StatusTab active={activeTab === 'status'} />
@@ -143,7 +130,7 @@ function App() {
 
   return (
     <>
-      <AppShell wsConnected={wsReady} theme={theme} onToggleTheme={toggleTheme}>
+      <AppShell wsConnected={wsReady} theme={colorScheme === 'light' ? 'light' : 'dark'} onToggleTheme={toggleColorScheme}>
         {renderTabs}
       </AppShell>
       <ToastLayer />

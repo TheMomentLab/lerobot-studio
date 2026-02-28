@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Accordion, ActionIcon, Badge, Box, Button, Checkbox, Group, NativeSelect, NumberInput, Paper, Slider, Text, TextInput, Title } from '@mantine/core'
 import { formatRobotType } from '../lib/format'
 import { MappedCameraRows } from '../components/shared/MappedCameraRows'
 import { RobotCapabilitiesCard } from '../components/shared/RobotCapabilitiesCard'
@@ -417,22 +418,22 @@ export function RecordTab({ active }: RecordTabProps) {
   }, [recordLines])
 
   return (
-    <section id="tab-record" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Record Dataset</h2>
-        <span className={`status-verdict ${running || recordReady ? 'ready' : 'warn'}`}>
+    <Box id="tab-record" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Record Dataset</Title>
+        <Badge variant="light" color={running || recordReady ? 'green' : 'yellow'}>
           {running ? 'Recording' : recordReady ? 'Ready to Start' : 'Action Needed'}
-        </span>
+        </Badge>
         <div className="mode-toggle">
-          <label>Recording Mode:</label>
-          <button id="record-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} onClick={() => { setMode('single'); buildConfig({ robot_mode: 'single' }) }}>
+          <Text size="sm" fw={600} c="dimmed" mb={0}>Recording Mode:</Text>
+          <Button id="record-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} size="compact-xs" variant="light" onClick={() => { setMode('single'); buildConfig({ robot_mode: 'single' }) }}>
             Single
-          </button>
-          <button id="record-mode-bi" className={`toggle ${mode === 'bi' ? 'active' : ''}`} onClick={() => { setMode('bi'); buildConfig({ robot_mode: 'bi' }) }}>
+          </Button>
+          <Button id="record-mode-bi" className={`toggle ${mode === 'bi' ? 'active' : ''}`} size="compact-xs" variant="light" onClick={() => { setMode('bi'); buildConfig({ robot_mode: 'bi' }) }}>
             Bi-Arm
-          </button>
+          </Button>
         </div>
-      </div>
+      </Group>
 
       {!running && !recordReady ? (
         <div className="record-blocker-card">
@@ -443,14 +444,14 @@ export function RecordTab({ active }: RecordTabProps) {
             ))}
           </div>
           <div className="record-blocker-actions">
-            <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
           </div>
         </div>
       ) : null}
 
       <div className="two-col">
-        <div className="card">
-          <h3>Step 1: Recording Plan</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Step 1: Recording Plan</Text>
           <div className="device-list" style={{ marginBottom: 10 }}>
             <div className="device-item" style={{ justifyContent: 'space-between' }}>
               <span className="dname">Episode target</span>
@@ -461,12 +462,10 @@ export function RecordTab({ active }: RecordTabProps) {
               <span className={`dbadge ${repoError ? 'badge-err' : 'badge-ok'}`}>{repoError ? 'invalid' : 'ok'}</span>
             </div>
           </div>
-          <label>Number of Episodes</label>
-          <input type="number" min={1} value={totalEpisodes} onChange={(e) => update('record_episodes', Number(e.target.value))} />
+          <NumberInput label="Number of Episodes" min={1} value={totalEpisodes} onChange={(value) => update('record_episodes', Number(value))} />
           <div className="field-help">Start with 20-50 for first test run.</div>
-          <label>Dataset Repo ID (Hugging Face)</label>
-          <input
-            type="text"
+          <TextInput
+            label="Dataset Repo ID (Hugging Face)"
             value={repoId}
             placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'yourname/my-dataset'}
             onChange={(e) => update('record_repo_id', e.target.value)}
@@ -487,219 +486,93 @@ export function RecordTab({ active }: RecordTabProps) {
             {repoError}
           </div>
           <div className="field-help" style={{ marginTop: 8, marginBottom: 0 }}>
-            <label htmlFor="record-resume" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 12, color: 'var(--text)' }}>
-              <input
-                id="record-resume"
-                type="checkbox"
-                checked={Boolean(config.record_resume)}
-                onChange={(e) => update('record_resume', e.target.checked)}
-                style={{ width: 'auto' }}
-              />
-              Resume existing dataset if it already exists
-            </label>
+            <Checkbox id="record-resume" checked={Boolean(config.record_resume)} onChange={(e) => update('record_resume', e.target.checked)} label="Resume existing dataset if it already exists" />
             Prevents crash when the target dataset folder already exists.
           </div>
           <div className="field-help" style={{ marginTop: 6, marginBottom: 0 }}>
-            <label htmlFor="record-push-to-hub" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 12, color: 'var(--text)' }}>
-              <input
-                id="record-push-to-hub"
-                type="checkbox"
-                checked={Boolean(config.record_push_to_hub)}
-                onChange={(e) => update('record_push_to_hub', e.target.checked)}
-                style={{ width: 'auto' }}
-              />
-              Push to Hugging Face Hub after recording
-            </label>
+            <Checkbox id="record-push-to-hub" checked={Boolean(config.record_push_to_hub)} onChange={(e) => update('record_push_to_hub', e.target.checked)} label="Push to Hugging Face Hub after recording" />
             Automatically uploads the dataset when recording completes. Off by default.
           </div>
-          <label>Task Description <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
-          <input
-            type="text"
+          <TextInput
+            label="Task Description (optional)"
             value={config.record_task ?? ''}
             onChange={(e) => update('record_task', e.target.value)}
             placeholder="Example: Pick up red block and place in left bin"
           />
           <div className="field-help">Annotates the dataset. If blank, defaults to "task".</div>
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>Step 2: Device Setup</h3>
-          <label>Robot Type</label>
-          <select value={selectedRobotType} onChange={(e) => update('robot_type', e.target.value)}>
-            {robotTypes.map((t) => (
-              <option key={t} value={t}>
-                {formatRobotType(t)}
-              </option>
-            ))}
-          </select>
-          <label>Teleoperator Type</label>
-          <select value={selectedTeleopType} onChange={(e) => update('teleop_type', e.target.value)}>
-            {teleopTypes.map((t) => (
-              <option key={t} value={t}>
-                {formatRobotType(t)}
-              </option>
-            ))}
-          </select>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Step 2: Device Setup</Text>
+          <NativeSelect label="Robot Type" value={selectedRobotType} onChange={(e) => update('robot_type', e.target.value)} data={robotTypes.map((t) => ({ value: t, label: formatRobotType(t) }))} />
+          <NativeSelect label="Teleoperator Type" value={selectedTeleopType} onChange={(e) => update('teleop_type', e.target.value)} data={teleopTypes.map((t) => ({ value: t, label: formatRobotType(t) }))} />
           <RobotCapabilitiesCard
             capabilities={selectedRobotDetail?.capabilities ?? null}
             compatibleTeleops={selectedRobotDetail?.compatible_teleops ?? []}
           />
           {mode === 'single' ? (
             <>
-              <label>Follower Arm Port</label>
-              <select value={config.follower_port ?? '/dev/follower_arm_1'} onChange={(e) => update('follower_port', e.target.value)}>
-                {followerPortOpts.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Follower Arm ID</label>
-              <select value={config.robot_id ?? 'my_so101_follower_1'} onChange={(e) => update('robot_id', e.target.value)}>
-                {followerIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
+              <NativeSelect label="Follower Arm Port" value={config.follower_port ?? '/dev/follower_arm_1'} onChange={(e) => update('follower_port', e.target.value)} data={followerPortOpts.map((p) => ({ value: p, label: p }))} />
+              <NativeSelect label="Follower Arm ID" value={config.robot_id ?? 'my_so101_follower_1'} onChange={(e) => update('robot_id', e.target.value)} data={followerIdOptions.map((item) => ({ value: item, label: item }))} />
               <div className="field-help">Arm ID selects the calibration profile file name (without .json).</div>
-              <label>Leader Arm Port</label>
-              <select value={config.leader_port ?? '/dev/leader_arm_1'} onChange={(e) => update('leader_port', e.target.value)}>
-                {leaderPortOpts.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Leader Arm ID</label>
-              <select value={config.teleop_id ?? 'my_so101_leader_1'} onChange={(e) => update('teleop_id', e.target.value)}>
-                {leaderIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
+              <NativeSelect label="Leader Arm Port" value={config.leader_port ?? '/dev/leader_arm_1'} onChange={(e) => update('leader_port', e.target.value)} data={leaderPortOpts.map((p) => ({ value: p, label: p }))} />
+              <NativeSelect label="Leader Arm ID" value={config.teleop_id ?? 'my_so101_leader_1'} onChange={(e) => update('teleop_id', e.target.value)} data={leaderIdOptions.map((item) => ({ value: item, label: item }))} />
               <div className="field-help">Suggestions come from existing calibration files.</div>
             </>
           ) : (
             <>
-              <label>Left Follower Port</label>
-              <select value={config.left_follower_port ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)}>
-                {leftFollowerPortOpts.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Left Follower ID</label>
-              <select value={config.left_robot_id ?? 'my_so101_follower_1'} onChange={(e) => update('left_robot_id', e.target.value)}>
-                {leftFollowerIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-              <label>Right Follower Port</label>
-              <select value={config.right_follower_port ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)}>
-                {rightFollowerPortOpts.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Right Follower ID</label>
-              <select value={config.right_robot_id ?? 'my_so101_follower_2'} onChange={(e) => update('right_robot_id', e.target.value)}>
-                {rightFollowerIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-              <label>Left Leader Port</label>
-              <select value={config.left_leader_port ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)}>
-                {leftLeaderPortOpts.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Left Leader ID</label>
-              <select value={config.left_teleop_id ?? 'my_so101_leader_1'} onChange={(e) => update('left_teleop_id', e.target.value)}>
-                {leftLeaderIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
-              <label>Right Leader Port</label>
-              <select value={config.right_leader_port ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)}>
-                {rightLeaderPortOpts.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <label>Right Leader ID</label>
-              <select value={config.right_teleop_id ?? 'my_so101_leader_2'} onChange={(e) => update('right_teleop_id', e.target.value)}>
-                {rightLeaderIdOptions.map((id) => (
-                  <option key={id} value={id}>
-                    {id}
-                  </option>
-                ))}
-              </select>
+              <NativeSelect label="Left Follower Port" value={config.left_follower_port ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)} data={leftFollowerPortOpts.map((p) => ({ value: p, label: p }))} />
+              <NativeSelect label="Left Follower ID" value={config.left_robot_id ?? 'my_so101_follower_1'} onChange={(e) => update('left_robot_id', e.target.value)} data={leftFollowerIdOptions.map((item) => ({ value: item, label: item }))} />
+              <NativeSelect label="Right Follower Port" value={config.right_follower_port ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)} data={rightFollowerPortOpts.map((p) => ({ value: p, label: p }))} />
+              <NativeSelect label="Right Follower ID" value={config.right_robot_id ?? 'my_so101_follower_2'} onChange={(e) => update('right_robot_id', e.target.value)} data={rightFollowerIdOptions.map((item) => ({ value: item, label: item }))} />
+              <NativeSelect label="Left Leader Port" value={config.left_leader_port ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)} data={leftLeaderPortOpts.map((p) => ({ value: p, label: p }))} />
+              <NativeSelect label="Left Leader ID" value={config.left_teleop_id ?? 'my_so101_leader_1'} onChange={(e) => update('left_teleop_id', e.target.value)} data={leftLeaderIdOptions.map((item) => ({ value: item, label: item }))} />
+              <NativeSelect label="Right Leader Port" value={config.right_leader_port ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)} data={rightLeaderPortOpts.map((p) => ({ value: p, label: p }))} />
+              <NativeSelect label="Right Leader ID" value={config.right_teleop_id ?? 'my_so101_leader_2'} onChange={(e) => update('right_teleop_id', e.target.value)} data={rightLeaderIdOptions.map((item) => ({ value: item, label: item }))} />
               <div className="field-help">Arm ID selects the calibration profile for each arm.</div>
             </>
           )}
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>Step 3: Camera Feeds</h3>
-        <div className="field-help" style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <span>Mapped cameras: {mappedCameraCount} · Feeds: {feedCameras.length}</span>
-          {mappedCameraCount === 0 ? <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button> : null}
-        </div>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Step 3: Camera Feeds</Text>
+          <div className="field-help" style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <span>Mapped cameras: {mappedCameraCount} · Feeds: {feedCameras.length}</span>
+            {mappedCameraCount === 0 ? <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button> : null}
+          </div>
           <MappedCameraRows mappedCameras={mappedCameras} />
-          <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 12 }}>
-            <summary>Advanced Stream Settings</summary>
-            <div className="settings-grid" style={{ marginTop: 10 }}>
-              <div className="setting-item">
-                <label>Codec</label>
-                <select value={streamCodec} onChange={(e) => setStreamCodec(e.target.value)}>
-                  <option value="MJPG">MJPG (compressed)</option>
-                  <option value="YUYV">YUYV (raw)</option>
-                </select>
-              </div>
-              <div className="setting-item">
-                <label>Resolution</label>
-                <select value={streamResolution} onChange={(e) => setStreamResolution(e.target.value)}>
-                  <option value="1280x720">1280 × 720 (720p)</option>
-                  <option value="800x600">800 × 600</option>
-                  <option value="640x480">640 × 480 (480p)</option>
-                  <option value="320x240">320 × 240 (240p)</option>
-                </select>
-              </div>
-              <div className="setting-item">
-                <label>FPS</label>
-                <select value={streamFps} onChange={(e) => setStreamFps(e.target.value)}>
-                  <option value="30">30</option>
-                </select>
-              </div>
-              <div className="setting-item">
-                <label>
-                  JPEG Quality <span className="muted">{streamQuality}%</span>
-                </label>
-                <input
-                  type="range"
-                  min={30}
-                  max={95}
-                  step={5}
-                  value={streamQuality}
-                  onChange={(e) => setStreamQuality(Number(e.target.value))}
-                />
-              </div>
-            </div>
-          </details>
-        </div>
+          <Accordion variant="contained" className="advanced-panel" style={{ marginTop: 12 }}>
+            <Accordion.Item value="advanced">
+              <Accordion.Control>Advanced Stream Settings</Accordion.Control>
+              <Accordion.Panel>
+                <div className="settings-grid" style={{ marginTop: 10 }}>
+                  <div className="setting-item">
+                    <NativeSelect label="Codec" value={streamCodec} onChange={(e) => setStreamCodec(e.target.value)} data={[{ value: 'MJPG', label: 'MJPG (compressed)' }, { value: 'YUYV', label: 'YUYV (raw)' }]} />
+                  </div>
+                  <div className="setting-item">
+                    <NativeSelect label="Resolution" value={streamResolution} onChange={(e) => setStreamResolution(e.target.value)} data={[{ value: '1280x720', label: '1280 × 720 (720p)' }, { value: '800x600', label: '800 × 600' }, { value: '640x480', label: '640 × 480 (480p)' }, { value: '320x240', label: '320 × 240 (240p)' }]} />
+                  </div>
+                  <div className="setting-item">
+                    <NativeSelect label="FPS" value={streamFps} onChange={(e) => setStreamFps(e.target.value)} data={[{ value: '30', label: '30' }]} />
+                  </div>
+                  <div className="setting-item">
+                    <Text size="xs" c="dimmed" mb={4}>
+                      JPEG Quality <span className="muted">{streamQuality}%</span>
+                    </Text>
+                    <Slider
+                      min={30}
+                      max={95}
+                      step={5}
+                      value={streamQuality}
+                      onChange={setStreamQuality}
+                      color="blue"
+                    />
+                  </div>
+                </div>
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
+        </Paper>
 
         <div className="episode-progress-card">
           <div className="ep-card-title">Episode Progress</div>
@@ -717,14 +590,14 @@ export function RecordTab({ active }: RecordTabProps) {
                     <div className="feed-live-dot" />LIVE
                   </div>
                   <div className={`feed-fps-badge ${paused ? '' : 'visible'}`}>{fpsText}</div>
-                  <button className="feed-close-btn" title="Pause this feed" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.cam]: true }))}>×</button>
+                  <ActionIcon className="feed-close-btn" variant="light" title="Pause this feed" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.cam]: true }))}>×</ActionIcon>
                   {paused ? (
                     <div className="feed-paused-ov">
                       <span style={{ fontSize: 20, opacity: 0.4 }}>⏸</span>
                       <span className="feed-paused-text">{camera.name} — paused</span>
-                      <button className="btn-xs feed-overlay-btn" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.cam]: false }))}>
+                      <Button className="feed-overlay-btn" size="compact-xs" variant="light" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.cam]: false }))}>
                         ▶ Resume
-                      </button>
+                      </Button>
                     </div>
                   ) : null}
                   <div className="feed-label">
@@ -742,7 +615,7 @@ export function RecordTab({ active }: RecordTabProps) {
                   <br />
                   Connect a camera and refresh.
                 </div>
-                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+                <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
               </div>
             )}
           </div>
@@ -778,33 +651,33 @@ export function RecordTab({ active }: RecordTabProps) {
           </span>
           {latestRecordEvent ? <span className="record-run-last">Last: {latestRecordEvent}</span> : null}
           {!running && episodesDone > 0 && (
-            <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>→ Go to Dataset</button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('dataset')}>→ Go to Dataset</Button>
           )}
         </div>
         <div className="ep-controls-row" id="record-ep-controls">
           {!running && (
             <>
-              <button className="btn-primary" onClick={start} disabled={!recordReady}>▶ Start Recording</button>
+              <Button variant="light" onClick={start} disabled={!recordReady}>▶ Start Recording</Button>
             </>
           )}
           {running && (
-            <button className="btn-danger" onClick={stop}>■ Force Stop</button>
+            <Button className="btn-danger" variant="light" onClick={stop}>■ Force Stop</Button>
           )}
           {running && (
             <>
-              <button className="btn-sm record-ep-action" onClick={() => sendKey('right')}>
+              <Button className="record-ep-action" size="compact-xs" variant="light" onClick={() => sendKey('right')}>
                 ✓ Save →
-              </button>
-              <button className="btn-sm record-ep-action record-ep-discard" onClick={() => sendKey('left')}>
+              </Button>
+              <Button className="record-ep-action record-ep-discard" size="compact-xs" variant="light" onClick={() => sendKey('left')}>
                 ✗ Discard ←
-              </button>
-              <button className="btn-sm record-ep-action record-ep-end" onClick={() => sendKey('escape')}>
+              </Button>
+              <Button className="record-ep-action record-ep-end" size="compact-xs" variant="light" onClick={() => sendKey('escape')}>
                 ⏹ End (Esc)
-              </button>
+              </Button>
             </>
           )}
         </div>
       </div>
-      </section>
+      </Box>
   )
 }

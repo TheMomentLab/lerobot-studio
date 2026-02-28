@@ -135,7 +135,18 @@ Backend checks:
 
 ```bash
 python -m compileall -q src/lestudio
+ruff check src/lestudio
+mypy src/lestudio --ignore-missing-imports
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "not smoke_hw" tests
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -p pytest_cov -m "not smoke_hw" --cov=lestudio --cov-report=term-missing --cov-report=xml tests
+```
+
+Or use Make targets:
+
+```bash
+make dev      # install backend + dev toolchain (ruff/mypy/pytest-cov)
+make dev-tools  # install/update dev toolchain only
+make check    # lint + typecheck + tests + coverage
 ```
 
 Frontend checks:

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Accordion, ActionIcon, Badge, Box, Button, Group, NativeSelect, Paper, Slider, Text, Title } from '@mantine/core'
 import { formatRobotType } from '../lib/format'
 import { MappedCameraRows } from '../components/shared/MappedCameraRows'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
@@ -340,18 +341,20 @@ export function TeleopTab({ active }: TeleopTabProps) {
   }
 
   return (
-    <section id="tab-teleop" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Teleoperation</h2>
-        <span className={`status-verdict ${running || teleopReady ? 'ready' : 'warn'}`}>{running ? 'Teleop Active' : teleopReady ? 'Ready to Start' : 'Action Needed'}</span>
+    <Box id="tab-teleop" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Teleoperation</Title>
+        <Badge variant="light" color={running || teleopReady ? 'green' : 'yellow'}>
+          {running ? 'Teleop Active' : teleopReady ? 'Ready to Start' : 'Action Needed'}
+        </Badge>
         <div className="mode-toggle">
-          <label>Control Mode:</label>
-          <button id="teleop-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} onClick={() => setModeAndConfig('single')}>
+          <Text size="xs" c="dimmed" mb={4}>Control Mode:</Text>
+          <Button id="teleop-mode-single" className={`toggle ${mode === 'single' ? 'active' : ''}`} size="compact-xs" variant="light" onClick={() => setModeAndConfig('single')}>
             Single Arm
-          </button>
-          <button id="teleop-mode-bi" className={`toggle ${mode === 'bi' ? 'active' : ''}`} onClick={() => setModeAndConfig('bi')}>
+          </Button>
+          <Button id="teleop-mode-bi" className={`toggle ${mode === 'bi' ? 'active' : ''}`} size="compact-xs" variant="light" onClick={() => setModeAndConfig('bi')}>
             Bi-Arm
-          </button>
+          </Button>
           {loopPerf && running && (
             <span
               id="teleop-loop-pill"
@@ -362,7 +365,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
             </span>
           )}
         </div>
-      </div>
+      </Group>
 
       <div className="teleop-content">
         {!running && !teleopReady ? (
@@ -374,7 +377,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
               ))}
             </div>
             <div className="teleop-blocker-actions">
-              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
             </div>
           </div>
         ) : null}
@@ -422,29 +425,15 @@ export function TeleopTab({ active }: TeleopTabProps) {
         </div>
 
         <div className="two-col">
-        <div className="card">
-            <h3>Step 1 — Arm Connections</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+            <Text size="sm" fw={600} c="dimmed" mb="xs">Step 1 - Arm Connections</Text>
             <div className="field-help" style={{ marginTop: 8 }}>Single Arm controls one leader + one follower. Bi-Arm controls left/right pairs.</div>
             <div className="teleop-arm-grid">
               <div className="form-field">
-                <label>Robot Type</label>
-                <select value={selectedRobotType} onChange={(e) => update('robot_type', e.target.value)}>
-                  {robotTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {formatRobotType(t)}
-                    </option>
-                  ))}
-                </select>
+                <NativeSelect label="Robot Type" value={selectedRobotType} onChange={(e) => update('robot_type', e.target.value)} data={robotTypes.map((t) => ({ value: t, label: formatRobotType(t) }))} />
               </div>
               <div className="form-field">
-                <label>Teleoperator Type</label>
-                <select value={selectedTeleopType} onChange={(e) => update('teleop_type', e.target.value)}>
-                  {teleopTypes.map((t) => (
-                    <option key={t} value={t}>
-                      {formatRobotType(t)}
-                    </option>
-                  ))}
-                </select>
+                <NativeSelect label="Teleoperator Type" value={selectedTeleopType} onChange={(e) => update('teleop_type', e.target.value)} data={teleopTypes.map((t) => ({ value: t, label: formatRobotType(t) }))} />
               </div>
               <div className="form-field-full">
                 <RobotCapabilitiesCard
@@ -455,184 +444,91 @@ export function TeleopTab({ active }: TeleopTabProps) {
               {mode === 'single' ? (
                 <>
                   <div className="form-field">
-                    <label>Follower Arm Port</label>
-                    <select value={followerPort} onChange={(e) => update('follower_port', e.target.value)}>
-                      {followerPortOptions.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Follower Arm Port" value={followerPort} onChange={(e) => update('follower_port', e.target.value)} data={followerPortOptions.map((p) => ({ value: p, label: p }))} />
                   </div>
                   <div className="form-field">
-                    <label>Follower Arm ID</label>
-                    <select value={robotId} onChange={(e) => update('robot_id', e.target.value)}>
-                      {followerIdOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Follower Arm ID" value={robotId} onChange={(e) => update('robot_id', e.target.value)} data={followerIdOptions.map((item) => ({ value: item, label: item }))} />
                   </div>
                   <div className="form-field">
-                    <label>Leader Arm Port</label>
-                    <select value={leaderPort} onChange={(e) => update('leader_port', e.target.value)}>
-                      {leaderPortOptions.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Leader Arm Port" value={leaderPort} onChange={(e) => update('leader_port', e.target.value)} data={leaderPortOptions.map((p) => ({ value: p, label: p }))} />
                   </div>
                   <div className="form-field">
-                    <label>Leader Arm ID</label>
-                    <select value={teleopId} onChange={(e) => update('teleop_id', e.target.value)}>
-                      {leaderIdOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Leader Arm ID" value={teleopId} onChange={(e) => update('teleop_id', e.target.value)} data={leaderIdOptions.map((item) => ({ value: item, label: item }))} />
                   </div>
                 </>
               ) : (
                 <>
                   <div className="form-field">
-                    <label>Left Follower Arm Port</label>
-                    <select value={leftFollowerPort} onChange={(e) => update('left_follower_port', e.target.value)}>
-                      {leftFollowerPortOptions.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Left Follower Arm Port" value={leftFollowerPort} onChange={(e) => update('left_follower_port', e.target.value)} data={leftFollowerPortOptions.map((p) => ({ value: p, label: p }))} />
                   </div>
                   <div className="form-field">
-                    <label>Left Follower Arm ID</label>
-                    <select value={leftRobotId} onChange={(e) => update('left_robot_id', e.target.value)}>
-                      {leftFollowerIdOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Left Follower Arm ID" value={leftRobotId} onChange={(e) => update('left_robot_id', e.target.value)} data={leftFollowerIdOptions.map((item) => ({ value: item, label: item }))} />
                   </div>
                   <div className="form-field">
-                    <label>Right Follower Arm Port</label>
-                    <select value={rightFollowerPort} onChange={(e) => update('right_follower_port', e.target.value)}>
-                      {rightFollowerPortOptions.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Right Follower Arm Port" value={rightFollowerPort} onChange={(e) => update('right_follower_port', e.target.value)} data={rightFollowerPortOptions.map((p) => ({ value: p, label: p }))} />
                   </div>
                   <div className="form-field">
-                    <label>Right Follower Arm ID</label>
-                    <select value={rightRobotId} onChange={(e) => update('right_robot_id', e.target.value)}>
-                      {rightFollowerIdOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Right Follower Arm ID" value={rightRobotId} onChange={(e) => update('right_robot_id', e.target.value)} data={rightFollowerIdOptions.map((item) => ({ value: item, label: item }))} />
                   </div>
                   <div className="form-field">
-                    <label>Left Leader Arm Port</label>
-                    <select value={leftLeaderPort} onChange={(e) => update('left_leader_port', e.target.value)}>
-                      {leftLeaderPortOptions.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Left Leader Arm Port" value={leftLeaderPort} onChange={(e) => update('left_leader_port', e.target.value)} data={leftLeaderPortOptions.map((p) => ({ value: p, label: p }))} />
                   </div>
                   <div className="form-field">
-                    <label>Left Leader Arm ID</label>
-                    <select value={leftTeleopId} onChange={(e) => update('left_teleop_id', e.target.value)}>
-                      {leftLeaderIdOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Left Leader Arm ID" value={leftTeleopId} onChange={(e) => update('left_teleop_id', e.target.value)} data={leftLeaderIdOptions.map((item) => ({ value: item, label: item }))} />
                   </div>
                   <div className="form-field">
-                    <label>Right Leader Arm Port</label>
-                    <select value={rightLeaderPort} onChange={(e) => update('right_leader_port', e.target.value)}>
-                      {rightLeaderPortOptions.map((p) => (
-                        <option key={p} value={p}>
-                          {p}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Right Leader Arm Port" value={rightLeaderPort} onChange={(e) => update('right_leader_port', e.target.value)} data={rightLeaderPortOptions.map((p) => ({ value: p, label: p }))} />
                   </div>
                   <div className="form-field">
-                    <label>Right Leader Arm ID</label>
-                    <select value={rightTeleopId} onChange={(e) => update('right_teleop_id', e.target.value)}>
-                      {rightLeaderIdOptions.map((id) => (
-                        <option key={id} value={id}>
-                          {id}
-                        </option>
-                      ))}
-                    </select>
+                    <NativeSelect label="Right Leader Arm ID" value={rightTeleopId} onChange={(e) => update('right_teleop_id', e.target.value)} data={rightLeaderIdOptions.map((item) => ({ value: item, label: item }))} />
                   </div>
                   <div className="field-help">Arm ID selects the calibration profile for each arm.</div>
                 </>
               )}
             </div>
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>Step 2 — Camera Feeds</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Step 2 - Camera Feeds</Text>
           <div className="field-help" style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <span>Mapped cameras: {mappedCameraCount} · Available now: {availableCameras.length}</span>
-            {mappedCameraCount === 0 ? <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button> : null}
+            {mappedCameraCount === 0 ? <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button> : null}
           </div>
           <div id="teleop-cameras" className="camera-cfg" style={{ marginTop: 16 }}>
             <MappedCameraRows mappedCameras={mappedCameras} />
           </div>
-          <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 12 }}>
-            <summary>Advanced Stream Settings</summary>
-            <div className="settings-grid" style={{ marginTop: 10 }}>
-              <div className="setting-item">
-                <label>Codec</label>
-                <select className="cam-codec-sync" value={streamCodec} onChange={(e) => setStreamCodec(e.target.value as 'MJPG' | 'YUYV')}>
-                  <option value="MJPG">MJPG (compressed)</option>
-                  <option value="YUYV">YUYV (raw)</option>
-                </select>
-              </div>
-              <div className="setting-item">
-                <label>Resolution</label>
-                <select className="cam-resolution-sync" value={streamResolution} onChange={(e) => setStreamResolution(e.target.value)}>
-                  <option value="1280x720">1280 × 720 (720p)</option>
-                  <option value="800x600">800 × 600</option>
-                  <option value="640x480">640 × 480 (480p)</option>
-                  <option value="320x240">320 × 240 (240p)</option>
-                </select>
-              </div>
-              <div className="setting-item">
-                <label>FPS</label>
-                <select className="cam-fps-sync" value={streamFps} onChange={(e) => setStreamFps(e.target.value)}>
-                  <option value="30">30</option>
-                </select>
-              </div>
-              <div className="setting-item">
-                <label>
-                  JPEG Quality <span className="cam-quality-val-sync muted">{jpegQuality}%</span>
-                </label>
-                <input
-                  type="range"
-                  className="cam-jpeg-quality-sync"
-                  min={30}
-                  max={95}
-                  step={5}
-                  value={jpegQuality}
-                  onChange={(e) => setJpegQuality(Number(e.target.value))}
-                />
-              </div>
-            </div>
-          </details>
+          <Accordion variant="contained" className="advanced-panel" style={{ marginTop: 12 }}>
+            <Accordion.Item value="advanced">
+              <Accordion.Control>Advanced Stream Settings</Accordion.Control>
+              <Accordion.Panel>
+                <div className="settings-grid" style={{ marginTop: 10 }}>
+                  <div className="setting-item">
+                    <NativeSelect label="Codec" className="cam-codec-sync" value={streamCodec} onChange={(e) => setStreamCodec(e.target.value as 'MJPG' | 'YUYV')} data={[{ value: 'MJPG', label: 'MJPG (compressed)' }, { value: 'YUYV', label: 'YUYV (raw)' }]} />
+                  </div>
+                  <div className="setting-item">
+                    <NativeSelect label="Resolution" className="cam-resolution-sync" value={streamResolution} onChange={(e) => setStreamResolution(e.target.value)} data={[{ value: '1280x720', label: '1280 × 720 (720p)' }, { value: '800x600', label: '800 × 600' }, { value: '640x480', label: '640 × 480 (480p)' }, { value: '320x240', label: '320 × 240 (240p)' }]} />
+                  </div>
+                  <div className="setting-item">
+                    <NativeSelect label="FPS" className="cam-fps-sync" value={streamFps} onChange={(e) => setStreamFps(e.target.value)} data={[{ value: '30', label: '30' }]} />
+                  </div>
+                  <div className="setting-item">
+                    <Text size="xs" c="dimmed" mb={4}>
+                      JPEG Quality <span className="cam-quality-val-sync muted">{jpegQuality}%</span>
+                    </Text>
+                    <Slider
+                      className="cam-jpeg-quality-sync"
+                      min={30}
+                      max={95}
+                      step={5}
+                      value={jpegQuality}
+                      onChange={setJpegQuality}
+                      color="blue"
+                    />
+                  </div>
+                </div>
+              </Accordion.Panel>
+            </Accordion.Item>
+          </Accordion>
           <div id="teleop-feeds" className="feed-grid" style={{ marginTop: 12 }}>
             {active && streamsReady && availableCameras.length ? (
               availableCameras.map((camera) => (
@@ -642,14 +538,14 @@ export function TeleopTab({ active }: TeleopTabProps) {
                     <div className="feed-live-dot" />LIVE
                   </div>
                   <div className={`feed-fps-badge ${pausedFeeds[camera.path] ? '' : 'visible'}`}>{streamFps} fps</div>
-                  <button className="feed-close-btn" title="Pause this feed" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.path]: true }))}>×</button>
+                  <ActionIcon className="feed-close-btn" variant="light" title="Pause this feed" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.path]: true }))}>×</ActionIcon>
                   {pausedFeeds[camera.path] ? (
                     <div className="feed-paused-ov">
                       <span style={{ fontSize: 20, opacity: 0.4 }}>⏸</span>
                       <span className="feed-paused-text">{camera.name} — paused</span>
-                      <button className="btn-xs feed-overlay-btn" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.path]: false }))}>
+                      <Button className="feed-overlay-btn" size="compact-xs" variant="light" onClick={() => setPausedFeeds((prev) => ({ ...prev, [camera.path]: false }))}>
                         ▶ Resume
-                      </button>
+                      </Button>
                     </div>
                   ) : null}
                   <div className="feed-label">
@@ -666,11 +562,11 @@ export function TeleopTab({ active }: TeleopTabProps) {
                   <br />
                   Connect a camera and refresh.
                 </div>
-                <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
+                <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
               </div>
             )}
           </div>
-        </div>
+        </Paper>
 
       </div>
       </div>
@@ -687,23 +583,16 @@ export function TeleopTab({ active }: TeleopTabProps) {
                 : teleopBlockers[0] ?? 'Resolve blockers before starting'}
           </span>
           {!running && teleopLines.length > 0 ? (
-            <button type="button" className="link-btn" onClick={() => setActiveTab('record')}>→ Proceed to Record</button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('record')}>→ Proceed to Record</Button>
           ) : null}
         </div>
         <div className="teleop-footer-controls">
           <div className="teleop-speed-control">
-            <label style={{ fontSize: 11, color: 'var(--text2)', minWidth: 48 }}>Speed:</label>
-            <select value={teleopSpeed} onChange={(e) => update('teleop_speed', e.target.value)} style={{ minWidth: 130 }}>
-              <option value="0.1">0.1x (slow)</option>
-              <option value="0.25">0.25x</option>
-              <option value="0.5">0.5x (default)</option>
-              <option value="0.75">0.75x</option>
-              <option value="1.0">1.0x (full)</option>
-            </select>
+            <NativeSelect label="Speed" value={teleopSpeed} onChange={(e) => update('teleop_speed', e.target.value)} style={{ minWidth: 130 }} data={[{ value: '0.1', label: '0.1x (slow)' }, { value: '0.25', label: '0.25x' }, { value: '0.5', label: '0.5x (default)' }, { value: '0.75', label: '0.75x' }, { value: '1.0', label: '1.0x (full)' }]} />
           </div>
           <ProcessButtons running={running} onStart={start} onStop={stop} startLabel="▶ Start Teleop" conflictReason={conflictReason} disabled={!armsReady || !camerasReady} />
         </div>
       </div>
-    </section>
+    </Box>
   )
 }

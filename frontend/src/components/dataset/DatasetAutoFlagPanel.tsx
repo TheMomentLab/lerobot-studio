@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Accordion, Button } from '@mantine/core'
 import { apiGet, apiPost } from '../../lib/api'
 import { useLeStudioStore } from '../../store'
 
@@ -292,13 +293,15 @@ export function DatasetAutoFlagPanel({ datasetId, totalEpisodes, onTagsChanged }
         : 'badge-ok'
 
   return (
-    <details id="ds-autoflag-panel" className="advanced-panel advanced-panel-clickable dataset-collapsible-panel">
-      <summary className="dataset-collapsible-summary">
+    <Accordion id="ds-autoflag-panel" variant="contained" className="advanced-panel dataset-collapsible-panel">
+      <Accordion.Item value="advanced">
+      <Accordion.Control className="dataset-collapsible-summary">
         <span className="dataset-collapsible-title">Auto-Flag — Episode Quality</span>
         <span className={`dbadge dataset-collapsible-meta ${autoFlagSummaryBadgeClass}`}>
           {autoFlagSummaryText}
         </span>
-      </summary>
+      </Accordion.Control>
+      <Accordion.Panel>
 
       {!stats && (
         <div style={{ marginTop: 8 }}>
@@ -306,13 +309,13 @@ export function DatasetAutoFlagPanel({ datasetId, totalEpisodes, onTagsChanged }
             Compute episode stats in background, then auto-flag outliers by threshold presets.
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn-sm" onClick={() => void requestStatsJob(false)} disabled={loading || isStatsRunning} style={{ flex: 1 }}>
+            <Button variant="default" size="sm" onClick={() => void requestStatsJob(false)} disabled={loading || isStatsRunning} style={{ flex: 1 }}>
               {loading || isStatsRunning ? 'Computing…' : '⚡ Load Episode Stats'}
-            </button>
+            </Button>
             {isStatsRunning && (
-              <button className="btn-xs" onClick={() => void cancelStatsJob()}>
+              <Button variant="subtle" size="compact-xs" onClick={() => void cancelStatsJob()}>
                 Cancel
-              </button>
+              </Button>
             )}
           </div>
           {(isStatsRunning || statsJobStatus === 'queued') && (
@@ -347,10 +350,10 @@ export function DatasetAutoFlagPanel({ datasetId, totalEpisodes, onTagsChanged }
           )}
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-            <button className="btn-xs" onClick={() => applyPreset('strict')}>Preset: Strict</button>
-            <button className="btn-xs" onClick={() => applyPreset('balanced')}>Preset: Balanced</button>
-            <button className="btn-xs" onClick={() => applyPreset('lenient')}>Preset: Lenient</button>
-            <button className="btn-xs" onClick={() => void requestStatsJob(true)} disabled={loading || isStatsRunning}>↻ Recompute</button>
+            <Button variant="subtle" size="compact-xs" onClick={() => applyPreset('strict')}>Preset: Strict</Button>
+            <Button variant="subtle" size="compact-xs" onClick={() => applyPreset('balanced')}>Preset: Balanced</Button>
+            <Button variant="subtle" size="compact-xs" onClick={() => applyPreset('lenient')}>Preset: Lenient</Button>
+            <Button variant="subtle" size="compact-xs" onClick={() => void requestStatsJob(true)} disabled={loading || isStatsRunning}>↻ Recompute</Button>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
@@ -496,15 +499,17 @@ export function DatasetAutoFlagPanel({ datasetId, totalEpisodes, onTagsChanged }
                   <div className="field-help" style={{ marginBottom: 6 }}>
                     Tags flagged episodes as <strong>bad</strong> in one bulk request.
                   </div>
-                  <button className="btn-primary" onClick={tagFlagged} disabled={tagging} style={{ width: '100%' }}>
+                  <Button variant="filled" onClick={tagFlagged} disabled={tagging} style={{ width: '100%' }}>
                     {tagging ? 'Tagging…' : `🏷 Tag ${flaggedEpisodes.length} episode${flaggedEpisodes.length !== 1 ? 's' : ''} as bad`}
-                  </button>
+                  </Button>
                 </>
               )}
             </>
           )}
         </>
       )}
-    </details>
+      </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
   )
 }

@@ -1,5 +1,6 @@
 import type { DatasetListItem, LeStudioConfig } from '../../lib/types'
 import type { CheckpointItem, EnvTypeItem } from '../../hooks/useEvalCheckpoint'
+import { Accordion, Button, NativeSelect, NumberInput, Paper, Text, TextInput } from '@mantine/core'
 import { EvalRobotConfig } from './EvalRobotConfig'
 
 interface EvalConfigPanelProps {
@@ -84,19 +85,18 @@ export function EvalConfigPanel({
   hfUsername,
 }: EvalConfigPanelProps) {
   return (
-    <div className="card">
-      <h3>Configuration</h3>
-      <label>Policy Source</label>
+    <Paper withBorder p="md" mb="md" className="card">
+      <Text size="sm" fw={600} c="dimmed" mb="xs">Configuration</Text>
+      <Text size="xs" c="dimmed" mt="xs" mb={4} style={{ display: 'block' }}>Policy Source</Text>
       <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
-        <button className={`toggle ${policySource === 'local' ? 'active' : ''}`} onClick={() => onSetPolicySource('local')}>Local</button>
-        <button className={`toggle ${policySource === 'hf' ? 'active' : ''}`} onClick={() => onSetPolicySource('hf')}>Hugging Face</button>
+        <Button variant={policySource === 'local' ? 'light' : 'default'} onClick={() => onSetPolicySource('local')}>Local</Button>
+        <Button variant={policySource === 'hf' ? 'light' : 'default'} onClick={() => onSetPolicySource('hf')}>Hugging Face</Button>
       </div>
 
       {policySource === 'local' ? (
         <>
-          <label>Checkpoint</label>
-          {checkpoints.length === 0 ? <div className="field-help" style={{ marginBottom: 8, color: 'var(--yellow)' }}>No checkpoints found. Train a model first.</div> : null}
-          <select
+          <NativeSelect
+            label="Checkpoint"
             value={config.eval_policy_path ?? ''}
             onChange={(e) => {
               const path = e.target.value
@@ -104,43 +104,45 @@ export function EvalConfigPanel({
               const cp = checkpoints.find((c) => c.path === path)
               if (cp) applyCheckpointEnv(cp)
             }}
-          >
-            {checkpoints.length === 0 ? <option value="">No checkpoints — train first</option> : null}
-            {checkpoints.map((cp) => (
-              <option key={cp.path} value={cp.path}>
-                {cp.display ?? (cp.step ? `${cp.name} (step ${cp.step.toLocaleString()})` : cp.name)}
-              </option>
-            ))}
-          </select>
+            data={checkpoints.length === 0
+              ? [{ value: '', label: 'No checkpoints — train first' }]
+              : checkpoints.map((cp) => ({
+                value: cp.path,
+                label: cp.display ?? (cp.step ? `${cp.name} (step ${cp.step.toLocaleString()})` : cp.name),
+              }))
+            }
+          />
           <div className="field-help">Choose from locally trained checkpoints.</div>
         </>
       ) : (
         <>
-          <label>Policy Repo ID</label>
-          <input
-            type="text"
+          <TextInput
+            label="Policy Repo ID"
             value={config.eval_policy_path ?? ''}
             placeholder="e.g. lerobot/act_pusht_diffusion"
             onChange={(e) => { void buildConfig({ eval_policy_path: e.target.value }) }}
           />
-          <div className="field-help">Hugging Face Hub model ID to evaluate.</div>
         </>
       )}
 
-      <label>Episodes</label>
-      <input type="number" min={1} value={totalEpisodes} onChange={(e) => { void buildConfig({ eval_episodes: Number(e.target.value) }) }} />
-      <label>Compute Device</label>
-      <select value={config.eval_device ?? 'cuda'} onChange={(e) => { void buildConfig({ eval_device: e.target.value }) }}>
-        <option value="cuda">CUDA (GPU)</option>
-        <option value="cpu">CPU</option>
-        <option value="mps">MPS (Apple Silicon)</option>
-      </select>
+      <NumberInput label="Episodes" min={1} value={totalEpisodes} onChange={(value) => { void buildConfig({ eval_episodes: Number(value) }) }} mt="xs" />
+      <NativeSelect
+        label="Compute Device"
+        value={config.eval_device ?? 'cuda'}
+        onChange={(e) => { void buildConfig({ eval_device: e.target.value }) }}
+        data={[
+          { value: 'cuda', label: 'CUDA (GPU)' },
+          { value: 'cpu', label: 'CPU' },
+          { value: 'mps', label: 'MPS (Apple Silicon)' },
+        ]}
+        mt="xs"
+      />
 
       {!preflightOk ? <div id="eval-device-warning" className="train-device-warning">{preflightReason || 'Device preflight failed. Evaluation is blocked.'}</div> : null}
       {!preflightOk && preflightAction === 'install_torch_cuda' ? (
         <div id="eval-device-actions" className="recovery-action" style={{ marginTop: 8 }}>
           <div className="field-help" style={{ marginBottom: 6 }}>Recommended next step to unblock evaluation:</div>
-          <button className="btn-primary" onClick={installCudaTorch}>Install CUDA PyTorch (Nightly)</button>
+          <Button variant="filled" onClick={installCudaTorch}>Install CUDA PyTorch (Nightly)</Button>
         </div>
       ) : null}
 
@@ -150,8 +152,8 @@ export function EvalConfigPanel({
             {preflightAction === 'install_python_dep' ? 'Missing Python packages detected. Auto-install starts automatically.' : 'Recommended next step to unblock evaluation:'}
           </div>
           {preflightAction !== 'install_python_dep' ? <div className="field-help" style={{ marginBottom: 8, fontFamily: 'var(--mono)' }}>{preflightCommand}</div> : null}
-          <button className="btn-primary" onClick={runPreflightFix} disabled={installing}>{installing ? 'Fix Running...' : preflightFixLabel}</button>
-          {installing ? <button className="btn-sm" style={{ marginLeft: 8 }} onClick={stopInstallProcess}>Stop Fix</button> : null}
+          <Button variant="filled" onClick={runPreflightFix} disabled={installing}>{installing ? 'Fix Running...' : preflightFixLabel}</Button>
+          {installing ? <Button variant="default" size="sm" style={{ marginLeft: 8 }} onClick={stopInstallProcess}>Stop Fix</Button> : null}
         </div>
       ) : null}
 
@@ -159,25 +161,22 @@ export function EvalConfigPanel({
         <div className="recovery-action" style={{ marginTop: 8 }}>
           <div className="field-help" style={{ marginBottom: 6 }}>Environment plugin <strong>{gymModuleName}</strong> is required but not installed.</div>
           <div className="field-help" style={{ marginBottom: 8, fontFamily: 'var(--mono)' }}>{gymInstallCommand}</div>
-          <button className="btn-primary" onClick={installGymPlugin} disabled={installing}>{installing ? 'Installing...' : `Install ${gymModuleName}`}</button>
-          {installing ? <button className="btn-sm" style={{ marginLeft: 8 }} onClick={stopInstallProcess}>Stop Install</button> : null}
+          <Button variant="filled" onClick={installGymPlugin} disabled={installing}>{installing ? 'Installing...' : `Install ${gymModuleName}`}</Button>
+          {installing ? <Button variant="default" size="sm" style={{ marginLeft: 8 }} onClick={stopInstallProcess}>Stop Install</Button> : null}
         </div>
       ) : null}
 
-      <label>
-        Env Type
-        {envTypeFromCheckpoint ? <span className="dbadge" style={{ fontSize: 10, marginLeft: 4 }}>from checkpoint</span> : envTypeMissing ? <span style={{ color: 'var(--red)', fontSize: 11 }}>(required)</span> : null}
-      </label>
-      <select
+      <NativeSelect
+        label={<>Env Type{envTypeFromCheckpoint ? <span className="dbadge" style={{ fontSize: 10, marginLeft: 4 }}>from checkpoint</span> : envTypeMissing ? <span style={{ color: 'var(--red)', fontSize: 11 }}> (required)</span> : null}</>}
         value={envTypeValue || envTypeFromCheckpoint || ''}
         onChange={(e) => { void buildConfig({ eval_env_type: e.target.value }) }}
-        style={envTypeMissing ? { borderColor: 'var(--red)' } : undefined}
-      >
-        <option value="">— Select env type —</option>
-        {envTypes.map((et) => (
-          <option key={et.type} value={et.type}>{et.label}{et.installed ? '' : ' (not installed)'}</option>
-        ))}
-      </select>
+        styles={envTypeMissing ? { input: { borderColor: 'var(--red)' } } : undefined}
+        mt="xs"
+        data={[
+          { value: '', label: '— Select env type —' },
+          ...envTypes.map((et) => ({ value: et.type, label: `${et.label}${et.installed ? '' : ' (not installed)'}` }))
+        ]}
+      />
 
       {envTypeMissing ? (
         <div className="field-help" style={{ color: 'var(--yellow)', marginBottom: 4 }}>No env metadata found. For Hugging Face or real-robot policies, select 'gym_manipulator'.</div>
@@ -188,16 +187,13 @@ export function EvalConfigPanel({
           : <div className="field-help" style={{ marginBottom: 4 }}><code>{selected?.module || `gym_${envTypeValue || envTypeFromCheckpoint || '...'}`}</code> plugin will be used.</div>
       })()}
 
-      <label>
-        Task
-        {envTaskFromCheckpoint ? <span className="dbadge" style={{ fontSize: 10, marginLeft: 4 }}>from checkpoint</span> : envTaskMissing ? <span style={{ color: 'var(--red)', fontSize: 11 }}>(required)</span> : null}
-      </label>
-      <input
-        type="text"
+      <TextInput
+        label={<>Task{envTaskFromCheckpoint ? <span className="dbadge" style={{ fontSize: 10, marginLeft: 4 }}>from checkpoint</span> : envTaskMissing ? <span style={{ color: 'var(--red)', fontSize: 11 }}> (required)</span> : null}</>}
         value={envTaskValue || envTaskFromCheckpoint || ''}
         placeholder="e.g. Pick up the block"
         onChange={(e) => { void buildConfig({ eval_task: e.target.value }) }}
-        style={envTaskMissing ? { borderColor: 'var(--red)' } : undefined}
+        styles={envTaskMissing ? { input: { borderColor: 'var(--red)' } } : undefined}
+        mt="xs"
       />
       {envTaskMissing ? <div className="field-help" style={{ color: 'var(--yellow)', marginBottom: 4 }}>Checkpoint has no task metadata. Describe the evaluation task.</div> : null}
 
@@ -211,54 +207,67 @@ export function EvalConfigPanel({
         setCameraMapping={setCameraMapping}
       />
 
-      <details className="advanced-panel advanced-panel-clickable" style={{ marginTop: 10 }}>
-        <summary style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ flex: 1 }}>Advanced Overrides</span>
-          <span
-            className="dbadge"
-            style={{
-              background: datasetOverrideActive ? 'rgba(34,197,94,0.18)' : 'rgba(148,163,184,0.18)',
-              color: datasetOverrideActive ? '#86efac' : 'var(--text2)',
-            }}
-          >
-            {datasetOverrideActive ? 'Dataset override ON' : 'Dataset override OFF'}
-          </span>
-          {datasetOverrideActive ? (
-            <button type="button" className="btn-xs" onClick={(e) => { e.preventDefault(); void buildConfig({ eval_repo_id: '' }) }}>Clear</button>
-          ) : null}
-        </summary>
-        <div style={{ marginTop: 8 }}>
-          <label>Dataset Source</label>
+      <Accordion variant="contained" className="advanced-panel" style={{ marginTop: 10 }}>
+        <Accordion.Item value="advanced">
+          <Accordion.Control style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ flex: 1 }}>Advanced Overrides</span>
+            <span
+              className="dbadge"
+              style={{
+                background: datasetOverrideActive ? 'rgba(34,197,94,0.18)' : 'rgba(148,163,184,0.18)',
+                color: datasetOverrideActive ? '#86efac' : 'var(--text2)',
+              }}
+            >
+              {datasetOverrideActive ? 'Dataset override ON' : 'Dataset override OFF'}
+            </span>
+            {datasetOverrideActive ? (
+              <Button
+                type="button"
+                variant="subtle"
+                size="compact-xs"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); void buildConfig({ eval_repo_id: '' }) }}
+              >
+                Clear
+              </Button>
+            ) : null}
+          </Accordion.Control>
+          <Accordion.Panel>
+            <div style={{ marginTop: 8 }}>
+          <Text size="xs" c="dimmed" mb={4} style={{ display: 'block' }}>Dataset Source</Text>
           <div className="mode-toggle" style={{ marginLeft: 0, marginBottom: 8 }}>
-            <button type="button" className={`toggle ${datasetSource === 'local' ? 'active' : ''}`} onClick={() => onSetDatasetSource('local')}>Local</button>
-            <button type="button" className={`toggle ${datasetSource === 'hf' ? 'active' : ''}`} onClick={() => onSetDatasetSource('hf')}>Hugging Face</button>
+            <Button type="button" variant={datasetSource === 'local' ? 'light' : 'default'} onClick={() => onSetDatasetSource('local')}>Local</Button>
+            <Button type="button" variant={datasetSource === 'hf' ? 'light' : 'default'} onClick={() => onSetDatasetSource('hf')}>Hugging Face</Button>
           </div>
 
           {datasetSource === 'local' ? (
             <>
-              <label>Local Dataset</label>
-              {datasets.length === 0 ? <div className="field-help" style={{ marginBottom: 8, color: 'var(--yellow)' }}>No local datasets found. This field is optional for eval.</div> : null}
-              <select value={localDatasetId} onChange={(e) => { void buildConfig({ eval_repo_id: e.target.value === '__none__' ? '' : e.target.value }) }}>
-                <option value="__none__">None (no override)</option>
-                {datasets.map((ds) => <option key={ds.id} value={ds.id}>{ds.id}</option>)}
-              </select>
+              <NativeSelect
+                label="Local Dataset"
+                value={localDatasetId}
+                onChange={(e) => { void buildConfig({ eval_repo_id: e.target.value === '__none__' ? '' : e.target.value }) }}
+                data={[
+                  { value: '__none__', label: 'None (no override)' },
+                  ...datasets.map((ds) => ({ value: ds.id, label: ds.id })),
+                ]}
+              />
               <div className="field-help">Optional override. Leave empty to evaluate without dataset repo override.</div>
             </>
           ) : (
             <>
-              <label>Dataset Repo ID (Optional)</label>
-              <input
-                type="text"
+              <TextInput
+                label="Dataset Repo ID (Optional)"
                 value={configuredDatasetId}
                 placeholder={hfUsername ? `${hfUsername}/my-dataset` : 'username/dataset'}
                 onChange={(e) => { void buildConfig({ eval_repo_id: e.target.value }) }}
-                style={repoError ? { borderColor: 'var(--red)' } : undefined}
+                styles={repoError ? { input: { borderColor: 'var(--red)' } } : undefined}
               />
               {repoError ? <div className="ep-guard-hint" style={{ marginTop: 4 }}>{repoError}</div> : null}
             </>
           )}
-        </div>
-      </details>
-    </div>
+            </div>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
+    </Paper>
   )
 }

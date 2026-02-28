@@ -1,4 +1,5 @@
 import type { LeStudioConfig } from '../../lib/types'
+import { Accordion } from '@mantine/core'
 
 interface EvalRobotConfigProps {
   visible: boolean
@@ -88,38 +89,42 @@ export function EvalRobotConfig({
         </div>
       ) : null}
 
-      <details style={{ marginTop: 8 }}>
-        <summary style={{ fontSize: 11, color: 'var(--text2)', cursor: 'pointer' }}>Camera Settings</summary>
-        <div className="settings-grid" style={{ marginTop: 6, gap: 6 }}>
-          <div className="setting-item">
-            <label style={{ fontSize: 11 }}>Resolution</label>
-            <select
-              style={{ fontSize: 12 }}
-              value={`${config.eval_cam_width ?? config.record_cam_width ?? 640}x${config.eval_cam_height ?? config.record_cam_height ?? 480}`}
-              onChange={(e) => {
-                const [w, h] = e.target.value.split('x')
-                void buildConfig({ eval_cam_width: Number(w), eval_cam_height: Number(h) })
-              }}
-            >
-              <option value="1280x720">1280 × 720</option>
-              <option value="640x480">640 × 480</option>
-              <option value="320x240">320 × 240</option>
-            </select>
-          </div>
-          <div className="setting-item">
-            <label style={{ fontSize: 11 }}>FPS</label>
-            <select
-              style={{ fontSize: 12 }}
-              value={String(config.eval_cam_fps ?? config.record_cam_fps ?? 30)}
-              onChange={(e) => { void buildConfig({ eval_cam_fps: Number(e.target.value) }) }}
-            >
-              <option value="30">30</option>
-              <option value="15">15</option>
-              <option value="10">10</option>
-            </select>
-          </div>
-        </div>
-      </details>
+      <Accordion variant="contained" style={{ marginTop: 8 }}>
+        <Accordion.Item value="advanced">
+          <Accordion.Control style={{ fontSize: 11, color: 'var(--text2)' }}>Camera Settings</Accordion.Control>
+          <Accordion.Panel>
+            <div className="settings-grid" style={{ marginTop: 6, gap: 6 }}>
+              <div className="setting-item">
+                <label style={{ fontSize: 11 }}>Resolution</label>
+                <select
+                  style={{ fontSize: 12 }}
+                  value={`${config.eval_cam_width ?? config.record_cam_width ?? 640}x${config.eval_cam_height ?? config.record_cam_height ?? 480}`}
+                  onChange={(e) => {
+                    const [w, h] = e.target.value.split('x')
+                    void buildConfig({ eval_cam_width: Number(w), eval_cam_height: Number(h) })
+                  }}
+                >
+                  <option value="1280x720">1280 × 720</option>
+                  <option value="640x480">640 × 480</option>
+                  <option value="320x240">320 × 240</option>
+                </select>
+              </div>
+              <div className="setting-item">
+                <label style={{ fontSize: 11 }}>FPS</label>
+                <select
+                  style={{ fontSize: 12 }}
+                  value={String(config.eval_cam_fps ?? config.record_cam_fps ?? 30)}
+                  onChange={(e) => { void buildConfig({ eval_cam_fps: Number(e.target.value) }) }}
+                >
+                  <option value="30">30</option>
+                  <option value="15">15</option>
+                  <option value="10">10</option>
+                </select>
+              </div>
+            </div>
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
     </div>
   )
 }

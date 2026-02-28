@@ -1,5 +1,7 @@
 import type { EpisodeReward, EvalProgressStatus } from '../../hooks/useEvalProgress'
+import { Button } from '@mantine/core'
 import { formatClock, formatElapsed, formatReward, formatSuccess } from '../../hooks/useEvalProgress'
+import { Paper } from '@mantine/core'
 
 interface EvalProgressPanelProps {
   progressStatus: EvalProgressStatus
@@ -52,7 +54,7 @@ export function EvalProgressPanel({
 
   return (
     <>
-      <div className="card">
+      <Paper withBorder p="md" mb="md" className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <span style={{ fontSize: 12, color: 'var(--text2)' }}>Evaluation Progress</span>
           <span
@@ -91,10 +93,10 @@ export function EvalProgressPanel({
         ) : (
           <div className="field-help" style={{ marginTop: 8 }}>Start evaluation to populate episode/reward/success metrics.</div>
         )}
-      </div>
+      </Paper>
 
       {progressStatus !== 'idle' ? (
-        <div className="card">
+        <Paper withBorder p="md" mb="md" className="card">
           <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Evaluation Summary</div>
           <div style={{ marginBottom: 8, fontSize: 11, color: 'var(--text2)' }}>
             <span id="eval-summary-confidence" className="dbadge" style={{ display: 'none' }} />
@@ -112,13 +114,13 @@ export function EvalProgressPanel({
             <div id="eval-summary-worst">Worst Episode: {worstEpisode ? `#${worstEpisode.ep} (${worstEpisode.reward.toFixed(4)})` : '--'}</div>
           </div>
           <div style={{ marginTop: 10, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-            <button className="btn-xs" onClick={onQuickRerun} disabled={running || !evalReady}>Re-run 3 Episodes</button>
-            <button className="btn-xs" onClick={onGoTrain}>Go to Train</button>
+            <Button variant="subtle" size="compact-xs" onClick={onQuickRerun} disabled={running || !evalReady}>Re-run 3 Episodes</Button>
+            <Button variant="subtle" size="compact-xs" onClick={onGoTrain}>Go to Train</Button>
             {progressStatus === 'completed' || progressStatus === 'stopped' ? (
-              <button className="btn-xs" onClick={onGoRecord}>↻ Record New Data</button>
+              <Button variant="subtle" size="compact-xs" onClick={onGoRecord}>↻ Record New Data</Button>
             ) : null}
           </div>
-        </div>
+        </Paper>
       ) : null}
     </>
   )

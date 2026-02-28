@@ -7,6 +7,7 @@
  */
 import { render, cleanup, act } from '@testing-library/react'
 import { describe, it, expect, afterEach, vi } from 'vitest'
+import { MantineProvider } from '@mantine/core'
 
 // ---------------------------------------------------------------------------
 // Stub all 9 tabs — each is a heavy component with its own effects/polling.
@@ -34,7 +35,11 @@ describe('App component', () => {
   it('renders without crashing', async () => {
     let container!: HTMLElement
     await act(async () => {
-      ;({ container } = render(<App />))
+      ;({ container } = render(
+        <MantineProvider>
+          <App />
+        </MantineProvider>,
+      ))
     })
     expect(container).toBeInTheDocument()
   })

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Badge, Box, Button, Group, Text, Title } from '@mantine/core'
 import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { EvalConfigPanel } from '../components/eval/EvalConfigPanel'
 import { EvalProgressPanel } from '../components/eval/EvalProgressPanel'
@@ -276,28 +277,30 @@ export function EvalTab({ active }: EvalTabProps) {
   }
 
   return (
-    <section id="tab-eval" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>Evaluate Policy</h2>
-        <span className={`status-verdict ${running || evalReady ? 'ready' : 'warn'}`}>{running ? 'Running' : evalReady ? 'Ready to Start' : 'Action Needed'}</span>
-      </div>
+    <Box id="tab-eval" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>Evaluate Policy</Title>
+        <Badge variant="light" color={running || evalReady ? 'green' : 'yellow'}>
+          {running ? 'Running' : evalReady ? 'Ready to Start' : 'Action Needed'}
+        </Badge>
+      </Group>
 
       {!running && !evalReady ? (
         <div className="eval-blocker-card">
           <div className="dsub" style={{ marginBottom: 6 }}>Evaluation blocked:</div>
           <div className="eval-blocker-chip-row">{evalBlockers.map((blocker) => <span key={blocker} className="dbadge badge-warn">{blocker}</span>)}</div>
           <div className="eval-blocker-actions">
-            {!preflightOk ? <button type="button" className="link-btn" onClick={() => { void buildConfig({ eval_device: 'cpu' }) }}>→ Switch to CPU</button> : null}
-            {!preflightOk && preflightAction === 'install_python_dep' && preflightCommand ? <button type="button" className="link-btn" onClick={() => { void runPreflightFix() }}>→ Install Missing Python Packages</button> : null}
-            <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>→ Open Dataset</button>
-            <button type="button" className="link-btn" onClick={() => setActiveTab('train')}>→ Go to Train</button>
+            {!preflightOk ? <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => { void buildConfig({ eval_device: 'cpu' }) }}>→ Switch to CPU</Button> : null}
+            {!preflightOk && preflightAction === 'install_python_dep' && preflightCommand ? <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => { void runPreflightFix() }}>→ Install Missing Python Packages</Button> : null}
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('dataset')}>→ Open Dataset</Button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('train')}>→ Go to Train</Button>
           </div>
         </div>
       ) : null}
 
       <div className="eval-content">
         <div className="quick-guide">
-          <h3>Evaluation Guide</h3>
+          <Text size="sm" fw={600} c="dimmed" mb="xs">Evaluation Guide</Text>
           <p>Select a <strong>trained checkpoint</strong> or enter a custom path. Match the <strong>Dataset Repo ID</strong> to the dataset used during training. Switch <strong>Compute Device</strong> to CPU/MPS if CUDA is unavailable. Start with <strong>3–5 episodes</strong> for a quick sanity check. Logs and detailed metrics appear in the <strong>global console drawer</strong>.</p>
         </div>
 
@@ -316,6 +319,6 @@ export function EvalTab({ active }: EvalTabProps) {
         </div>
         <ProcessButtons running={running} onStart={() => { void start() }} onStop={stop} startLabel="▶ Start Eval" disabled={!evalReady} conflictReason={conflictReason} />
       </div>
-    </section>
+    </Box>
   )
 }

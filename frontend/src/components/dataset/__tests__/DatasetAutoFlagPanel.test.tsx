@@ -14,6 +14,12 @@
 import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DatasetAutoFlagPanel } from '../DatasetAutoFlagPanel'
+import { MantineProvider } from '@mantine/core'
+
+const MantineWrapper = ({ children }: { children: React.ReactNode }) => (
+  <MantineProvider theme={{ components: { Accordion: { defaultProps: { transitionDuration: 0 } } } }}>{children}</MantineProvider>
+)
+import type React from 'react'
 
 afterEach(cleanup)
 
@@ -50,6 +56,13 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
+/** Expand the Mantine Accordion to reveal panel content */
+const expandAccordion = async () => {
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: /Auto-Flag/i }))
+  })
+}
+
 // ─── tests ───────────────────────────────────────────────────────────────────
 
 describe('DatasetAutoFlagPanel — initial (no stats)', () => {
@@ -58,6 +71,7 @@ describe('DatasetAutoFlagPanel — initial (no stats)', () => {
     await act(async () => {
       ;({ container } = render(
         <DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={10} />,
+        { wrapper: MantineWrapper },
       ))
     })
     expect(container).toBeInTheDocument()
@@ -65,21 +79,22 @@ describe('DatasetAutoFlagPanel — initial (no stats)', () => {
 
   it('shows "not loaded" badge when stats have not been fetched', async () => {
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />)
+      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />, { wrapper: MantineWrapper })
     })
     expect(screen.getByText('not loaded')).toBeInTheDocument()
   })
 
   it('shows Load Episode Stats button when stats are absent', async () => {
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />)
+      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />, { wrapper: MantineWrapper })
     })
+    await expandAccordion()
     expect(screen.getByRole('button', { name: /Load Episode Stats/i })).toBeInTheDocument()
   })
 
   it('does NOT show preset buttons before stats are loaded', async () => {
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />)
+      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />, { wrapper: MantineWrapper })
     })
     expect(screen.queryByRole('button', { name: /Preset: Strict/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Preset: Balanced/i })).not.toBeInTheDocument()
@@ -107,11 +122,12 @@ describe('DatasetAutoFlagPanel — after stats loaded', () => {
       )
 
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={3} />)
+      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={3} />, { wrapper: MantineWrapper })
     })
 
     // Click the load button and wait for async state updates
     await act(async () => {
+    await expandAccordion()
       fireEvent.click(screen.getByRole('button', { name: /Load Episode Stats/i }))
     })
 
@@ -137,10 +153,11 @@ describe('DatasetAutoFlagPanel — after stats loaded', () => {
       )
 
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={3} />)
+      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={3} />, { wrapper: MantineWrapper })
     })
 
     await act(async () => {
+    await expandAccordion()
       fireEvent.click(screen.getByRole('button', { name: /Load Episode Stats/i }))
     })
 
@@ -164,10 +181,11 @@ describe('DatasetAutoFlagPanel — after stats loaded', () => {
       )
 
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={3} />)
+      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={3} />, { wrapper: MantineWrapper })
     })
 
     await act(async () => {
+    await expandAccordion()
       fireEvent.click(screen.getByRole('button', { name: /Load Episode Stats/i }))
     })
 
@@ -183,6 +201,7 @@ describe('DatasetAutoFlagPanel — datasetId splitting', () => {
           datasetId="org-name/my-fancy-dataset"
           totalEpisodes={10}
         />,
+        { wrapper: MantineWrapper },
       )
     })
     // Just verify it renders — the split happens internally for API URLs
@@ -191,7 +210,7 @@ describe('DatasetAutoFlagPanel — datasetId splitting', () => {
 
   it('accepts single-segment datasetId gracefully', async () => {
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="nodatasetslash" totalEpisodes={0} />)
+      render(<DatasetAutoFlagPanel datasetId="nodatasetslash" totalEpisodes={0} />, { wrapper: MantineWrapper })
     })
     expect(screen.getByText('not loaded')).toBeInTheDocument()
   })
@@ -202,10 +221,11 @@ describe('DatasetAutoFlagPanel — API error handling', () => {
     stubFetch({ ok: false, error: 'server error' })
 
     await act(async () => {
-      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />)
+      render(<DatasetAutoFlagPanel datasetId="user/repo" totalEpisodes={5} />, { wrapper: MantineWrapper })
     })
 
     await act(async () => {
+    await expandAccordion()
       fireEvent.click(screen.getByRole('button', { name: /Load Episode Stats/i }))
     })
 

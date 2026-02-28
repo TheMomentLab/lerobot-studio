@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Badge, Box, Button, Group, Paper, Text, Title } from '@mantine/core'
 import { apiGet, apiPost } from '../lib/api'
 import type { ArmDevice, CameraDevice, DevicesResponse } from '../lib/types'
 import { useLeStudioStore } from '../store'
@@ -191,21 +192,21 @@ export function StatusTab({ active }: StatusTabProps) {
   }, [active, resources])
 
   return (
-    <section id="tab-status" className={`tab ${active ? 'active' : ''}`}>
-      <div className="section-header">
-        <h2>System Status</h2>
-        <span className={`status-verdict ${readyForOperation ? 'ready' : 'warn'}`}>
+    <Box id="tab-status" className={`tab ${active ? 'active' : ''}`} style={{ display: active ? 'block' : 'none' }}>
+      <Group className="section-header" mb="md" align="center">
+        <Title order={2}>System Status</Title>
+        <Badge variant="light" color={readyForOperation ? 'green' : 'yellow'}>
           {readyForOperation ? 'Ready' : 'Action Needed'}
-        </span>
+        </Badge>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
           <span id="status-last-update" style={{ fontSize: 11, color: 'var(--text2)' }}>
             {lastUpdate ? `Last updated: ${lastUpdate}` : ''}
           </span>
-          <button id="status-refresh-btn" onClick={refreshAll} className="btn-sm">
+          <Button id="status-refresh-btn" onClick={refreshAll} size="xs" variant="light">
             ↺ Refresh All
-          </button>
+          </Button>
         </div>
-      </div>
+      </Group>
 
       {!readyForOperation ? (
         <div className="status-issues">
@@ -216,19 +217,19 @@ export function StatusTab({ active }: StatusTabProps) {
           </div>
           <div className="status-issues-actions">
             {(devices.cameras.length === 0 || devices.arms.length === 0) ? (
-              <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>
                 → Open Mapping
-              </button>
+              </Button>
             ) : null}
             {runningProcess ? (
-              <button type="button" className="link-btn" onClick={() => setActiveTab(runningProcess.tab)}>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab(runningProcess.tab)}>
                 → Open {runningProcess.label}
-              </button>
+              </Button>
             ) : null}
             {resourcesError ? (
-              <button type="button" className="link-btn" onClick={() => void refreshResources()}>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => void refreshResources()}>
                 → Retry Resources
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>
@@ -238,15 +239,15 @@ export function StatusTab({ active }: StatusTabProps) {
         <div className="status-ready-banner">
           <div className="dsub">All core checks passed. Continue with device mapping verification or start teleop.</div>
           <div className="status-ready-actions">
-            <button type="button" className="link-btn" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</button>
-            <button type="button" className="link-btn" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('device-setup')}>→ Open Mapping</Button>
+            <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('teleop')}>→ Proceed to Teleop</Button>
           </div>
         </div>
       ) : null}
 
       <div className="status-grid">
-        <div className="card">
-          <h3>🤗 Hugging Face Auth</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">🤗 Hugging Face Auth</Text>
           <div className="device-list">
             <div className="device-item" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -258,15 +259,15 @@ export function StatusTab({ active }: StatusTabProps) {
               </span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button type="button" className="link-btn" onClick={() => setActiveTab('dataset')}>
+              <Button type="button" className="link-btn" variant="subtle" size="compact-xs" onClick={() => setActiveTab('dataset')}>
                 → Open Dataset Auth
-              </button>
+              </Button>
             </div>
           </div>
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>📷 Cameras</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">📷 Cameras</Text>
           <div id="status-cameras" className="device-list">
             {devices.cameras.length === 0 ? (
               <div className="device-empty-note">
@@ -287,10 +288,10 @@ export function StatusTab({ active }: StatusTabProps) {
               ))
             )}
           </div>
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>🦾 Arm Ports</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">🦾 Arm Ports</Text>
           <div id="status-arms" className="device-list">
             {devices.arms.length === 0 ? (
               <div className="device-empty-note">
@@ -311,10 +312,10 @@ export function StatusTab({ active }: StatusTabProps) {
               ))
             )}
           </div>
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>⚡ Processes</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">⚡ Processes</Text>
           <div id="status-procs" className="device-list">
             {[
               { key: 'teleop', label: 'Teleop' },
@@ -334,17 +335,17 @@ export function StatusTab({ active }: StatusTabProps) {
               )
             })}
           </div>
-        </div>
+        </Paper>
 
-        <div className="card">
-          <h3>🖥️ System Resources</h3>
+        <Paper withBorder p="md" mb="md" className="card">
+          <Text size="sm" fw={600} c="dimmed" mb="xs">🖥️ System Resources</Text>
           {resourceUpdatedAt ? <div className="dsub" style={{ marginBottom: 6 }}>Updated: {resourceUpdatedAt}</div> : null}
           <div id="status-resources" className="device-list">
             {!resources ? (
               resourcesError ? (
                 <div className="device-item" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: 'var(--red)', fontSize: 12 }}>Failed to load system resources</span>
-                  <button className="btn-xs" onClick={refreshResources}>Retry</button>
+                  <Button size="compact-xs" variant="light" onClick={refreshResources}>Retry</Button>
                 </div>
               ) : (
                 <div className="device-item">Loading…</div>
@@ -426,16 +427,16 @@ export function StatusTab({ active }: StatusTabProps) {
               </>
             )}
           </div>
-        </div>
+        </Paper>
 
-        <div className="card">
+        <Paper withBorder p="md" mb="md" className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-            <h3 style={{ margin: 0 }}>📋 Session History</h3>
+            <Text size="sm" fw={600} c="dimmed" mb="xs" style={{ margin: 0 }}>📋 Session History</Text>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button className="btn-xs" onClick={() => setHistoryExpanded((prev) => !prev)}>{historyExpanded ? 'Collapse' : 'Expand'}</button>
-              <button className="btn-sm" onClick={clearHistory} style={{ fontSize: 10, color: 'var(--red)', borderColor: 'color-mix(in srgb, var(--red) 40%, var(--border))' }}>
+              <Button size="compact-xs" variant="light" onClick={() => setHistoryExpanded((prev) => !prev)}>{historyExpanded ? 'Collapse' : 'Expand'}</Button>
+              <Button size="compact-xs" variant="light" onClick={clearHistory} style={{ fontSize: 10, color: 'var(--red)', borderColor: 'color-mix(in srgb, var(--red) 40%, var(--border))' }}>
                 Clear
-              </button>
+              </Button>
             </div>
           </div>
           <div id="status-history" className="device-list" style={{ maxHeight: historyExpanded ? 420 : 220, overflowY: 'auto' }}>
@@ -456,8 +457,8 @@ export function StatusTab({ active }: StatusTabProps) {
               })
             )}
           </div>
-        </div>
+        </Paper>
       </div>
-    </section>
+    </Box>
   )
 }

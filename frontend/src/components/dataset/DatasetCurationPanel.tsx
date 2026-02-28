@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Accordion, Button } from '@mantine/core'
 import { apiGet, apiPost } from '../../lib/api'
 import type { DatasetEpisode } from '../../lib/types'
 import { useLeStudioStore } from '../../store'
@@ -196,30 +197,33 @@ export function DatasetCurationPanel({
   }
 
   return (
-    <details
+    <Accordion
       id="ds-curation-panel"
-      className="advanced-panel advanced-panel-clickable dataset-collapsible-panel"
+      variant="contained"
+      className="advanced-panel dataset-collapsible-panel"
     >
-      <summary className="dataset-collapsible-summary">
+      <Accordion.Item value="advanced">
+      <Accordion.Control className="dataset-collapsible-summary">
         <span className="dataset-collapsible-title">Curation — Derive Dataset</span>
         <span className={`dbadge dataset-collapsible-meta ${curationSummaryBadgeClass}`}>
           {keepCount} / {totalEpisodes} keep
         </span>
-      </summary>
+      </Accordion.Control>
+      <Accordion.Panel>
 
       {/* Selection mode */}
       <label style={{ fontSize: 12 }}>Episode Selection</label>
       <div style={{ display: 'flex', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
         {(Object.keys(MODE_LABELS) as SelectionMode[]).map((m) => (
-          <button
+          <Button
             key={m}
-            className={`toggle ${mode === m ? 'active' : ''}`}
+            variant={mode === m ? 'light' : 'default'}
             style={{ fontSize: 12 }}
             disabled={isRunning}
             onClick={() => setMode(m)}
           >
             {MODE_LABELS[m]}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="muted" style={{ fontSize: 11, marginBottom: 8 }}>
@@ -267,39 +271,43 @@ export function DatasetCurationPanel({
         "user/dataset" format. Saved locally — push to Hub separately from Dataset tab.
       </div>
 
-      <details style={{ marginBottom: 8 }}>
-        <summary style={{ cursor: 'pointer', fontSize: 12 }}>CLI Preview (transparent execution)</summary>
-        <pre
-          style={{
-            marginTop: 6,
-            marginBottom: 0,
-            fontSize: 11,
-            fontFamily: 'var(--mono)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            background: 'var(--bg)',
-            borderRadius: 6,
-            border: '1px solid var(--border)',
-            padding: 8,
-          }}
-        >
-          {deriveCliPreview}
-        </pre>
-        {deleteIndices.length > 60 && (
-          <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
-            Showing first 60 delete indices of {deleteIndices.length}.
-          </div>
-        )}
-      </details>
+      <Accordion variant="contained" style={{ marginBottom: 8 }}>
+        <Accordion.Item value="advanced">
+          <Accordion.Control style={{ fontSize: 12 }}>CLI Preview (transparent execution)</Accordion.Control>
+          <Accordion.Panel>
+            <pre
+              style={{
+                marginTop: 6,
+                marginBottom: 0,
+                fontSize: 11,
+                fontFamily: 'var(--mono)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                background: 'var(--bg)',
+                borderRadius: 6,
+                border: '1px solid var(--border)',
+                padding: 8,
+              }}
+            >
+              {deriveCliPreview}
+            </pre>
+            {deleteIndices.length > 60 && (
+              <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                Showing first 60 delete indices of {deleteIndices.length}.
+              </div>
+            )}
+          </Accordion.Panel>
+        </Accordion.Item>
+      </Accordion>
 
-      <button
-        className="btn-primary"
+      <Button
+        variant="filled"
         onClick={handleDerive}
         disabled={!canDerive}
         style={{ width: '100%' }}
       >
         ✦ Create Derived Dataset
-      </button>
+      </Button>
 
       {/* Job progress */}
       {job && (
@@ -368,21 +376,22 @@ export function DatasetCurationPanel({
               <span style={{ fontSize: 11 }}>
                 <code>{newRepoId}</code> — {job.keep_count} episodes
               </span>
-              <button className="btn-xs" onClick={reset}>
+              <Button variant="subtle" size="compact-xs" onClick={reset}>
                 New Derive
-              </button>
+              </Button>
             </div>
           )}
 
           {isRunning && (
-            <button className="btn-xs" style={{ marginTop: 6 }} onClick={() => void cancelDerive()}>
+            <Button variant="subtle" size="compact-xs" style={{ marginTop: 6 }} onClick={() => void cancelDerive()}>
               Cancel
-            </button>
+            </Button>
           )}
 
           {job.status === 'error' && (
-            <button
-              className="btn-xs"
+            <Button
+              variant="subtle"
+              size="compact-xs"
               style={{ marginTop: 6 }}
               onClick={() => {
                 setJobId('')
@@ -390,10 +399,12 @@ export function DatasetCurationPanel({
               }}
             >
               Retry
-            </button>
+            </Button>
           )}
         </div>
       )}
-    </details>
+      </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
   )
 }
