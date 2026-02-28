@@ -48,6 +48,8 @@
 
 /* ─── Global Console Drawer ─────────────────────────────────────────────── */
 .console-drawer {
+  position: relative;
+  z-index: 200;   /* above Mantine AppShell navbar (z-index: 101) */
   border-top: 1px solid var(--border);
   background: var(--bg2);
   flex-shrink: 0;
