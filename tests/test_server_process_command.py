@@ -4,6 +4,7 @@ import asyncio
 import sys
 from pathlib import Path
 
+from lestudio.routes.models import ProcessCommandRequest
 from lestudio.server import create_app
 
 
@@ -53,7 +54,7 @@ def test_api_proc_command_allows_known_process_and_normalizes_pip(monkeypatch, t
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/process/{name}/command", "POST")
-    payload = asyncio.run(endpoint("train", {"command": "pip install rich"}))
+    payload = asyncio.run(endpoint("train", ProcessCommandRequest(command="pip install rich")))
     assert payload["ok"] is True
     assert captured["name"] == "train"
 

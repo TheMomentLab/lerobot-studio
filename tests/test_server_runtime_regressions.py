@@ -7,6 +7,7 @@ import types
 from pathlib import Path
 
 import lestudio.routes.training as training_routes
+from lestudio.routes.models import HfTokenRequest
 from lestudio.server import create_app
 
 
@@ -101,7 +102,7 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
 
 def test_snapshot_camera_returns_streamer_frame(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio._streaming.snapshot_get_frame", lambda video_path, config_path: b"jpeg-bytes")
+    monkeypatch.setattr("lestudio.routes.streaming.snapshot_get_frame", lambda video_path, config_path: b"jpeg-bytes")
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/camera/snapshot/{video_name}", "GET")
@@ -117,7 +118,7 @@ def test_snapshot_camera_returns_503_when_frame_unavailable(monkeypatch, tmp_pat
         return None
 
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
-    monkeypatch.setattr("lestudio._streaming.snapshot_get_frame", lambda video_path, config_path: None)
+    monkeypatch.setattr("lestudio.routes.streaming.snapshot_get_frame", lambda video_path, config_path: None)
     monkeypatch.setattr("lestudio.routes.streaming.asyncio.sleep", _fast_sleep)
 
     app = _make_app(tmp_path)
@@ -200,7 +201,7 @@ def test_hf_token_crud_status(monkeypatch, tmp_path: Path):
     assert initial["has_token"] is False
     assert initial["source"] == "none"
 
-    saved = asyncio.run(set_endpoint({"token": "hf_test_123456"}))
+    saved = asyncio.run(set_endpoint(HfTokenRequest(token="hf_test_123456")))
     assert saved["ok"] is True
     assert saved["has_token"] is True
     assert saved["source"] == "env"
@@ -215,7 +216,7 @@ def test_hf_token_crud_status(monkeypatch, tmp_path: Path):
     assert token_file.exists()
     assert token_file.read_text() == "hf_test_123456"
 
-    saved_put = asyncio.run(set_endpoint_put({"token": "hf_test_654321"}))
+    saved_put = asyncio.run(set_endpoint_put(HfTokenRequest(token="hf_test_654321")))
     assert saved_put["ok"] is True
     assert saved_put["has_token"] is True
     assert saved_put["source"] == "env"
