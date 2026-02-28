@@ -52,14 +52,14 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 Install from source:
 
 ```bash
-git clone https://github.com/TheMomentLab/lestudio.git
+git clone --recursive https://github.com/TheMomentLab/lestudio.git
 cd lestudio
 # one-time (if needed): conda create -n lerobot python=3.10 -y
 conda activate lerobot
-pip install -e .
+make install
 ```
 
-> PyPI package (`pip install lestudio`) coming with the OSS release.
+The [custom lerobot fork](https://github.com/TheMomentLab/lerobot) is tracked as a git submodule. `--recursive` pulls it automatically; `make install` installs both packages in editable mode.
 
 ## Usage
 
