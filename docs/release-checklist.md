@@ -7,8 +7,17 @@ Use this checklist before tagging a public release.
 Run all required checks from a clean environment.
 
 ```bash
+# 1. Submodule 확인
+git submodule update --init --recursive
+
+# 2. 환경 설치 (lerobot submodule 포함)
+make install  # 또는 make install-full (추가 의존성 포함)
+
+# 3. Backend 검증
 python3 -m compileall -q src/lestudio
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest -q -m "not smoke_hw" tests
+
+# 4. Frontend 검증
 cd frontend
 npm ci
 npm run lint
@@ -25,6 +34,8 @@ npm run build
    - `src/lestudio/device_registry.py`
 2. Verify new route/process logic includes regression tests.
 3. Keep hardware-only assertions in `tests/smoke_hw`.
+4. Confirm lerobot submodule commit is up-to-date with `TheMomentLab/lerobot` main.
+5. Verify `make install` completes without downgrading PyTorch (check `python -c 'import torch; print(torch.__version__)'`).
 
 ## 3. Hardware Validation
 

@@ -17,14 +17,18 @@
 
 ```
 Frontend: buildConfig() → { robot_type, teleop_type, follower_port, leader_port, ... }
-Server:   /api/teleop/start → data["robot_type"] 읽음 (line 1030-1031)
-Builder:  build_teleop_args() → cfg.get("robot_mode") == "bi" 로만 분기
-                                → robot_type/teleop_type 무시, so101 하드코딩
+Server:   /api/teleop/start  → data["robot_type"] 읽음
+          /api/record/start  → 동일 흐름
+          /api/eval/start    → env_type / task 자동 추론 + camera config 생성
+Builder:  build_teleop_args()  → robot_mode=="bi" 분기만, so101 하드코딩 (미개선)
+          build_record_args()  → 동일 (미개선)
+          build_eval_args()   → ✅ 전면 재작성 완료 (env_type/task 추론, gym_manipulator 카메라)
 ```
 
-**핵심 갭**: UI는 `robot_type`을 보내고 있지만, `command_builders.py`가 그것을 무시함.  
-`build_teleop_args()`와 `build_record_args()`가 여전히 SO-101을 하드코딩.
-
+**Phase 0 → Phase 1 갭 요약**:
+- `build_teleop_args()` / `build_record_args()` 는 여전히 SO-101 하드코딩. Phase 1a 대상.
+- `build_eval_args()` 는 Phase 0에서 전면 재작성됨 (env_type 추론, camera config 자동 생성, checkpoint 경로 유효성 검증 포함). 이 패턴을 Phase 1a에서 teleop/record에도 확산 예정.
+- `GenericCommandBuilder` 클래스 설계는 아직 미구현. 현재는 함수 기반 빌더 유지.
 ---
 
 ## Phase 1 범위

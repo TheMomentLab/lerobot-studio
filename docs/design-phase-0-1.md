@@ -1,7 +1,7 @@
 # Phase 0~1 개요 설계 (Overview Design)
 
-최종 갱신: 2026-02-23
-상태: 초안 (Draft)
+최종 갱신: 2026-02-28
+상태: Phase 0 백엔드 구현 완료 / Phase 1 미착수
 상위 문서: [`private/ecosystem-integration-plan.md`](./private/ecosystem-integration-plan.md)
 
 ---
@@ -9,6 +9,9 @@
 ## 구현 반영 상태 (읽기 가이드)
 
 - 이 문서는 **Phase 0~1 설계 초안**이다. 구현 완료 여부를 보증하지 않는다.
+- **Phase 0 백엔드 구현 완료** (2026-02-28): `device_registry.py` (549줄) — 3-Registry 쿼리, config schema 추출, capabilities 추론, 호환 teleop 매핑, 플러그인 자동 발견 모두 구현됨.
+- **Phase 0 프론트엔드 구현 완료** (2026-02-28): Robot/Teleop 선택기, capabilities 카드, config schema 기반 동적 필드가 TeleopTab/RecordTab에 통합됨.
+- **Phase 1 미착수**: GenericCommandBuilder, ConnectionAdapter 등은 아직 설계 단계.
 - 실제 구현 진행률의 기준 문서는 [`private/roadmap.md`](./private/roadmap.md)이다.
 - 설계와 코드/로드맵이 충돌하면, 코드와 로드맵을 우선으로 판단한다.
 
