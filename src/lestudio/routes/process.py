@@ -1,7 +1,10 @@
 """Process management, preflight, teleop, record, calibrate, motor setup routes."""
 from __future__ import annotations
 
+import datetime
+import logging
 import os
+from pathlib import Path
 
 import cv2
 from fastapi import APIRouter
@@ -21,6 +24,17 @@ from lestudio._streaming import (
 from lestudio._train_helpers import _normalize_console_command
 from lestudio.routes._state import AppState
 
+logger = logging.getLogger(__name__)
+
+
+def _guard_process_start(state: AppState, name: str) -> dict | None:
+    """Check if process can start. Returns error dict if blocked, None if OK."""
+    if state.proc_mgr.is_running(name):
+        return {"ok": False, "error": "Already running"}
+    conflicts = state.proc_mgr.conflicting_processes(name)
+    if conflicts:
+        return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
+    return None
 
 def create_router(state: AppState) -> APIRouter:
     router = APIRouter()
@@ -118,7 +132,7 @@ def create_router(state: AppState) -> APIRouter:
             if not device_id:
                 add("warn", label, "Missing device id")
                 return
-            from pathlib import Path
+            base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
             base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
             category, dir_name = device_registry.get_calibration_path_prefix(device_type)
             path = base / category / dir_name / f"{device_id}.json"
@@ -137,7 +151,6 @@ def create_router(state: AppState) -> APIRouter:
                 add("error", label, f"Permission denied for {path}")
                 return
             # If LeStudio already has this camera open (MJPEG preview), skip re-opening
-            from pathlib import Path
             real_path = str(Path(path).resolve())
             with _streamers_lock:
                 already_streaming = real_path in _streamers or real_path in _preview_streamers
@@ -155,7 +168,7 @@ def create_router(state: AppState) -> APIRouter:
                     add("warn", label, f"{path} opened but no frame available yet")
                     return
                 add("ok", label, f"{path} is readable")
-            except Exception as e:
+            except (cv2.error, OSError, ValueError) as e:
                 add("warn", label, f"Camera probe failed: {e}")
             finally:
                 if cap is not None:
@@ -189,11 +202,9 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Teleop ────────────────────────────────────────────────────────────────
     @router.post("/api/teleop/start")
     async def api_teleop_start(data: dict):
-        if state.proc_mgr.is_running("teleop"):
-            return {"ok": False, "error": "Already running"}
-        conflicts = state.proc_mgr.conflicting_processes("teleop")
-        if conflicts:
-            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
+        guard = _guard_process_start(state, "teleop")
+        if guard:
+            return guard
         stop_all_streamers_for_process()
         args = build_teleop_args(state.python_exe, data)
         return {"ok": state.proc_mgr.start("teleop", args)}
@@ -201,11 +212,9 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Record ────────────────────────────────────────────────────────────────
     @router.post("/api/record/start")
     async def api_record_start(data: dict):
-        if state.proc_mgr.is_running("record"):
-            return {"ok": False, "error": "Already running"}
-        conflicts = state.proc_mgr.conflicting_processes("record")
-        if conflicts:
-            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
+        guard = _guard_process_start(state, "record")
+        if guard:
+            return guard
         stop_all_streamers_for_process()
         cfg = data
         # Inject camera settings (resolution/fps) from user's config into record args
@@ -231,8 +240,7 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Calibrate ─────────────────────────────────────────────────────────────
     @router.get("/api/calibrate/file")
     def api_calibrate_file(robot_type: str, robot_id: str):
-        import datetime
-        from pathlib import Path
+
         base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
         category, dir_name = device_registry.get_calibration_path_prefix(robot_type)
         path = base / category / dir_name / f"{robot_id}.json"
@@ -249,8 +257,7 @@ def create_router(state: AppState) -> APIRouter:
 
     @router.get("/api/calibrate/list")
     def api_calibrate_list():
-        import datetime
-        from pathlib import Path
+
         base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
         files = []
         if base.exists():
@@ -279,28 +286,26 @@ def create_router(state: AppState) -> APIRouter:
 
     @router.delete("/api/calibrate/file")
     def api_calibrate_delete(robot_type: str, robot_id: str):
-        from pathlib import Path
+
         base = Path.home() / ".cache" / "huggingface" / "lerobot" / "calibration"
         try:
             category, dir_name = device_registry.get_calibration_path_prefix(robot_type)
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             return {"ok": False, "error": f"Unknown robot_type '{robot_type}': {e}"}
         path = base / category / dir_name / f"{robot_id}.json"
         if path.exists():
             try:
                 path.unlink()
                 return {"ok": True}
-            except Exception as e:
+            except OSError as e:
                 return {"ok": False, "error": str(e)}
         return {"ok": False, "error": "File not found"}
 
     @router.post("/api/calibrate/start")
     async def api_calibrate_start(data: dict):
-        if state.proc_mgr.is_running("calibrate"):
-            return {"ok": False, "error": "Already running"}
-        conflicts = state.proc_mgr.conflicting_processes("calibrate")
-        if conflicts:
-            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
+        guard = _guard_process_start(state, "calibrate")
+        if guard:
+            return guard
         args = build_calibrate_args(state.python_exe, data)
         ok = state.proc_mgr.start("calibrate", args)
         if ok:
@@ -313,11 +318,9 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Motor Setup ───────────────────────────────────────────────────────────
     @router.post("/api/motor_setup/start")
     async def api_motor_setup_start(data: dict):
-        if state.proc_mgr.is_running("motor_setup"):
-            return {"ok": False, "error": "Already running"}
-        conflicts = state.proc_mgr.conflicting_processes("motor_setup")
-        if conflicts:
-            return {"ok": False, "error": f"Cannot start: {', '.join(conflicts)} is using shared hardware"}
+        guard = _guard_process_start(state, "motor_setup")
+        if guard:
+            return guard
         args = build_motor_setup_args(state.python_exe, data)
         return {"ok": state.proc_mgr.start("motor_setup", args)}
 

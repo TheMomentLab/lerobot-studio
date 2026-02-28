@@ -1,6 +1,7 @@
 """MJPEG camera streaming helpers."""
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import threading
@@ -11,6 +12,8 @@ from typing import Optional, cast
 import cv2
 
 from lestudio._config_helpers import _load_config
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_CAM_SETTINGS = {
     "codec": "MJPG", "width": 640, "height": 480, "fps": 30, "jpeg_quality": 70,
@@ -112,174 +115,221 @@ class CameraStreamer:
         self.running = False
 
 
-# ─── Module-level streamer registry ───────────────────────────────────────────
-_streamers: dict[str, CameraStreamer] = {}
-_streamers_lock = threading.Lock()
+# ─── StreamerManager: encapsulates all mutable streamer state ──────────────
 
-_preview_streamers: dict[str, CameraStreamer] = {}
-_cameras_locked = False  # When True, no new streamers will be created (cameras reserved for subprocess)
-_preview_lock = threading.Lock()
-_rerun_server_proc: Optional[subprocess.Popen] = None
-_rerun_server_lock = threading.Lock()
+class StreamerManager:
+    """Manages camera streamer lifecycle, preview streamers, and rerun server.
 
-# --- Snapshot pool: keeps streamers alive between polling requests ---
-# TTL-based: streamer closes 3s after last request
-_snapshot_pool: dict[str, float] = {}  # real_path -> last_request_time
-_SNAPSHOT_TTL = 3.0
-
-
-def snapshot_get_frame(video_path: str, config_path: Path) -> bytes | None:
-    """Return the latest JPEG frame for snapshot polling.
-    Keeps the streamer alive across requests via TTL so the camera
-    is not opened/closed on every poll.
+    Encapsulates all module-level mutable state for testability and potential
+    multi-instance support. A default singleton is created at module level.
     """
-    if _cameras_locked:
-        return None
-    real_path = os.path.realpath(video_path)
-    now = time.monotonic()
-    with _streamers_lock:
-        # Clean up expired snapshot clients
-        expired = [p for p, ts in _snapshot_pool.items() if now - ts > _SNAPSHOT_TTL]
-        for p in expired:
-            del _snapshot_pool[p]
-            if p in _streamers:
-                _streamers[p].clients -= 1
-                if _streamers[p].clients <= 0:
-                    _streamers[p].stop()
-                    del _streamers[p]
 
-        # Keep pool/streamer registry consistent even after process start/stop cycles.
-        held_by_snapshot = real_path in _snapshot_pool
-        streamer = _streamers.get(real_path)
-        if streamer is None:
-            streamer = CameraStreamer(real_path, _get_cam_settings(config_path))
-            _streamers[real_path] = streamer
-        if held_by_snapshot:
-            if streamer.clients <= 0:
-                streamer.clients = 1
-        else:
-            streamer.clients += 1
+    _SNAPSHOT_TTL = 3.0
 
-        # Refresh TTL
-        _snapshot_pool[real_path] = now
+    def __init__(self):
+        self._streamers: dict[str, CameraStreamer] = {}
+        self._streamers_lock = threading.Lock()
+        self._preview_streamers: dict[str, CameraStreamer] = {}
+        self._cameras_locked = False
+        self._preview_lock = threading.Lock()
+        self._rerun_server_proc: Optional[subprocess.Popen] = None
+        self._rerun_server_lock = threading.Lock()
+        self._snapshot_pool: dict[str, float] = {}
 
-    if streamer is None or streamer.failed:
-        return None
-    return streamer.latest_frame
+    def snapshot_get_frame(self, video_path: str, config_path: Path) -> bytes | None:
+        """Return the latest JPEG frame for snapshot polling."""
+        if self._cameras_locked:
+            return None
+        real_path = os.path.realpath(video_path)
+        now = time.monotonic()
+        streamer: CameraStreamer | None = None
+        with self._streamers_lock:
+            # Clean up expired snapshot clients
+            expired = [p for p, ts in self._snapshot_pool.items() if now - ts > self._SNAPSHOT_TTL]
+            for p in expired:
+                del self._snapshot_pool[p]
+                if p in self._streamers:
+                    self._streamers[p].clients -= 1
+                    if self._streamers[p].clients <= 0:
+                        self._streamers[p].stop()
+                        del self._streamers[p]
+
+            held_by_snapshot = real_path in self._snapshot_pool
+            streamer = self._streamers.get(real_path)
+            if streamer is None:
+                streamer = CameraStreamer(real_path, _get_cam_settings(config_path))
+                self._streamers[real_path] = streamer
+            if held_by_snapshot:
+                if streamer.clients <= 0:
+                    streamer.clients = 1
+            else:
+                streamer.clients += 1
+
+            self._snapshot_pool[real_path] = now
+
+        if streamer is None or streamer.failed:
+            return None
+        return streamer.latest_frame
+
+    def get_streamer(self, video_path: str, config_path: Path) -> CameraStreamer | None:
+        if self._cameras_locked:
+            return None
+        real_path = os.path.realpath(video_path)
+        with self._streamers_lock:
+            if real_path not in self._streamers:
+                self._streamers[real_path] = CameraStreamer(real_path, _get_cam_settings(config_path))
+            self._streamers[real_path].clients += 1
+            return self._streamers[real_path]
+
+    def release_streamer(self, video_path: str):
+        real_path = os.path.realpath(video_path)
+        with self._streamers_lock:
+            if real_path in self._streamers:
+                self._streamers[real_path].clients -= 1
+                if self._streamers[real_path].clients <= 0:
+                    self._streamers[real_path].stop()
+                    del self._streamers[real_path]
+
+    def get_preview_streamer(self, video_path: str) -> CameraStreamer | None:
+        if self._cameras_locked:
+            return None
+        real_path = os.path.realpath(video_path)
+        with self._preview_lock:
+            if real_path not in self._preview_streamers:
+                self._preview_streamers[real_path] = CameraStreamer(real_path, _PREVIEW_SETTINGS)
+            self._preview_streamers[real_path].clients += 1
+            return self._preview_streamers[real_path]
+
+    def release_preview_streamer(self, video_path: str):
+        real_path = os.path.realpath(video_path)
+        with self._preview_lock:
+            if real_path in self._preview_streamers:
+                self._preview_streamers[real_path].clients -= 1
+                if self._preview_streamers[real_path].clients <= 0:
+                    self._preview_streamers[real_path].stop()
+                    del self._preview_streamers[real_path]
+
+    def stop_all_streamers_for_process(self):
+        self._cameras_locked = True
+        threads = []
+        with self._streamers_lock:
+            self._snapshot_pool.clear()
+            for streamer in self._streamers.values():
+                streamer.stop()
+                threads.append(streamer.thread)
+            self._streamers.clear()
+        with self._preview_lock:
+            for streamer in self._preview_streamers.values():
+                streamer.stop()
+                threads.append(streamer.thread)
+            self._preview_streamers.clear()
+        for t in threads:
+            t.join(timeout=5.0)
+        time.sleep(1.5)
+
+    def unlock_cameras(self):
+        self._cameras_locked = False
+
+    def ensure_rerun_web_server(self, python_exe: str, web_port: int = 9090, grpc_port: int = 9876):
+        with self._rerun_server_lock:
+            if self._rerun_server_proc is not None and self._rerun_server_proc.poll() is None:
+                return
+            cmd = [
+                python_exe,
+                "-c",
+                (
+                    "import time;"
+                    "import rerun as rr;"
+                    "rr.init('lestudio_view', spawn=False);"
+                    f"rr.serve_grpc(grpc_port={grpc_port});"
+                    f"rr.serve_web_viewer(web_port={web_port}, open_browser=False, connect_to='rerun+http://127.0.0.1:{grpc_port}/proxy');"
+                    "\nwhile True:\n    time.sleep(3600)"
+                ),
+            ]
+            self._rerun_server_proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+            )
+
+    def restart_all_streamers(self, config_path: Path):
+        with self._streamers_lock:
+            self._snapshot_pool.clear()
+            for streamer in self._streamers.values():
+                streamer.stop()
+            paths = list(self._streamers.keys())
+            self._streamers.clear()
+        with self._preview_lock:
+            for streamer in self._preview_streamers.values():
+                streamer.stop()
+            self._preview_streamers.clear()
+        time.sleep(1.5)
+        settings = _get_cam_settings(config_path)
+        for p in paths:
+            with self._streamers_lock:
+                self._streamers[p] = CameraStreamer(p, settings)
+                self._streamers[p].clients = 1
+
+
+# ─── Default singleton + backward-compatible module-level API ──────────────
+
+_default_manager = StreamerManager()
+
+# Mutable containers are shared by reference — changes via manager are visible here.
+_streamers = _default_manager._streamers
+_streamers_lock = _default_manager._streamers_lock
+_preview_streamers = _default_manager._preview_streamers
+_preview_lock = _default_manager._preview_lock
+# _cameras_locked is a bool (immutable); external code accesses it via
+# `import lestudio._streaming as _str; _str._cameras_locked`, which reads
+# the module attribute. The module-level functions and manager update this
+# module attribute directly.
+_cameras_locked = False
+_snapshot_pool = _default_manager._snapshot_pool
+
 
 def _get_cam_settings(config_path: Path) -> dict:
     cfg = _load_config(config_path)
     return {**_DEFAULT_CAM_SETTINGS, **cfg.get("camera_settings", {})}
 
 
+def snapshot_get_frame(video_path: str, config_path: Path) -> bytes | None:
+    return _default_manager.snapshot_get_frame(video_path, config_path)
+
+
 def get_streamer(video_path: str, config_path: Path) -> CameraStreamer | None:
-    if _cameras_locked:
-        return None
-    real_path = os.path.realpath(video_path)
-    with _streamers_lock:
-        if real_path not in _streamers:
-            _streamers[real_path] = CameraStreamer(real_path, _get_cam_settings(config_path))
-        _streamers[real_path].clients += 1
-        return _streamers[real_path]
+    return _default_manager.get_streamer(video_path, config_path)
 
 
 def release_streamer(video_path: str):
-    real_path = os.path.realpath(video_path)
-    with _streamers_lock:
-        if real_path in _streamers:
-            _streamers[real_path].clients -= 1
-            if _streamers[real_path].clients <= 0:
-                _streamers[real_path].stop()
-                del _streamers[real_path]
+    _default_manager.release_streamer(video_path)
 
 
 def get_preview_streamer(video_path: str) -> CameraStreamer | None:
-    if _cameras_locked:
-        return None
-    real_path = os.path.realpath(video_path)
-    with _preview_lock:
-        if real_path not in _preview_streamers:
-            _preview_streamers[real_path] = CameraStreamer(real_path, _PREVIEW_SETTINGS)
-        _preview_streamers[real_path].clients += 1
-        return _preview_streamers[real_path]
+    return _default_manager.get_preview_streamer(video_path)
 
 
 def release_preview_streamer(video_path: str):
-    real_path = os.path.realpath(video_path)
-    with _preview_lock:
-        if real_path in _preview_streamers:
-            _preview_streamers[real_path].clients -= 1
-            if _preview_streamers[real_path].clients <= 0:
-                _preview_streamers[real_path].stop()
-                del _preview_streamers[real_path]
+    _default_manager.release_preview_streamer(video_path)
 
 
 def stop_all_streamers_for_process():
     global _cameras_locked
-    _cameras_locked = True  # Block any new streamer creation from browser requests
-    threads = []
-    with _streamers_lock:
-        _snapshot_pool.clear()
-        for streamer in _streamers.values():
-            streamer.stop()
-            threads.append(streamer.thread)
-        _streamers.clear()
-    with _preview_lock:
-        for streamer in _preview_streamers.values():
-            streamer.stop()
-            threads.append(streamer.thread)
-        _preview_streamers.clear()
-    # Wait for ALL capture threads to fully exit and release their cameras
-    for t in threads:
-        t.join(timeout=5.0)
-    time.sleep(1.5)  # Extra buffer for V4L2 device node release
+    _default_manager.stop_all_streamers_for_process()
+    _cameras_locked = _default_manager._cameras_locked
 
 
 def unlock_cameras():
     global _cameras_locked
-    _cameras_locked = False
+    _default_manager.unlock_cameras()
+    _cameras_locked = _default_manager._cameras_locked
 
 
 def ensure_rerun_web_server(python_exe: str, web_port: int = 9090, grpc_port: int = 9876):
-    global _rerun_server_proc
-    with _rerun_server_lock:
-        if _rerun_server_proc is not None and _rerun_server_proc.poll() is None:
-            return
-        cmd = [
-            python_exe,
-            "-c",
-            (
-                "import time;"
-                "import rerun as rr;"
-                "rr.init('lestudio_view', spawn=False);"
-                f"rr.serve_grpc(grpc_port={grpc_port});"
-                f"rr.serve_web_viewer(web_port={web_port}, open_browser=False, connect_to='rerun+http://127.0.0.1:{grpc_port}/proxy');"
-                "\nwhile True:\n    time.sleep(3600)"
-            ),
-        ]
-        _rerun_server_proc = subprocess.Popen(
-            cmd,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            close_fds=True,
-        )
+    _default_manager.ensure_rerun_web_server(python_exe, web_port, grpc_port)
 
 
 def restart_all_streamers(config_path: Path):
-    with _streamers_lock:
-        _snapshot_pool.clear()
-        for streamer in _streamers.values():
-            streamer.stop()
-        paths = list(_streamers.keys())
-        _streamers.clear()
-    with _preview_lock:
-        for streamer in _preview_streamers.values():
-            streamer.stop()
-        _preview_streamers.clear()
-    time.sleep(1.5)
-    settings = _get_cam_settings(config_path)
-    for p in paths:
-        with _streamers_lock:
-            _streamers[p] = CameraStreamer(p, settings)
-            _streamers[p].clients = 1
+    _default_manager.restart_all_streamers(config_path)

@@ -3,12 +3,32 @@ from __future__ import annotations
 
 import datetime
 import json
+import logging
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from lestudio.process_manager import ProcessManager
 from lestudio._config_helpers import _load_config, _save_config
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DatasetJobState:
+    push_jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    push_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
+    download_jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    download_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
+    derive_jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    derive_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
+    derive_procs: dict[str, Any] = field(default_factory=dict)
+    derive_procs_lock: threading.Lock = field(default_factory=threading.Lock)
+    stats_jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    stats_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
+    stats_cancel_events: dict[str, threading.Event] = field(default_factory=dict)
+    stats_cancel_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
 @dataclass
@@ -22,18 +42,7 @@ class AppState:
     history_path: Path
     history_max: int
     python_exe: str
-    push_jobs: dict = field(default_factory=dict)
-    push_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
-    download_jobs: dict = field(default_factory=dict)
-    download_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
-    derive_jobs: dict = field(default_factory=dict)
-    derive_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
-    derive_procs: dict = field(default_factory=dict)
-    derive_procs_lock: threading.Lock = field(default_factory=threading.Lock)
-    stats_jobs: dict = field(default_factory=dict)
-    stats_jobs_lock: threading.Lock = field(default_factory=threading.Lock)
-    stats_cancel_events: dict = field(default_factory=dict)
-    stats_cancel_lock: threading.Lock = field(default_factory=threading.Lock)
+    dataset_jobs: DatasetJobState = field(default_factory=DatasetJobState)
 
     def load_config(self) -> dict:
         return _load_config(self.config_path)
@@ -59,5 +68,5 @@ class AppState:
             if len(entries) > self.history_max:
                 entries = entries[-self.history_max:]
             self.history_path.write_text(json.dumps(entries, indent=2))
-        except Exception:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass

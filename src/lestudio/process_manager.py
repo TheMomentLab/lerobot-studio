@@ -1,3 +1,4 @@
+import logging
 import os
 import queue
 import re
@@ -7,7 +8,17 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TypedDict
+
+logger = logging.getLogger(__name__)
+
+
+class TrainMetric(TypedDict, total=False):
+    total_steps: int
+    step: int
+    loss: float
+    lr: float
+
 
 PROCESS_NAMES = ["teleop", "record", "calibrate", "motor_setup", "train", "train_install", "eval"]
 
@@ -64,7 +75,7 @@ def _parse_compact_int(token: str) -> int | None:
     if not m:
         try:
             return int(float(raw.replace(",", "")))
-        except Exception:
+        except (TypeError, ValueError):
             return None
     base = float(m.group(1))
     suffix = m.group(2)
@@ -72,15 +83,15 @@ def _parse_compact_int(token: str) -> int | None:
     return int(base * (1000 ** scale))
 
 
-def _extract_train_metric(line: str) -> dict | None:
-    metric: dict = {}
+def _extract_train_metric(line: str) -> TrainMetric | None:
+    metric: TrainMetric = {}
     m_total = _TRAIN_TOTAL_RE.search(line)
     if m_total:
         try:
             total = int(m_total.group(1).replace("_", "").replace(",", ""))
             if total > 0:
                 metric["total_steps"] = total
-        except Exception:
+        except (TypeError, ValueError):
             pass
 
     m_step = _TRAIN_STEP_RE.search(line)
@@ -93,14 +104,14 @@ def _extract_train_metric(line: str) -> dict | None:
     if m_loss:
         try:
             metric["loss"] = float(m_loss.group(1))
-        except Exception:
+        except (TypeError, ValueError):
             pass
 
     m_lr = _TRAIN_LR_RE.search(line)
     if m_lr:
         try:
             metric["lr"] = float(m_lr.group(1))
-        except Exception:
+        except (TypeError, ValueError):
             pass
 
     return metric or None
@@ -153,7 +164,7 @@ class ProcessManager:
             self.procs[name] = proc
             threading.Thread(target=self._reader, args=(name, proc), daemon=True).start()
             return True
-        except Exception as e:
+        except Exception as e:  # broad-except: preserve process start failure handling for any launcher error
             self._push(name, f"[ERROR] {e}", "error")
             return False
 
@@ -162,7 +173,7 @@ class ProcessManager:
         if proc and proc.poll() is None:
             try:
                 pgid = os.getpgid(proc.pid)
-            except Exception:
+            except (ProcessLookupError, OSError):
                 pgid = None
 
             try:
@@ -202,7 +213,7 @@ class ProcessManager:
             proc.stdin.write((text + "\n").encode())
             proc.stdin.flush()
             return True
-        except Exception:
+        except (BrokenPipeError, OSError):
             return False
 
     def is_running(self, name: str) -> bool:
@@ -221,6 +232,19 @@ class ProcessManager:
                     n for n in group if n != name and self.is_running(n)
                 )
         return list(dict.fromkeys(conflicts))  # dedupe, preserve order
+    def _process_line(self, name: str, text: str):
+        """Process a single decoded line: push to queue, translate errors, extract train metrics."""
+        if not text:
+            return
+        self._push(name, text, "stdout")
+        translated = _translate_error_line(text)
+        if translated is not None:
+            self._push_translation(name, translated)
+        if name == "train":
+            metric = _extract_train_metric(text)
+            if metric is not None:
+                self._push_metric(name, metric)
+
     def _reader(self, name: str, proc: subprocess.Popen):
         import select as sel
 
@@ -230,7 +254,7 @@ class ProcessManager:
         while True:
             try:
                 r, _, _ = sel.select([proc.stdout], [], [], 0.1)
-            except Exception:
+            except (OSError, ValueError):
                 break
             if r:
                 chunk = proc.stdout.read(256)
@@ -241,45 +265,24 @@ class ProcessManager:
                     line, buf = buf.split(b"\n", 1)
                     text = _ANSI_RE.sub("", line.decode("utf-8", errors="replace").rstrip("\r"))
                     if text:
-                        self._push(name, text, "stdout")
-                        translated = _translate_error_line(text)
-                        if translated is not None:
-                            self._push_translation(name, translated)
-                        if name == "train":
-                            metric = _extract_train_metric(text)
-                            if metric is not None:
-                                self._push_metric(name, metric)
+                        self._process_line(name, text)
             else:
                 if buf:
                     text = _ANSI_RE.sub("", buf.decode("utf-8", errors="replace").rstrip("\r"))
-                    if text:
-                        self._push(name, text, "stdout")
-                        translated = _translate_error_line(text)
-                        if translated is not None:
-                            self._push_translation(name, translated)
-                        if name == "train":
-                            metric = _extract_train_metric(text)
-                            if metric is not None:
-                                self._push_metric(name, metric)
+                    self._process_line(name, text)
                     buf = b""
+                if proc.poll() is not None:
+                    break
                 if proc.poll() is not None:
                     break
         if buf:
             text = _ANSI_RE.sub("", buf.decode("utf-8", errors="replace").rstrip("\r"))
-            if text:
-                self._push(name, text, "stdout")
-                translated = _translate_error_line(text)
-                if translated is not None:
-                    self._push_translation(name, translated)
-                if name == "train":
-                    metric = _extract_train_metric(text)
-                    if metric is not None:
-                        self._push_metric(name, metric)
+            self._process_line(name, text)
         self._push(name, f"[{name} process ended]", "info")
         if self.on_process_exit is not None:
             try:
                 self.on_process_exit(name)
-            except Exception:
+            except Exception:  # broad-except: process-exit hook should never break reader shutdown path
                 pass
 
     def _push(self, name: str, line: str, kind: str):

@@ -2,6 +2,7 @@
 """LeStudio — Web GUI server (packaged version)."""
 
 import importlib.util
+import logging
 import os
 import shutil
 import sys
@@ -13,78 +14,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from starlette.types import ASGIApp
+
+from lestudio._logging import configure_logging
 from lestudio._auth import TokenAuthMiddleware, generate_token
+from lestudio._cors import _resolve_cors_settings
+from lestudio._streaming import unlock_cameras
 from lestudio.process_manager import ProcessManager
 from lestudio import device_registry
 
-# ─── Submodule imports (also act as re-exports for backward compat) ────────────
-from lestudio._cors import (  # noqa: F401
-    _DEFAULT_CORS_ORIGIN_REGEX,
-    _parse_cors_origins,
-    _resolve_cors_settings,
-)
-from lestudio._auth import (  # noqa: F401
-    TokenAuthMiddleware,
-    generate_token,
-    _is_localhost,
-    _needs_auth,
-    _PROTECTED_PREFIXES,
-)
-from lestudio._config_helpers import (  # noqa: F401
-    DEFAULT_CONFIG,
-    _is_valid_profile_name,
-    _list_profiles,
-    _load_config,
-    _load_profile,
-    _profile_path,
-    _save_config,
-    _save_profile,
-)
-from lestudio._device_helpers import (  # noqa: F401
-    CAMERA_ROLES,
-    find_symlink,
-    get_arms,
-    get_cameras,
-    get_usb_bus_for_camera,
-    kernels_from_devpath,
-    udev_props,
-)
-from lestudio._streaming import (  # noqa: F401
-    CameraStreamer,
-    _DEFAULT_CAM_SETTINGS,
-    _PREVIEW_SETTINGS,
-    _get_cam_settings,
-    ensure_rerun_web_server,
-    get_preview_streamer,
-    get_streamer,
-    release_preview_streamer,
-    release_streamer,
-    restart_all_streamers,
-    stop_all_streamers_for_process,
-    unlock_cameras,
-)
-from lestudio._udev_helpers import (  # noqa: F401
-    _apply_rules,
-    _apply_rules_with_fallback,
-    _arm_rule_lines,
-    _build_rules,
-    _manual_udev_install_commands,
-    _parse_udev_rules,
-    _run_privileged_udev_apply,
-)
-from lestudio._train_helpers import (  # noqa: F401
-    _build_torch_install_args,
-    _check_cuda_runtime_compat,
-    _check_torchcodec_compat,
-    _check_train_python_deps,
-    _cuda_tag_to_toolkit_version,
-    _ensure_non_interactive_conda_args,
-    _format_cmd,
-    _normalize_console_command,
-    _parse_install_args,
-)
-
+logger = logging.getLogger(__name__)
+configure_logging()
 # ─── nvidia pip 패키지의 .so를 LD_LIBRARY_PATH에 자동 추가 ─────────────────
 def _patch_nvidia_lib_path():
     existing = os.environ.get("LD_LIBRARY_PATH", "")
@@ -152,7 +91,7 @@ def create_app(
     session_token: str | None = None,
 ) -> FastAPI:
     from lestudio.routes._state import AppState
-    from lestudio.routes import devices, config, udev, process, training, dataset, streaming
+    from lestudio.routes import devices, config, udev, process, training, eval as eval_routes, dataset, streaming
 
     STATIC_DIR = Path(__file__).parent / "static"
     CONFIG_PATH = config_dir / "config.json"
@@ -211,6 +150,7 @@ def create_app(
     app.include_router(udev.create_router(state))
     app.include_router(process.create_router(state))
     app.include_router(training.create_router(state))
+    app.include_router(eval_routes.create_router(state))
     app.include_router(dataset.create_router(state))
     app.include_router(streaming.create_router(state))
 

@@ -10,6 +10,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!src/lestudio/lib/
+!src/lestudio/lib/*.py
 lib64/
 parts/
 sdist/

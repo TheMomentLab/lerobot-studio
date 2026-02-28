@@ -1,0 +1,73 @@
+:root {
+  --bg:        #0d1117;
+  --bg2:       #161b22;
+  --bg3:       #21262d;
+  --border:    #30363d;
+  --text:      #e6edf3;
+  --text2:     #8b949e;
+  --accent:    #58a6ff;
+  --green:     #3fb950;
+  --red:       #f85149;
+  --yellow:    #d29922;
+  --purple:    #bc8cff;
+  --cta-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+  --cta-border: color-mix(in srgb, var(--accent) 52%, var(--border));
+  --cta-hover-bg: color-mix(in srgb, var(--accent) 16%, transparent);
+  --cta-hover-border: color-mix(in srgb, var(--accent) 68%, var(--border));
+  --cta-color: var(--accent);
+  --cta-weight: 600;
+  --cta-letter: 0.1px;
+  --cta-shadow: none;
+  --radius:    8px;
+  --font:      system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono:      'SFMono-Regular', 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+}
+
+[data-theme="light"] {
+  --bg:        #ffffff;
+  --bg2:       #f6f8fa;
+  --bg3:       #eaeef2;
+  --border:    #d0d7de;
+  --text:      #1f2328;
+  --text2:     #57606a;
+  --accent:    #0969da;
+  --green:     #1a7f37;
+  --red:       #cf222e;
+  --yellow:    #9a6700;
+  --purple:    #8250df;
+  --cta-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+  --cta-border: color-mix(in srgb, var(--accent) 50%, var(--border));
+  --cta-hover-bg: color-mix(in srgb, var(--accent) 14%, transparent);
+  --cta-hover-border: color-mix(in srgb, var(--accent) 64%, var(--border));
+  --cta-color: var(--accent);
+  --cta-weight: 600;
+  --cta-letter: 0.1px;
+  --cta-shadow: none;
+}
+
+[data-cta-style="strong"] {
+  --cta-bg: color-mix(in srgb, var(--accent) 22%, transparent);
+  --cta-border: color-mix(in srgb, var(--accent) 82%, var(--border));
+  --cta-hover-bg: color-mix(in srgb, var(--accent) 30%, transparent);
+  --cta-hover-border: color-mix(in srgb, var(--accent) 92%, var(--border));
+  --cta-color: color-mix(in srgb, var(--accent) 8%, #ffffff);
+  --cta-weight: 700;
+  --cta-letter: 0.15px;
+  --cta-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent) inset;
+}
+
+[data-theme="light"][data-cta-style="strong"] {
+  --cta-color: #ffffff;
+}
+
+[data-cta-style="minimal"] {
+  --cta-bg: transparent;
+  --cta-border: color-mix(in srgb, var(--accent) 34%, var(--border));
+  --cta-hover-bg: color-mix(in srgb, var(--accent) 10%, transparent);
+  --cta-hover-border: color-mix(in srgb, var(--accent) 46%, var(--border));
+  --cta-color: var(--accent);
+  --cta-weight: 500;
+  --cta-letter: 0;
+  --cta-shadow: none;
+}
+
