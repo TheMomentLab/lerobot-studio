@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CONFIG = {
     "robot_mode":          "single",
@@ -56,7 +59,7 @@ def _load_config(config_path: Path) -> dict:
             content = config_path.read_text().strip()
             if content:
                 return {**DEFAULT_CONFIG, **json.loads(content)}
-        except (json.JSONDecodeError, Exception):
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
             pass
     return DEFAULT_CONFIG.copy()
 
@@ -90,7 +93,7 @@ def _load_profile(profiles_dir: Path, name: str) -> dict | None:
         return None
     try:
         data = json.loads(path.read_text())
-    except Exception:
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return None
     return {**DEFAULT_CONFIG, **data}
 

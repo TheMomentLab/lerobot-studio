@@ -15,15 +15,22 @@ from __future__ import annotations
 import dataclasses
 import logging
 import warnings
-from typing import Any
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
+
+class _RegistryConfig(Protocol):
+    """Protocol for LeRobot config base classes used by this module."""
+
+    @staticmethod
+    def get_known_choices() -> dict[str, type]: ...
+
 # ─── LeRobot 격리 import ────────────────────────────────────────────────────────
 _LEROBOT_AVAILABLE = False
-_RobotConfig: Any = None
-_TeleoperatorConfig: Any = None
-_CameraConfig: Any = None
+_RobotConfig: type[_RegistryConfig] | None = None
+_TeleoperatorConfig: type[_RegistryConfig] | None = None
+_CameraConfig: type[_RegistryConfig] | None = None
 
 try:
     from lerobot.robots.config import RobotConfig as _RobotConfig  # type: ignore
@@ -34,16 +41,16 @@ try:
     register_third_party_plugins()
     # Trigger decorator registration for bi-arm types
     try:
-        from lerobot.robots import bi_so_follower as _bi_so_follower  # noqa: F401
-    except Exception:
+        __import__("lerobot.robots.bi_so_follower")
+    except ImportError:
         pass
     try:
-        from lerobot.teleoperators import bi_so_leader as _bi_so_leader  # noqa: F401
-    except Exception:
+        __import__("lerobot.teleoperators.bi_so_leader")
+    except ImportError:
         pass
     _LEROBOT_AVAILABLE = True
     logger.info("LeRobot registry loaded successfully.")
-except Exception as _e:
+except ImportError as _e:
     warnings.warn(
         f"LeRobot not available ({_e}). Using fallback robot types. "
         "Install lerobot to unlock full ecosystem support.",
@@ -265,7 +272,7 @@ _HIDDEN_FIELDS = {"calibration_dir"}
 
 
 # ─── Capabilities 추론 (미지 타입 fallback) ──────────────────────────────────────
-def _infer_capabilities(robot_type: str, config_cls: Any) -> dict:
+def _infer_capabilities(robot_type: str, config_cls: type | None) -> dict:
     """config 클래스 필드에서 capabilities를 추론합니다 (알려지지 않은 타입의 fallback)."""
     caps: dict[str, Any] = {
         "has_arm": False,
@@ -285,7 +292,7 @@ def _infer_capabilities(robot_type: str, config_cls: Any) -> dict:
 
     try:
         field_names = {f.name for f in dataclasses.fields(config_cls)}
-    except Exception:
+    except TypeError:
         return caps
 
     if "port" in field_names:
@@ -322,7 +329,7 @@ def get_robot_types() -> list[str]:
     try:
         types = list(_RobotConfig.get_known_choices().keys())
         return types if types else _FALLBACK_ROBOT_TYPES.copy()
-    except Exception as e:
+    except (AttributeError, TypeError) as e:
         logger.warning("Failed to query RobotConfig registry: %s", e)
         return _FALLBACK_ROBOT_TYPES.copy()
 
@@ -339,7 +346,7 @@ def get_teleop_types(robot_type: str | None = None) -> list[str]:
         all_teleops = list(_TeleoperatorConfig.get_known_choices().keys())
         if not all_teleops:
             all_teleops = _FALLBACK_TELEOP_TYPES.copy()
-    except Exception as e:
+    except (AttributeError, TypeError) as e:
         logger.warning("Failed to query TeleoperatorConfig registry: %s", e)
         return _FALLBACK_TELEOP_TYPES.copy()
 
@@ -362,7 +369,7 @@ def get_camera_types() -> list[str]:
         return _FALLBACK_CAMERA_TYPES.copy()
     try:
         return list(_CameraConfig.get_known_choices().keys())
-    except Exception as e:
+    except (AttributeError, TypeError) as e:
         logger.warning("Failed to query CameraConfig registry: %s", e)
         return _FALLBACK_CAMERA_TYPES.copy()
 
@@ -378,7 +385,7 @@ def get_capabilities(robot_type: str) -> dict:
         try:
             config_cls = _RobotConfig.get_known_choices().get(robot_type)
             return _infer_capabilities(robot_type, config_cls)
-        except Exception as e:
+        except (AttributeError, TypeError) as e:
             logger.warning("Failed to infer capabilities for %s: %s", robot_type, e)
 
     return _infer_capabilities(robot_type, None)
@@ -459,7 +466,7 @@ def get_config_schema(registry: str, type_name: str) -> dict:
                         default = raw
                     else:
                         default = str(raw)
-                except Exception:
+                except TypeError:
                     default = None
 
             fields.append(
@@ -474,7 +481,7 @@ def get_config_schema(registry: str, type_name: str) -> dict:
 
         result["fields"] = fields
 
-    except Exception as e:
+    except Exception as e:  # broad-except: schema extraction must not crash API on unknown dataclass edge cases
         logger.exception(
             "Failed to extract config schema for %s/%s", registry, type_name
         )

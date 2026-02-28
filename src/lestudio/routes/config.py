@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from fastapi import APIRouter
 
@@ -14,6 +15,9 @@ from lestudio._config_helpers import (
     _save_profile,
 )
 from lestudio.routes._state import AppState
+from lestudio.routes.models import ProfileImportRequest
+
+logger = logging.getLogger(__name__)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -70,13 +74,13 @@ def create_router(state: AppState) -> APIRouter:
         try:
             path.unlink()
             return {"ok": True}
-        except Exception as e:
+        except OSError as e:
             return {"ok": False, "error": str(e)}
 
     @router.post("/api/profiles-import")
-    async def api_profiles_import(data: dict):
-        name = str(data.get("name", "")).strip()
-        cfg = data.get("config", {})
+    async def api_profiles_import(data: ProfileImportRequest):
+        name = data.name.strip()
+        cfg = data.config
         if not _is_valid_profile_name(name):
             return {"ok": False, "error": "Invalid profile name"}
         if not isinstance(cfg, dict):
@@ -96,7 +100,7 @@ def create_router(state: AppState) -> APIRouter:
                     entries = []
                 return {"ok": True, "entries": entries[-limit:]}
             return {"ok": True, "entries": []}
-        except Exception as e:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
             return {"ok": False, "entries": [], "error": str(e)}
 
     @router.post("/api/history/clear")
@@ -105,7 +109,7 @@ def create_router(state: AppState) -> APIRouter:
             if state.history_path.exists():
                 state.history_path.unlink()
             return {"ok": True}
-        except Exception as e:
+        except OSError as e:
             return {"ok": False, "error": str(e)}
 
     return router

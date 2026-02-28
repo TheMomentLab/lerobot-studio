@@ -1,6 +1,7 @@
 """Device, camera, and robot registry routes."""
 from __future__ import annotations
 
+import logging
 import os
 
 from fastapi import APIRouter
@@ -10,6 +11,9 @@ from lestudio._config_helpers import DEFAULT_CONFIG
 from lestudio._device_helpers import CAMERA_ROLES, get_arms, get_cameras
 from lestudio._streaming import _DEFAULT_CAM_SETTINGS, _get_cam_settings, restart_all_streamers
 from lestudio.routes._state import AppState
+from lestudio.routes.models import CameraPathsRequest, CameraSettingsRequest
+
+logger = logging.getLogger(__name__)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -20,8 +24,8 @@ def create_router(state: AppState) -> APIRouter:
         return {"cameras": get_cameras(), "arms": get_arms()}
 
     @router.post("/api/camera/check_paths")
-    def api_camera_check_paths(data: dict[str, object]):
-        paths = data.get("paths", [])
+    def api_camera_check_paths(data: CameraPathsRequest):
+        paths = data.paths
         result: dict[str, bool] = {}
         if not isinstance(paths, list):
             return result
@@ -31,7 +35,7 @@ def create_router(state: AppState) -> APIRouter:
             try:
                 real = os.path.realpath(p)
                 result[p] = os.path.exists(real)
-            except Exception:
+            except OSError:
                 result[p] = False
         return result
 
@@ -44,9 +48,9 @@ def create_router(state: AppState) -> APIRouter:
         return _get_cam_settings(state.config_path)
 
     @router.post("/api/camera_settings")
-    async def api_camera_settings_save(data: dict):
+    async def api_camera_settings_save(data: CameraSettingsRequest):
         cfg = state.load_config()
-        cfg["camera_settings"] = {**_DEFAULT_CAM_SETTINGS, **data}
+        cfg["camera_settings"] = {**_DEFAULT_CAM_SETTINGS, **data.model_dump()}
         state.save_config(cfg)
         restart_all_streamers(state.config_path)
         return {"ok": True}

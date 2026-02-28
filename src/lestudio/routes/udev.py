@@ -1,9 +1,11 @@
 """udev rules management routes."""
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 from fastapi import APIRouter
 
@@ -14,6 +16,8 @@ from lestudio._udev_helpers import (
     _parse_udev_rules,
 )
 from lestudio.routes._state import AppState
+
+logger = logging.getLogger(__name__)
 
 
 def create_router(state: AppState) -> APIRouter:
@@ -40,7 +44,7 @@ def create_router(state: AppState) -> APIRouter:
         try:
             probe = subprocess.run(["sudo", "-n", "true"], capture_output=True)
             sudo_noninteractive = probe.returncode == 0
-        except Exception:
+        except OSError:
             sudo_noninteractive = False
         pkexec_available = shutil.which("pkexec") is not None
         graphical_session = bool(
@@ -102,7 +106,6 @@ def create_router(state: AppState) -> APIRouter:
             symlink = device.get("symlink", "")
             if not symlink:
                 continue
-            from pathlib import Path
             dev_path = Path(f"/dev/{symlink}")
             exists = dev_path.exists()
             resolved_target = ""
@@ -111,7 +114,7 @@ def create_router(state: AppState) -> APIRouter:
                 try:
                     resolved_target = dev_path.resolve().name
                     status = "ok"
-                except Exception:
+                except (OSError, RuntimeError):
                     resolved_target = "(unresolvable)"
                     status = "error"
             results.append({

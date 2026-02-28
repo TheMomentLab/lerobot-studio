@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter
 
 from ...lib.async_job_manager import _cleanup_finished_jobs
+from ...routes.models import HfTokenRequest
 from .._state import AppState
 
 
@@ -187,10 +188,10 @@ def register_routes(router: APIRouter, state: AppState):
 
     @router.put("/api/hf/token")
     @router.post("/api/hf/token")
-    async def api_hf_token_set(data: dict[str, object] | None = None):
-        payload = data or {}
-        token = str(payload.get("token", "")).strip()
+    async def api_hf_token_set(data: HfTokenRequest | None = None):
+        token = data.token.strip() if data else ""
         if not token:
+            return {"ok": False, "error": "token is required"}
             return {"ok": False, "error": "token is required"}
         try:
             token_file.parent.mkdir(parents=True, exist_ok=True)

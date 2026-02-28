@@ -1,5 +1,6 @@
 import argparse
 import importlib.util
+import logging
 import os
 import re
 import socket
@@ -9,6 +10,8 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_RULES_PATH = Path("/etc/udev/rules.d/99-lerobot.rules")
@@ -34,7 +37,7 @@ def find_lerobot_src() -> Path | None:
 
         if spec.origin:
             return Path(spec.origin).parent.parent
-    except Exception:
+    except (AttributeError, ImportError, OSError, ValueError):
         pass
 
     return None
@@ -47,7 +50,7 @@ def get_local_ip() -> str:
         ip = s.getsockname()[0]
         s.close()
         return ip
-    except Exception:
+    except OSError:
         return "127.0.0.1"
 
 
@@ -131,7 +134,7 @@ def _print_verify_symlinks(symlinks: list[str]):
         try:
             target = path.resolve()
             print(f"  [OK] {path} -> {target}")
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             print(f"  [WARN] {path} exists but resolve failed: {exc}")
 
 

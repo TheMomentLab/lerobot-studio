@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def main():
     from lestudio.camera_patch import install_camera_patch
     install_camera_patch()

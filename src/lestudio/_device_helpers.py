@@ -1,11 +1,14 @@
 """Device detection helpers (cameras, arms, USB)."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Stable symlink role names for cameras
 CAMERA_ROLES = [
@@ -21,7 +24,7 @@ def udev_props(dev_path: str) -> dict:
             capture_output=True, text=True, timeout=2,
         )
         return dict(ln.split("=", 1) for ln in r.stdout.splitlines() if "=" in ln)
-    except Exception:
+    except (OSError, subprocess.SubprocessError):
         return {}
 
 
@@ -37,7 +40,7 @@ def find_symlink(target_name: str) -> str:
         try:
             if f.is_symlink() and f.resolve().name == target_name:
                 return f.name
-        except Exception:
+        except (OSError, RuntimeError):
             pass
     return ""
 
@@ -52,7 +55,7 @@ def get_cameras() -> list[dict]:
             idx = int(Path(f"/sys/class/video4linux/{video.name}/index").read_text().strip())
             if idx != 0:
                 continue
-        except Exception:
+        except (OSError, ValueError):
             continue
         videos.append(video)
 
@@ -105,5 +108,5 @@ def get_usb_bus_for_camera(video_name: str) -> dict:
         speed_path = Path(f"/sys/bus/usb/devices/usb{bus}/speed")
         max_mbps = int(speed_path.read_text().strip()) if speed_path.exists() else 480
         return {"bus": bus, "port": usb_port, "max_mbps": max_mbps}
-    except Exception:
+    except (OSError, RuntimeError, StopIteration, ValueError):
         return {"bus": "?", "port": "?", "max_mbps": 480}

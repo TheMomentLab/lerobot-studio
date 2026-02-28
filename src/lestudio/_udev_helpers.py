@@ -1,6 +1,7 @@
 """udev rules management helpers."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 import shlex
@@ -8,6 +9,8 @@ import shutil
 import subprocess
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def _arm_rule_lines(rules_path: Path) -> list[str]:
@@ -144,7 +147,7 @@ def _apply_rules_with_fallback(
         try:
             fallback_rules_path.parent.mkdir(parents=True, exist_ok=True)
             fallback_rules_path.write_text(content)
-        except Exception:
+        except OSError:
             pass
 
     try:
@@ -174,5 +177,5 @@ def _apply_rules_with_fallback(
     finally:
         try:
             tmp.unlink(missing_ok=True)
-        except Exception:
+        except OSError:
             pass

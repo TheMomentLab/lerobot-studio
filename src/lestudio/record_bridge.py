@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 
+import logging
 import sys
 import threading
+
+logger = logging.getLogger(__name__)
 
 
 def _install_stdin_bridge():

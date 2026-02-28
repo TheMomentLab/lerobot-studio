@@ -23,6 +23,8 @@ from lestudio._streaming import (
 )
 from lestudio._train_helpers import _normalize_console_command
 from lestudio.routes._state import AppState
+from lestudio.motor_monitor_bridge import get_bridge as _get_motor_bridge
+from lestudio.routes.models import ProcessCommandRequest, ProcessInputRequest
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +61,7 @@ def create_router(state: AppState) -> APIRouter:
         return {"ok": True, "stopped": targets}
 
     @router.post("/api/process/{name}/input")
-    async def api_proc_input(name: str, data: dict):
+    async def api_proc_input(name: str, data: ProcessInputRequest):
         if name not in PROCESS_NAMES:
             return {"ok": False, "error": f"Unknown process: {name}"}
 
@@ -70,11 +72,7 @@ def create_router(state: AppState) -> APIRouter:
             else:
                 return {"ok": False, "error": f"{name} is not running"}
 
-        text = data.get("text", "")
-        if text is None:
-            text = ""
-        if not isinstance(text, str):
-            text = str(text)
+        text = data.text
 
         ok = state.proc_mgr.send_input(target, text)
         if not ok:
@@ -82,15 +80,15 @@ def create_router(state: AppState) -> APIRouter:
         return {"ok": True, "process": target}
 
     @router.post("/api/process/{name}/command")
-    async def api_proc_command(name: str, data: dict | None = None):
+    async def api_proc_command(name: str, data: ProcessCommandRequest | None = None):
         if name not in PROCESS_NAMES:
             return {"ok": False, "error": f"Unknown process: {name}"}
 
         if state.proc_mgr.is_running(name):
             return {"ok": False, "error": f"{name} is running. Stop it or send stdin input instead."}
 
-        payload = data or {}
-        raw_command = str(payload.get("command", "")).strip()
+        payload = data or ProcessCommandRequest()
+        raw_command = payload.command.strip()
         try:
             args, normalized = _normalize_console_command(state.python_exe, raw_command)
         except ValueError as e:
@@ -205,6 +203,7 @@ def create_router(state: AppState) -> APIRouter:
         guard = _guard_process_start(state, "teleop")
         if guard:
             return guard
+        _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         stop_all_streamers_for_process()
         args = build_teleop_args(state.python_exe, data)
         return {"ok": state.proc_mgr.start("teleop", args)}
@@ -212,6 +211,7 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Record ────────────────────────────────────────────────────────────────
     @router.post("/api/record/start")
     async def api_record_start(data: dict):
+        _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         guard = _guard_process_start(state, "record")
         if guard:
             return guard
@@ -303,6 +303,7 @@ def create_router(state: AppState) -> APIRouter:
 
     @router.post("/api/calibrate/start")
     async def api_calibrate_start(data: dict):
+        _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         guard = _guard_process_start(state, "calibrate")
         if guard:
             return guard
@@ -318,6 +319,7 @@ def create_router(state: AppState) -> APIRouter:
     # ─── Motor Setup ───────────────────────────────────────────────────────────
     @router.post("/api/motor_setup/start")
     async def api_motor_setup_start(data: dict):
+        _get_motor_bridge().disconnect()  # 모터 모니터가 포트를 점유 중이면 반환
         guard = _guard_process_start(state, "motor_setup")
         if guard:
             return guard

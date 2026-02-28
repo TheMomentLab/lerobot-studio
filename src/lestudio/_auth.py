@@ -15,6 +15,7 @@ Rules
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from typing import Callable
@@ -23,6 +24,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
+
+logger = logging.getLogger(__name__)
 
 # ─── Paths that require token auth from non-localhost origins ──────────────────
 _PROTECTED_PREFIXES = (

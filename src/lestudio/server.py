@@ -91,7 +91,7 @@ def create_app(
     session_token: str | None = None,
 ) -> FastAPI:
     from lestudio.routes._state import AppState
-    from lestudio.routes import devices, config, udev, process, training, eval as eval_routes, dataset, streaming
+    from lestudio.routes import devices, config, udev, process, training, eval as eval_routes, dataset, streaming, motor
 
     STATIC_DIR = Path(__file__).parent / "static"
     CONFIG_PATH = config_dir / "config.json"
@@ -153,6 +153,7 @@ def create_app(
     app.include_router(eval_routes.create_router(state))
     app.include_router(dataset.create_router(state))
     app.include_router(streaming.create_router(state))
+    app.include_router(motor.create_router(state))
 
     # ─── Static + Root ─────────────────────────────────────────────────────────
     # Vite builds assets to STATIC_DIR with root-relative paths (/assets/...)

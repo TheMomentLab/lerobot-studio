@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 import queue
 import shutil
 import subprocess
@@ -10,22 +12,25 @@ from pathlib import Path
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from fastapi import Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 import psutil
 
+import lestudio._streaming as _str
 from lestudio._device_helpers import get_usb_bus_for_camera
 from lestudio._streaming import (
-    _cameras_locked,
     _streamers,
     _streamers_lock,
     get_preview_streamer,
     get_streamer,
     release_preview_streamer,
     release_streamer,
+    snapshot_get_frame,
     unlock_cameras,
 )
 from lestudio.routes._state import AppState
+
+logger = logging.getLogger(__name__)
 
 # 모듈 레벨 캐시 변수
 _lerobot_cache_size: float | None = None
@@ -37,11 +42,10 @@ def create_router(state: AppState) -> APIRouter:
 
     # ─── MJPEG Streaming ───────────────────────────────────────────────────────
     async def mjpeg_gen(video_path: str, request: Request, preview: bool = False):
-        import lestudio._streaming as _str
         cam_name = Path(video_path).name
         shm_path = f"/dev/shm/lerobot_cam_{cam_name}.jpg"
         use_process_frames = state.proc_mgr.is_running("record") or state.proc_mgr.is_running("teleop")
-        if use_process_frames and __import__("os").path.exists(shm_path):
+        if use_process_frames and os.path.exists(shm_path):
             while True:
                 if await request.is_disconnected():
                     break
@@ -52,7 +56,7 @@ def create_router(state: AppState) -> APIRouter:
                         frame = f.read()
                     if frame:
                         yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-                except Exception:
+                except OSError:
                     pass
                 await asyncio.sleep(1 / 30)
 
@@ -100,9 +104,6 @@ def create_router(state: AppState) -> APIRouter:
     # so the browser page-load spinner completes normally.
     @router.get("/api/camera/snapshot/{video_name}")
     async def snapshot_camera(video_name: str):
-        import os
-        from fastapi.responses import Response
-        from lestudio._streaming import snapshot_get_frame
 
         # During teleop/record: read from shared memory (fastest path)
         shm_path = f"/dev/shm/lerobot_cam_{video_name}.jpg"
@@ -114,7 +115,7 @@ def create_router(state: AppState) -> APIRouter:
                 if frame:
                     return Response(content=frame, media_type="image/jpeg",
                                     headers={"Cache-Control": "no-store"})
-            except Exception:
+            except OSError:
                 pass
 
         # Normal path: use streamer pool
@@ -176,7 +177,7 @@ def create_router(state: AppState) -> APIRouter:
                 "memory_total": mem_total,
                 "memory_percent": round(mem_used / mem_total * 100, 1) if mem_total > 0 else 0
             }
-        except Exception as e:
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
             return {"exists": False, "error": str(e)}
 
     # ─── System Resources ──────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ def create_router(state: AppState) -> APIRouter:
                     _lerobot_cache_size = round(lerobot_bytes / 1024 / 1024, 1)
                     _lerobot_cache_ts = now
                     lerobot_du = _lerobot_cache_size
-                except Exception:
+                except OSError:
                     pass
             elif not hf_cache.exists():
                 _lerobot_cache_size = None
@@ -215,7 +216,7 @@ def create_router(state: AppState) -> APIRouter:
                 "disk_percent": round(du.used / du.total * 100, 1),
                 "lerobot_cache_mb": lerobot_du,
             }
-        except Exception as e:
+        except Exception as e:  # broad-except: catch-all HTTP response
             return {"ok": False, "error": str(e)}
 
     # ─── WebSocket ─────────────────────────────────────────────────────────────
@@ -241,7 +242,9 @@ def create_router(state: AppState) -> APIRouter:
                         await websocket.send_json({"type": "output", **item})
                 await websocket.send_json({"type": "status", "processes": state.proc_mgr.status_all()})
                 await asyncio.sleep(0.2)
-        except (WebSocketDisconnect, Exception):
+        except WebSocketDisconnect:
+            pass
+        except Exception:  # broad-except: websocket loop safety net for disconnect/race conditions
             pass
 
     return router

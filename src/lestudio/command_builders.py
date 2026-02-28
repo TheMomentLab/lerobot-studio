@@ -1,7 +1,10 @@
 import json
+import logging
+import shutil
 from json import JSONDecodeError
 from pathlib import Path
-import shutil
+
+logger = logging.getLogger(__name__)
 
 def dataset_cache_path(repo_id: str) -> Path:
     return Path.home() / ".cache" / "huggingface" / "lerobot" / repo_id

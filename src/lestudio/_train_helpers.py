@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import shlex
 import subprocess
 import textwrap
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
@@ -52,7 +55,7 @@ def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
 
     try:
         r = subprocess.run([python_exe, "-c", script], capture_output=True, text=True, timeout=8)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return False, f"CUDA preflight check failed: {e}"
 
     out = (r.stdout or "").strip().splitlines()
@@ -62,7 +65,7 @@ def _check_cuda_runtime_compat(python_exe: str) -> tuple[bool, str]:
 
     try:
         payload: dict[str, Any] = json.loads(out[-1])
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         return False, f"CUDA preflight parse error: {out[-1]}"
 
     ok = bool(payload.get("ok"))
@@ -149,7 +152,7 @@ def _check_torchcodec_compat(python_exe: str) -> dict[str, Any]:
     """)
     try:
         r = subprocess.run([python_exe, "-c", script], capture_output=True, text=True, timeout=10)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return {"ok": False, "reason": f"torchcodec check failed: {e}", "cause": "unknown"}
     out = (r.stdout or "").strip().splitlines()
     if not out:
@@ -157,7 +160,7 @@ def _check_torchcodec_compat(python_exe: str) -> dict[str, Any]:
         return {"ok": False, "reason": f"torchcodec check returned no output. {err}".strip(), "cause": "unknown"}
     try:
         payload: dict[str, Any] = json.loads(out[-1])
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         return {"ok": False, "reason": f"torchcodec check parse error: {out[-1]}", "cause": "unknown"}
     # 실패 시 cause별 install 명령어 생성
     if not payload.get("ok"):
@@ -207,7 +210,7 @@ def _check_train_python_deps(python_exe: str) -> dict[str, Any]:
     """)
     try:
         r = subprocess.run([python_exe, "-c", script], capture_output=True, text=True, timeout=8)
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return {"ok": True, "reason": f"Dependency probe skipped: {e}"}
 
     out = (r.stdout or "").strip().splitlines()
@@ -216,7 +219,7 @@ def _check_train_python_deps(python_exe: str) -> dict[str, Any]:
 
     try:
         payload: dict[str, Any] = json.loads(out[-1])
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         return {"ok": True, "reason": f"Dependency probe skipped: parse error ({out[-1]})"}
 
     missing = [str(name).strip() for name in payload.get("missing", []) if str(name).strip()]
@@ -270,7 +273,7 @@ def _parse_install_args(raw_command: str, python_exe: str) -> list[str]:
         return []
     try:
         args = shlex.split(command)
-    except Exception:
+    except ValueError:
         return []
     if not args:
         return []
