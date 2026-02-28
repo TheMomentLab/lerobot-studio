@@ -748,101 +748,6 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
       </div>
 
       <div className="card">
-        <h3>Camera Mapping</h3>
-        <div
-          style={{
-            background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
-            borderRadius: 6,
-            padding: '8px 12px',
-            fontSize: 12,
-            color: 'var(--accent)',
-            display: 'flex',
-            gap: 8,
-            alignItems: 'center',
-            lineHeight: 1.5,
-            marginBottom: 14,
-          }}
-        >
-          <span style={{ flexShrink: 0 }}>ℹ️</span>
-          <span>Previews run in bandwidth-safe mode (fixed 144p @ 5fps) to keep multi-camera mapping stable.</span>
-        </div>
-        <div id="device-cameras-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
-          {devices.cameras.length === 0
-            ? 'Loading…'
-            : devices.cameras.map((camera, idx) => (
-                <div className="cam-card" key={`${camera.device ?? 'cam'}-${idx}`}>
-                  <div
-                    className="cam-preview-wrap"
-                    onClick={() => {
-                      const key = `${camera.device ?? ''}:${camera.kernels ?? idx}`
-                      setPreviewEnabled((prev) => {
-                        const nextEnabled = !prev[key]
-                        if (!nextEnabled) {
-                          setPreviewFallback((prevFallback) => ({ ...prevFallback, [key]: false }))
-                        }
-                        return { ...prev, [key]: nextEnabled }
-                      })
-                    }}
-                  >
-                    <div style={{ position: 'absolute', top: 8, left: 8, padding: '3px 8px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 0.2 }}>
-                      Preview 144p · 5fps
-                    </div>
-                    {previewEnabled[`${camera.device ?? ''}:${camera.kernels ?? idx}`] ? (
-                      <img
-                        src={cameraPreviewSrc(camera.path ?? `/dev/${camera.device ?? ''}`, previewFallback[`${camera.device ?? ''}:${camera.kernels ?? idx}`] === true)}
-                        alt={`/dev/${camera.device ?? '?'}`}
-                        onError={() => {
-                          const key = `${camera.device ?? ''}:${camera.kernels ?? idx}`
-                          setPreviewFallback((prev) => ({ ...prev, [key]: true }))
-                        }}
-                      />
-                    ) : (
-                      <button className="btn-primary" style={{ opacity: 0.9, padding: '10px 20px', fontSize: 14, borderRadius: 20, pointerEvents: 'none' }}>
-                        ▶ View Preview
-                      </button>
-                    )}
-                  </div>
-                  <div className="cam-info">
-                    <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6, color: 'var(--text1)' }}>Where is this camera?</div>
-                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>If this camera is not needed, choose "Not used".</div>
-                    <select
-                      value={cameraAssignments[camera.kernels ?? ''] ?? '(none)'}
-                      disabled={!camera.kernels}
-                      onChange={(e) => {
-                        const key = camera.kernels ?? ''
-                        if (!key) return
-                        const nextCameraAssignments = { ...cameraAssignments, [key]: e.target.value }
-                        setCameraAssignments(nextCameraAssignments)
-                        scheduleRulesApply(nextCameraAssignments, armAssignments)
-                      }}
-                    >
-                      {CAMERA_ROLE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    {(() => { const role = cameraAssignments[camera.kernels ?? ''] ?? '(none)'; const label = CAMERA_ROLE_OPTIONS.find(o => o.value === role)?.label; return role !== '(none)' && label ? (
-                      <div style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, background: 'color-mix(in srgb, var(--green) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)', color: 'var(--green)', fontSize: 11, fontWeight: 600 }}>✓ {label}</div>
-                    ) : null })()}
-
-                    <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)', background: 'var(--bg-app)', padding: 8, borderRadius: 4, border: '1px solid var(--border)' }}>
-                      <span title="USB Port ID">
-                        🔌 Port: <strong style={{ color: 'var(--text1)' }}>{camera.kernels ?? '?'}</strong>
-                      </span>
-                      <span className="cam-name">/dev/{camera.device ?? '?'}</span>
-                    </div>
-                    <div className="cam-meta" style={{ marginTop: 8 }}>
-                      Path: {camera.path ?? `/dev/${camera.device ?? '?'}`}
-                    </div>
-                  </div>
-                </div>
-              ))}
-        </div>
-      </div>
-
-      <div className="card">
         <h3>Arm Port Mapping</h3>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div className="field-help" style={{ marginBottom: 0 }}>
@@ -971,6 +876,99 @@ export function DeviceSetupTab({ active }: DeviceSetupTabProps) {
                       </option>
                     ))}
                   </select>
+                </div>
+              ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Camera Mapping</h3>
+        <div
+          style={{
+            background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
+            borderRadius: 6,
+            padding: '8px 12px',
+            fontSize: 12,
+            color: 'var(--accent)',
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            lineHeight: 1.5,
+            marginBottom: 14,
+          }}
+        >
+          <span style={{ flexShrink: 0 }}>ℹ️</span>
+          <span>Previews run in bandwidth-safe mode (fixed 144p @ 5fps) to keep multi-camera mapping stable.</span>
+        </div>
+        <div id="device-cameras-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+          {devices.cameras.length === 0
+            ? 'Loading…'
+            : devices.cameras.map((camera, idx) => (
+                <div className="cam-card" key={`${camera.device ?? 'cam'}-${idx}`}>
+                  <div
+                    className="cam-preview-wrap"
+                    onClick={() => {
+                      const key = `${camera.device ?? ''}:${camera.kernels ?? idx}`
+                      setPreviewEnabled((prev) => {
+                        const nextEnabled = !prev[key]
+                        if (!nextEnabled) {
+                          setPreviewFallback((prevFallback) => ({ ...prevFallback, [key]: false }))
+                        }
+                        return { ...prev, [key]: nextEnabled }
+                      })
+                    }}
+                  >
+                    <div style={{ position: 'absolute', top: 8, left: 8, padding: '3px 8px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 11, fontWeight: 600, letterSpacing: 0.2 }}>
+                      Preview 144p · 5fps
+                    </div>
+                    {previewEnabled[`${camera.device ?? ''}:${camera.kernels ?? idx}`] ? (
+                      <img
+                        src={cameraPreviewSrc(camera.path ?? `/dev/${camera.device ?? ''}`, previewFallback[`${camera.device ?? ''}:${camera.kernels ?? idx}`] === true)}
+                        alt={`/dev/${camera.device ?? '?'}`}
+                        onError={() => {
+                          const key = `${camera.device ?? ''}:${camera.kernels ?? idx}`
+                          setPreviewFallback((prev) => ({ ...prev, [key]: true }))
+                        }}
+                      />
+                    ) : (
+                      <button className="btn-primary" style={{ opacity: 0.9, padding: '10px 20px', fontSize: 14, borderRadius: 20, pointerEvents: 'none' }}>
+                        ▶ View Preview
+                      </button>
+                    )}
+                  </div>
+                  <div className="cam-info">
+                    <div style={{ fontWeight: 600, fontSize: 15, marginBottom: 6, color: 'var(--text1)' }}>Where is this camera?</div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>If this camera is not needed, choose "Not used".</div>
+                    <select
+                      value={cameraAssignments[camera.kernels ?? ''] ?? '(none)'}
+                      disabled={!camera.kernels}
+                      onChange={(e) => {
+                        const key = camera.kernels ?? ''
+                        if (!key) return
+                        const nextCameraAssignments = { ...cameraAssignments, [key]: e.target.value }
+                        setCameraAssignments(nextCameraAssignments)
+                        scheduleRulesApply(nextCameraAssignments, armAssignments)
+                      }}
+                    >
+                      {CAMERA_ROLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+
+
+                    <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text2)', background: 'var(--bg-app)', padding: 8, borderRadius: 4, border: '1px solid var(--border)' }}>
+                      <span title="USB Port ID">
+                        🔌 Port: <strong style={{ color: 'var(--text1)' }}>{camera.kernels ?? '?'}</strong>
+                      </span>
+                      <span className="cam-name">/dev/{camera.device ?? '?'}</span>
+                    </div>
+                    <div className="cam-meta" style={{ marginTop: 8 }}>
+                      Path: {camera.path ?? `/dev/${camera.device ?? '?'}`}
+                    </div>
+                  </div>
                 </div>
               ))}
         </div>

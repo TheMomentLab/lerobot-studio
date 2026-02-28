@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { swallow } from '../lib/errors'
 import type { WsMessage } from '../lib/types'
 import { useLeStudioStore } from '../store'
 
@@ -45,7 +46,7 @@ export const useWebSocket = () => {
     }
 
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission().catch(() => undefined)
+      Notification.requestPermission().catch(swallow)
     }
 
     const connect = () => {

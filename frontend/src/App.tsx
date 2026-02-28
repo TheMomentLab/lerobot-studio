@@ -14,6 +14,7 @@ import { DatasetTab } from './tabs/DatasetTab'
 import { TrainTab } from './tabs/TrainTab'
 import { EvalTab } from './tabs/EvalTab'
 import { apiGet, apiPost } from './lib/api'
+import { logError, swallow } from './lib/errors'
 import { useLeStudioStore } from './store'
 
 type ThemeMode = 'dark' | 'light'
@@ -43,10 +44,13 @@ function App() {
     refreshDevices()
     apiGet<{ huggingface_cli?: boolean }>('/api/deps/status')
       .then(() => setSidebarSignals({ datasetMissingDep: false }))
-      .catch(() => undefined)
+      .catch(swallow)
     apiGet<{ ok: boolean }>('/api/train/preflight?device=cuda')
       .then((res) => setSidebarSignals({ trainMissingDep: !res.ok }))
-      .catch(() => setSidebarSignals({ trainMissingDep: true }))
+      .catch((err) => {
+        logError('App.trainPreflight')(err)
+        setSidebarSignals({ trainMissingDep: true })
+      })
     apiGet<{ ok: boolean; username: string | null }>('/api/hf/whoami')
       .then((res) => {
         if (res.ok && res.username) {
@@ -63,11 +67,11 @@ function App() {
           }
           if (Object.keys(prefill).length > 0) {
             updateConfig(prefill)
-            apiPost('/api/config', { ...cfg, ...prefill }).catch(() => undefined)
+            apiPost('/api/config', { ...cfg, ...prefill }).catch(swallow)
           }
         }
       })
-      .catch(() => undefined)
+      .catch(swallow)
   }, [loadConfig, refreshDevices, setSidebarSignals, setHfUsername, updateConfig])
 
   /* keyboard shortcuts */

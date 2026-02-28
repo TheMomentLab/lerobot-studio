@@ -29,7 +29,7 @@ export function EvalRobotConfig({
       <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>Real Robot Config</div>
       <label style={{ fontSize: 12 }}>Robot Type</label>
       <select
-        value={(config.eval_robot_type as string) || 'so101_follower'}
+        value={config.eval_robot_type || 'so101_follower'}
         onChange={(e) => { void buildConfig({ eval_robot_type: e.target.value }) }}
         style={{ marginBottom: 6 }}
       >
@@ -38,7 +38,7 @@ export function EvalRobotConfig({
       </select>
       <label style={{ fontSize: 12 }}>Teleop Type</label>
       <select
-        value={(config.eval_teleop_type as string) || 'so101_leader'}
+        value={config.eval_teleop_type || 'so101_leader'}
         onChange={(e) => { void buildConfig({ eval_teleop_type: e.target.value }) }}
       >
         <option value="so101_leader">SO-101 Leader</option>

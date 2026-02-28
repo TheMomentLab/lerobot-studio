@@ -146,7 +146,7 @@ export function TrainTab({ active }: TrainTabProps) {
     return 8
   }, [config.train_batch_size])
   const localRepoId = useMemo(() => {
-    const configured = (config.train_repo_id as string) ?? ''
+    const configured = config.train_repo_id ?? ''
     if (configured && datasets.some((ds) => ds.id === configured)) return configured
     return datasets[0]?.id ?? '__none__'
   }, [config.train_repo_id, datasets])
@@ -238,7 +238,7 @@ export function TrainTab({ active }: TrainTabProps) {
   }, [])
 
   const refreshPreflight = useCallback(async () => {
-    const device = (config.train_device as string) ?? 'cuda'
+    const device = config.train_device ?? 'cuda'
     const res = await apiGet<{ ok: boolean; reason?: string; action?: string; command?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
     const next = {
       ok: !!res.ok,
@@ -294,7 +294,7 @@ export function TrainTab({ active }: TrainTabProps) {
 
   useEffect(() => {
     if (!active) return
-    const nextSource = (config.train_dataset_source as string) === 'hf' ? 'hf' : 'local'
+    const nextSource = config.train_dataset_source === 'hf' ? 'hf' : 'local'
     setSource(nextSource)
     refreshDatasets()
     refreshGpu()
@@ -431,7 +431,7 @@ export function TrainTab({ active }: TrainTabProps) {
     ctx.strokeRect(padL, padT, innerW, innerH)
   }, [progress.lossSeries])
 
-  const repoId = source === 'local' ? localRepoId : ((config.train_repo_id as string) ?? defaultRepoId)
+  const repoId = source === 'local' ? localRepoId : (config.train_repo_id ?? defaultRepoId)
   const noLocalDataset = source === 'local' && localRepoId === '__none__'
   const trainReady = preflightOk && !noLocalDataset && !conflictReason
   const preflightFixLabel = preflightAction === 'install_python_dep' ? 'Install Missing Python Packages' : 'Run Fix'
@@ -461,10 +461,10 @@ export function TrainTab({ active }: TrainTabProps) {
     setStarting(true)
     try {
       const cfg = {
-        train_policy: (config.train_policy as string) ?? 'act',
+        train_policy: config.train_policy ?? 'act',
         train_repo_id: repoId,
         train_steps: Number(config.train_steps ?? 100000),
-        train_device: (config.train_device as string) ?? 'cuda',
+        train_device: config.train_device ?? 'cuda',
         train_batch_size: trainBatchSize,
         train_lr: (config.train_lr as string | undefined) || undefined,
       }
@@ -546,7 +546,7 @@ export function TrainTab({ active }: TrainTabProps) {
       }
 
       const cfg = {
-        train_policy: (config.train_policy as string) ?? 'act',
+        train_policy: config.train_policy ?? 'act',
         train_repo_id: repoId,
         train_steps: Number(config.train_steps ?? 100000),
         train_device: colabDevice,
@@ -673,7 +673,7 @@ export function TrainTab({ active }: TrainTabProps) {
         <div className="card">
           <h3>Configuration</h3>
           <label>Policy Type</label>
-          <select value={(config.train_policy as string) ?? 'act'} onChange={(e) => buildConfig({ train_policy: e.target.value })}>
+          <select value={config.train_policy ?? 'act'} onChange={(e) => buildConfig({ train_policy: e.target.value })}>
             <option value="act">ACT (Action Chunking with Transformers)</option>
             <option value="diffusion">Diffusion Policy</option>
             <option value="tdmpc2">TD-MPC2</option>
@@ -714,7 +714,7 @@ export function TrainTab({ active }: TrainTabProps) {
           ) : (
             <>
               <label>Dataset Repo ID</label>
-              <input type="text" value={(config.train_repo_id as string) ?? defaultRepoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
+              <input type="text" value={config.train_repo_id ?? defaultRepoId} onChange={(e) => buildConfig({ train_repo_id: e.target.value })} />
             </>
           )}
           <div className="train-steps-row">
@@ -793,7 +793,7 @@ export function TrainTab({ active }: TrainTabProps) {
             Use <strong>Train on Colab</strong> to upload your config and open the notebook in one step. Use <strong>Copy Colab Snippet</strong> to re-copy the load command and paste it into the first cell.
           </div>
           <label>Compute Device</label>
-          <select value={(config.train_device as string) ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
+          <select value={config.train_device ?? 'cuda'} onChange={(e) => buildConfig({ train_device: e.target.value })}>
             <option value="cuda">CUDA (GPU)</option>
             <option value="cpu">CPU</option>
             <option value="mps">MPS (Apple Silicon)</option>

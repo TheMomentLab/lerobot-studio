@@ -9,6 +9,7 @@ import { useMappedCameras } from '../hooks/useMappedCameras'
 import { useProcess } from '../hooks/useProcess'
 import { useCameraFeeds } from '../hooks/useCameraFeeds'
 import { apiGet, apiPost } from '../lib/api'
+import { logError } from '../lib/errors'
 import { useLeStudioStore } from '../store'
 import type { LogLine, RobotDetail, RobotsResponse, TeleopsResponse } from '../lib/types'
 
@@ -102,7 +103,7 @@ export function TeleopTab({ active }: TeleopTabProps) {
       setRobotTypes(r.types ?? ['so101_follower'])
       setRobotDetails(r.details ?? {})
     })
-    const currentRobotType = (config.robot_type as string) || 'so101_follower'
+    const currentRobotType = config.robot_type || 'so101_follower'
     apiGet<TeleopsResponse>(`/api/teleops?robot_type=${encodeURIComponent(currentRobotType)}`).then((r) => setTeleopTypes(r.types ?? ['so101_leader']))
     apiGet<CalibrateListResponse>('/api/calibrate/list')
       .then((r) => {
@@ -112,19 +113,20 @@ export function TeleopTab({ active }: TeleopTabProps) {
         setFollowerIds(nextFollowerIds.length ? nextFollowerIds : ['my_so101_follower_1'])
         setLeaderIds(nextLeaderIds.length ? nextLeaderIds : ['my_so101_leader_1'])
       })
-      .catch(() => {
+      .catch((err) => {
+        logError('TeleopTab.calibrationIds')(err)
         setFollowerIds(['my_so101_follower_1'])
         setLeaderIds(['my_so101_leader_1'])
       })
   }, [active, config.robot_type, refreshDevices])
 
   useEffect(() => {
-    const robotMode = (config.robot_mode as string) ?? 'single'
+    const robotMode = config.robot_mode ?? 'single'
     setMode(robotMode === 'bi' ? 'bi' : 'single')
   }, [config.robot_mode])
 
-  const selectedRobotType = (() => { const v = (config.robot_type as string) ?? ''; return (v && robotTypes.includes(v)) ? v : (robotTypes[0] ?? 'so101_follower') })()
-  const selectedTeleopType = (() => { const v = (config.teleop_type as string) ?? ''; return (v && teleopTypes.includes(v)) ? v : (teleopTypes[0] ?? 'so101_leader') })()
+  const selectedRobotType = (() => { const v = config.robot_type ?? ''; return (v && robotTypes.includes(v)) ? v : (robotTypes[0] ?? 'so101_follower') })()
+  const selectedTeleopType = (() => { const v = config.teleop_type ?? ''; return (v && teleopTypes.includes(v)) ? v : (teleopTypes[0] ?? 'so101_leader') })()
 
   useEffect(() => {
     if (!active) return
@@ -132,12 +134,15 @@ export function TeleopTab({ active }: TeleopTabProps) {
       .then((r) => {
         const types = r.types ?? ['so101_leader']
         setTeleopTypes(types)
-        const currentTeleop = (config.teleop_type as string) ?? ''
+        const currentTeleop = config.teleop_type ?? ''
         if (currentTeleop && !types.includes(currentTeleop) && types.length > 0) {
           buildConfigRef.current({ teleop_type: types[0] })
         }
       })
-      .catch(() => setTeleopTypes(['so101_leader']))
+      .catch((err) => {
+        logError('TeleopTab.teleopTypes')(err)
+        setTeleopTypes(['so101_leader'])
+      })
   }, [active, config.teleop_type, selectedRobotType])
 
   const selectedRobotDetail = robotDetails[selectedRobotType] ?? null
@@ -151,19 +156,19 @@ export function TeleopTab({ active }: TeleopTabProps) {
     return [...all]
   }, [devices])
 
-  const followerPort = (config.follower_port as string) ?? '/dev/follower_arm_1'
-  const leaderPort = (config.leader_port as string) ?? '/dev/leader_arm_1'
-  const leftFollowerPort = (config.left_follower_port as string) ?? '/dev/follower_arm_1'
-  const rightFollowerPort = (config.right_follower_port as string) ?? '/dev/follower_arm_2'
-  const leftLeaderPort = (config.left_leader_port as string) ?? '/dev/leader_arm_1'
-  const rightLeaderPort = (config.right_leader_port as string) ?? '/dev/leader_arm_2'
-  const robotId = (config.robot_id as string) ?? 'my_so101_follower_1'
-  const teleopId = (config.teleop_id as string) ?? 'my_so101_leader_1'
-  const leftRobotId = (config.left_robot_id as string) ?? 'my_so101_follower_1'
-  const rightRobotId = (config.right_robot_id as string) ?? 'my_so101_follower_2'
-  const leftTeleopId = (config.left_teleop_id as string) ?? 'my_so101_leader_1'
-  const rightTeleopId = (config.right_teleop_id as string) ?? 'my_so101_leader_2'
-  const teleopSpeed = (config.teleop_speed as string) ?? '0.5'
+  const followerPort = config.follower_port ?? '/dev/follower_arm_1'
+  const leaderPort = config.leader_port ?? '/dev/leader_arm_1'
+  const leftFollowerPort = config.left_follower_port ?? '/dev/follower_arm_1'
+  const rightFollowerPort = config.right_follower_port ?? '/dev/follower_arm_2'
+  const leftLeaderPort = config.left_leader_port ?? '/dev/leader_arm_1'
+  const rightLeaderPort = config.right_leader_port ?? '/dev/leader_arm_2'
+  const robotId = config.robot_id ?? 'my_so101_follower_1'
+  const teleopId = config.teleop_id ?? 'my_so101_leader_1'
+  const leftRobotId = config.left_robot_id ?? 'my_so101_follower_1'
+  const rightRobotId = config.right_robot_id ?? 'my_so101_follower_2'
+  const leftTeleopId = config.left_teleop_id ?? 'my_so101_leader_1'
+  const rightTeleopId = config.right_teleop_id ?? 'my_so101_leader_2'
+  const teleopSpeed = config.teleop_speed ?? '0.5'
 
   const followerPortOptions = useMemo(
     () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, followerPort),
@@ -288,19 +293,19 @@ export function TeleopTab({ active }: TeleopTabProps) {
       robot_mode: mode,
       robot_type: selectedRobotType,
       teleop_type: selectedTeleopType,
-      follower_port: (config.follower_port as string) ?? '/dev/follower_arm_1',
-      robot_id: (config.robot_id as string) ?? 'my_so101_follower_1',
-      leader_port: (config.leader_port as string) ?? '/dev/leader_arm_1',
-      teleop_id: (config.teleop_id as string) ?? 'my_so101_leader_1',
-      left_follower_port: (config.left_follower_port as string) ?? '/dev/follower_arm_1',
-      right_follower_port: (config.right_follower_port as string) ?? '/dev/follower_arm_2',
-      left_leader_port: (config.left_leader_port as string) ?? '/dev/leader_arm_1',
-      right_leader_port: (config.right_leader_port as string) ?? '/dev/leader_arm_2',
-      left_robot_id: (config.left_robot_id as string) ?? 'my_so101_follower_1',
-      right_robot_id: (config.right_robot_id as string) ?? 'my_so101_follower_2',
-      left_teleop_id: (config.left_teleop_id as string) ?? 'my_so101_leader_1',
-      right_teleop_id: (config.right_teleop_id as string) ?? 'my_so101_leader_2',
-      teleop_speed: (config.teleop_speed as string) ?? '0.5',
+      follower_port: config.follower_port ?? '/dev/follower_arm_1',
+      robot_id: config.robot_id ?? 'my_so101_follower_1',
+      leader_port: config.leader_port ?? '/dev/leader_arm_1',
+      teleop_id: config.teleop_id ?? 'my_so101_leader_1',
+      left_follower_port: config.left_follower_port ?? '/dev/follower_arm_1',
+      right_follower_port: config.right_follower_port ?? '/dev/follower_arm_2',
+      left_leader_port: config.left_leader_port ?? '/dev/leader_arm_1',
+      right_leader_port: config.right_leader_port ?? '/dev/leader_arm_2',
+      left_robot_id: config.left_robot_id ?? 'my_so101_follower_1',
+      right_robot_id: config.right_robot_id ?? 'my_so101_follower_2',
+      left_teleop_id: config.left_teleop_id ?? 'my_so101_leader_1',
+      right_teleop_id: config.right_teleop_id ?? 'my_so101_leader_2',
+      teleop_speed: config.teleop_speed ?? '0.5',
       cameras: mappedCameras,
     }
     return cfg

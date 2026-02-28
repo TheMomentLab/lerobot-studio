@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLeStudioStore } from '../../store'
 import { useProcess } from '../../hooks/useProcess'
+import { toastError } from '../../lib/errors'
 import type { LogLine } from '../../lib/types'
 
 const PROCESSES = ['teleop', 'record', 'calibrate', 'motor_setup', 'train', 'eval'] as const
@@ -432,9 +433,7 @@ export function ConsoleDrawer() {
       const text = target.map((l) => l.text).join('\n')
       navigator.clipboard.writeText(text).then(() => {
         addToast(`Copied ${target.length} line${target.length !== 1 ? 's' : ''}`, 'success')
-      }).catch(() => {
-        addToast('Failed to copy to clipboard', 'error')
-      })
+      }).catch(toastError(addToast, 'ConsoleDrawer.copy', 'Failed to copy to clipboard'))
     },
     [lines, addToast],
   )

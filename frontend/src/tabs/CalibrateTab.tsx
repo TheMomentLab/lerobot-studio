@@ -4,6 +4,7 @@ import { ProcessButtons } from '../components/shared/ProcessButtons'
 import { getProcessConflict } from '../lib/processConflicts'
 import { useProcess } from '../hooks/useProcess'
 import { apiDelete, apiGet, apiPost } from '../lib/api'
+import { logError } from '../lib/errors'
 import { useLeStudioStore } from '../store'
 import type { ArmDevice, LogLine, RobotsResponse, TeleopsResponse } from '../lib/types'
 
@@ -199,7 +200,7 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
   const identifySnapshot = useRef<Set<string> | null>(null)
   const identifyAutoOpenedRef = useRef(false)
   const autoMatchTriggerRef = useRef<'type' | 'id' | 'port' | ''>('type')
-  const [isBiArm, setIsBiArm] = useState(() => (config.robot_mode as string) === 'bi')
+  const [isBiArm, setIsBiArm] = useState(() => config.robot_mode === 'bi')
   const [biType, setBiType] = useState('bi_so_follower')
   const [biId, setBiId] = useState('bimanual_follower')
   const [biLeftPort, setBiLeftPort] = useState('/dev/follower_arm_1')
@@ -460,7 +461,8 @@ export function CalibrateTab({ active }: CalibrateTabProps) {
         if (type && !types.includes(type)) types.push(type)
         if (types.length > 0) setArmTypes(types)
       })
-      .catch(() => {
+      .catch((err) => {
+        logError('CalibrateTab.armTypes')(err)
         const fallback = Array.from(new Set([...DEFAULT_ARM_TYPES, type]))
         setArmTypes(fallback)
       })

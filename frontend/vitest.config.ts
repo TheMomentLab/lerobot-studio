@@ -1,11 +1,15 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
-  plugins: [react()],
+  resolve: {
+    alias: {
+      '@exodus/bytes/encoding-lite.js': '/src/test/shims/encoding-lite.cjs',
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',
-    setupFiles: './src/setupTests.ts',
+    setupFiles: ['./src/test/setup.ts'],
+    pool: 'threads',
   },
-});
+})

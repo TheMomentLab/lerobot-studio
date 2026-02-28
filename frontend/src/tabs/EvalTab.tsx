@@ -52,7 +52,7 @@ export function EvalTab({ active }: EvalTabProps) {
   const { progressStatus, setProgressStatus, doneEpisodes, meanReward, successRate, finalReward, finalSuccess, bestEpisode, worstEpisode, startedAtMs, endedAtMs, setEndedAtMs, elapsedTick, lastMetricUpdateMs, progressTotal, progressPct, showProgressDetails, progressStatusStyle, beginEval, markError } = useEvalProgress({ evalLogLines, running })
 
   const refreshPreflight = useCallback(async () => {
-    const device = (config.eval_device as string) ?? 'cuda'
+    const device = config.eval_device ?? 'cuda'
     const res = await apiGet<{ ok: boolean; reason?: string; action?: string; command?: string }>(`/api/train/preflight?device=${encodeURIComponent(device)}`)
     const next = { ok: !!res.ok, reason: res.reason ?? '', action: res.action ?? '', command: res.command ?? '' }
     setPreflightOk(next.ok)
@@ -103,7 +103,7 @@ export function EvalTab({ active }: EvalTabProps) {
 
   const totalEpisodes = Number(config.eval_episodes ?? 10)
   const configuredDatasetId = useMemo(() => {
-    const configured = ((config.eval_repo_id as string) ?? '').trim()
+    const configured = (config.eval_repo_id ?? '').trim()
     return configured === 'user/my-dataset' || configured === '__none__' ? '' : configured
   }, [config.eval_repo_id])
   const localDatasetId = useMemo(() => {
@@ -117,11 +117,11 @@ export function EvalTab({ active }: EvalTabProps) {
     return /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/.test(repo) ? '' : 'Dataset Repo ID must be username/dataset format.'
   }, [repoId])
 
-  const envTypeValue = ((config.eval_env_type as string) ?? '').trim()
-  const envTaskValue = (config.eval_task as string) ?? ''
+  const envTypeValue = (config.eval_env_type ?? '').trim()
+  const envTaskValue = config.eval_task ?? ''
   const envTypeMissing = !envTypeValue && !envTypeFromCheckpoint
   const envTaskMissing = !envTaskValue && !envTaskFromCheckpoint
-  const noLocalCheckpoint = policySource === 'local' && !(config.eval_policy_path as string)
+  const noLocalCheckpoint = policySource === 'local' && !config.eval_policy_path
   const evalReady = preflightOk && !repoError && !conflictReason && !noLocalCheckpoint && !envTypeMissing && !envTaskMissing
   const preflightFixLabel = preflightAction === 'install_python_dep' ? 'Install Missing Python Packages' : 'Run Fix'
   const evalBlockers = useMemo(() => {
@@ -138,7 +138,7 @@ export function EvalTab({ active }: EvalTabProps) {
   const handleSetPolicySource = (newSource: 'local' | 'hf') => {
     setPolicySource(newSource)
     if (newSource === 'local') {
-      const currentPath = (config.eval_policy_path as string) ?? ''
+      const currentPath = config.eval_policy_path ?? ''
       if (!checkpoints.some((cp) => cp.path === currentPath)) void buildConfig({ eval_policy_path: checkpoints[0]?.path ?? '' })
     } else {
       void buildConfig({ eval_policy_path: '' })
@@ -148,7 +148,7 @@ export function EvalTab({ active }: EvalTabProps) {
   const handleSetDatasetSource = (newSource: 'local' | 'hf') => {
     setDatasetSource(newSource)
     if (newSource === 'local') {
-      const currentId = (config.eval_repo_id as string) ?? ''
+      const currentId = config.eval_repo_id ?? ''
       if (!datasets.some((ds) => ds.id === currentId)) void buildConfig({ eval_repo_id: '' })
     } else {
       void buildConfig({ eval_repo_id: '' })
@@ -194,18 +194,18 @@ export function EvalTab({ active }: EvalTabProps) {
   const start = async (episodesOverride?: number) => {
     try {
       const cfg = {
-        eval_policy_path: (config.eval_policy_path as string) ?? 'outputs/train/checkpoints/last/pretrained_model',
+        eval_policy_path: config.eval_policy_path ?? 'outputs/train/checkpoints/last/pretrained_model',
         eval_repo_id: repoId,
-        eval_env_type: (config.eval_env_type as string) ?? '',
+        eval_env_type: config.eval_env_type ?? '',
         eval_episodes: Number(episodesOverride ?? Number(config.eval_episodes ?? 10)),
-        eval_device: (config.eval_device as string) ?? 'cuda',
-        eval_task: (config.eval_task as string) ?? '',
-        eval_robot_type: (config.eval_robot_type as string) ?? 'so101_follower',
-        eval_teleop_type: (config.eval_teleop_type as string) ?? 'so101_leader',
-        follower_port: (config.follower_port as string) ?? '/dev/follower_arm_1',
-        leader_port: (config.leader_port as string) ?? '/dev/leader_arm_1',
-        robot_id: (config.robot_id as string) ?? 'my_so101_follower_1',
-        teleop_id: (config.teleop_id as string) ?? 'my_so101_leader_1',
+        eval_device: config.eval_device ?? 'cuda',
+        eval_task: config.eval_task ?? '',
+        eval_robot_type: config.eval_robot_type ?? 'so101_follower',
+        eval_teleop_type: config.eval_teleop_type ?? 'so101_leader',
+        follower_port: config.follower_port ?? '/dev/follower_arm_1',
+        leader_port: config.leader_port ?? '/dev/leader_arm_1',
+        robot_id: config.robot_id ?? 'my_so101_follower_1',
+        teleop_id: config.teleop_id ?? 'my_so101_leader_1',
         cameras: Object.fromEntries(Object.entries(cameraMapping).filter(([, sym]) => sym && mappedCameras[sym]).map(([imageKey, sym]) => [imageKey, mappedCameras[sym]])),
         record_cam_width: config.record_cam_width ?? 640,
         record_cam_height: config.record_cam_height ?? 480,

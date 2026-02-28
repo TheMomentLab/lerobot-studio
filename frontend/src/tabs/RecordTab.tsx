@@ -6,6 +6,7 @@ import { useConfig } from '../hooks/useConfig'
 import { useMappedCameras } from '../hooks/useMappedCameras'
 import { useProcess } from '../hooks/useProcess'
 import { apiGet, apiPost } from '../lib/api'
+import { logError, swallow } from '../lib/errors'
 import { useLeStudioStore } from '../store'
 import type { LogLine, RobotDetail, RobotsResponse, TeleopsResponse } from '../lib/types'
 import { getProcessConflict } from '../lib/processConflicts'
@@ -88,27 +89,27 @@ export function RecordTab({ active }: RecordTabProps) {
   }, [devices])
 
   const followerPortOpts = useMemo(
-    () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, (config.follower_port as string) ?? '/dev/follower_arm_1'),
+    () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, config.follower_port ?? '/dev/follower_arm_1'),
     [armPaths, config.follower_port],
   )
   const leaderPortOpts = useMemo(
-    () => buildSelectOptions(DEFAULT_LEADER_PORTS, armPaths, (config.leader_port as string) ?? '/dev/leader_arm_1'),
+    () => buildSelectOptions(DEFAULT_LEADER_PORTS, armPaths, config.leader_port ?? '/dev/leader_arm_1'),
     [armPaths, config.leader_port],
   )
   const leftFollowerPortOpts = useMemo(
-    () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, (config.left_follower_port as string) ?? '/dev/follower_arm_1'),
+    () => buildSelectOptions(DEFAULT_FOLLOWER_PORTS, armPaths, config.left_follower_port ?? '/dev/follower_arm_1'),
     [armPaths, config.left_follower_port],
   )
   const rightFollowerPortOpts = useMemo(
-    () => buildSelectOptions(['/dev/follower_arm_2', '/dev/follower_arm_1'], armPaths, (config.right_follower_port as string) ?? '/dev/follower_arm_2'),
+    () => buildSelectOptions(['/dev/follower_arm_2', '/dev/follower_arm_1'], armPaths, config.right_follower_port ?? '/dev/follower_arm_2'),
     [armPaths, config.right_follower_port],
   )
   const leftLeaderPortOpts = useMemo(
-    () => buildSelectOptions(DEFAULT_LEADER_PORTS, armPaths, (config.left_leader_port as string) ?? '/dev/leader_arm_1'),
+    () => buildSelectOptions(DEFAULT_LEADER_PORTS, armPaths, config.left_leader_port ?? '/dev/leader_arm_1'),
     [armPaths, config.left_leader_port],
   )
   const rightLeaderPortOpts = useMemo(
-    () => buildSelectOptions(['/dev/leader_arm_2', '/dev/leader_arm_1'], armPaths, (config.right_leader_port as string) ?? '/dev/leader_arm_2'),
+    () => buildSelectOptions(['/dev/leader_arm_2', '/dev/leader_arm_1'], armPaths, config.right_leader_port ?? '/dev/leader_arm_2'),
     [armPaths, config.right_leader_port],
   )
 
@@ -118,23 +119,19 @@ export function RecordTab({ active }: RecordTabProps) {
     buildConfigRef.current({ robot_mode: 'single' })
     refreshDevices()
     const loadCalibrationFiles = async () => {
-      try {
-        const res = await apiGet<LegacyCalibrationListResponse>('/api/calibrate/list')
-        const files = res.files ?? []
-        const follower = uniq(
-          files.filter((f) => String(f.guessed_type ?? '').includes('follower')).map((f) => f.id),
-        )
-        const leader = uniq(
-          files.filter((f) => String(f.guessed_type ?? '').includes('leader')).map((f) => f.id),
-        )
-        if (follower.length > 0) setFollowerArmIds(follower)
-        if (leader.length > 0) setLeaderArmIds(leader)
-      } catch {
-        return
-      }
+      const res = await apiGet<LegacyCalibrationListResponse>('/api/calibrate/list')
+      const files = res.files ?? []
+      const follower = uniq(
+        files.filter((f) => String(f.guessed_type ?? '').includes('follower')).map((f) => f.id),
+      )
+      const leader = uniq(
+        files.filter((f) => String(f.guessed_type ?? '').includes('leader')).map((f) => f.id),
+      )
+      if (follower.length > 0) setFollowerArmIds(follower)
+      if (leader.length > 0) setLeaderArmIds(leader)
     }
 
-    loadCalibrationFiles().catch(() => undefined)
+    loadCalibrationFiles().catch(logError('RecordTab.calibration'))
   }, [active, refreshDevices])
 
 
@@ -144,7 +141,7 @@ export function RecordTab({ active }: RecordTabProps) {
       setRobotTypes(r.types ?? ['so101_follower'])
       setRobotDetails(r.details ?? {})
     })
-    const currentRobotType = (config.robot_type as string) || 'so101_follower'
+    const currentRobotType = config.robot_type || 'so101_follower'
     apiGet<TeleopsResponse>(`/api/teleops?robot_type=${encodeURIComponent(currentRobotType)}`).then((r) => setTeleopTypes(r.types ?? ['so101_leader']))
   }, [active, config.robot_type])
 
@@ -172,9 +169,9 @@ export function RecordTab({ active }: RecordTabProps) {
       }
     }
 
-    pollStats().catch(() => undefined)
+    pollStats().catch(swallow)
     const timer = window.setInterval(() => {
-      pollStats().catch(() => undefined)
+      pollStats().catch(swallow)
     }, 2000)
 
     return () => {
@@ -184,13 +181,13 @@ export function RecordTab({ active }: RecordTabProps) {
   }, [active])
 
   useEffect(() => {
-    const robotMode = (config.robot_mode as string) ?? 'single'
+    const robotMode = config.robot_mode ?? 'single'
     setMode(robotMode === 'bi' ? 'bi' : 'single')
   }, [config.robot_mode])
 
 
-  const selectedRobotType = (() => { const v = (config.robot_type as string) ?? ''; return (v && robotTypes.includes(v)) ? v : (robotTypes[0] ?? 'so101_follower') })()
-  const selectedTeleopType = (() => { const v = (config.teleop_type as string) ?? ''; return (v && teleopTypes.includes(v)) ? v : (teleopTypes[0] ?? 'so101_leader') })()
+  const selectedRobotType = (() => { const v = config.robot_type ?? ''; return (v && robotTypes.includes(v)) ? v : (robotTypes[0] ?? 'so101_follower') })()
+  const selectedTeleopType = (() => { const v = config.teleop_type ?? ''; return (v && teleopTypes.includes(v)) ? v : (teleopTypes[0] ?? 'so101_leader') })()
 
   useEffect(() => {
     if (!active) return
@@ -198,12 +195,15 @@ export function RecordTab({ active }: RecordTabProps) {
       .then((r) => {
         const types = r.types ?? ['so101_leader']
         setTeleopTypes(types)
-        const currentTeleop = (config.teleop_type as string) ?? ''
+        const currentTeleop = config.teleop_type ?? ''
         if (currentTeleop && !types.includes(currentTeleop) && types.length > 0) {
           buildConfigRef.current({ teleop_type: types[0] })
         }
       })
-      .catch(() => setTeleopTypes(['so101_leader']))
+      .catch((err) => {
+        logError('RecordTab.teleopTypes')(err)
+        setTeleopTypes(['so101_leader'])
+      })
   }, [active, config.teleop_type, selectedRobotType])
 
   const selectedRobotDetail = robotDetails[selectedRobotType] ?? null
@@ -228,28 +228,28 @@ export function RecordTab({ active }: RecordTabProps) {
     robot_mode: mode,
     robot_type: selectedRobotType,
     teleop_type: selectedTeleopType,
-    follower_port: (config.follower_port as string) ?? '/dev/follower_arm_1',
-    robot_id: (config.robot_id as string) ?? 'my_so101_follower_1',
-    leader_port: (config.leader_port as string) ?? '/dev/leader_arm_1',
-    teleop_id: (config.teleop_id as string) ?? 'my_so101_leader_1',
-    left_follower_port: (config.left_follower_port as string) ?? '/dev/follower_arm_1',
-    right_follower_port: (config.right_follower_port as string) ?? '/dev/follower_arm_2',
-    left_leader_port: (config.left_leader_port as string) ?? '/dev/leader_arm_1',
-    right_leader_port: (config.right_leader_port as string) ?? '/dev/leader_arm_2',
-    left_robot_id: (config.left_robot_id as string) ?? 'my_so101_follower_1',
-    right_robot_id: (config.right_robot_id as string) ?? 'my_so101_follower_2',
-    left_teleop_id: (config.left_teleop_id as string) ?? 'my_so101_leader_1',
-    right_teleop_id: (config.right_teleop_id as string) ?? 'my_so101_leader_2',
-    record_task: (config.record_task as string) ?? '',
+    follower_port: config.follower_port ?? '/dev/follower_arm_1',
+    robot_id: config.robot_id ?? 'my_so101_follower_1',
+    leader_port: config.leader_port ?? '/dev/leader_arm_1',
+    teleop_id: config.teleop_id ?? 'my_so101_leader_1',
+    left_follower_port: config.left_follower_port ?? '/dev/follower_arm_1',
+    right_follower_port: config.right_follower_port ?? '/dev/follower_arm_2',
+    left_leader_port: config.left_leader_port ?? '/dev/leader_arm_1',
+    right_leader_port: config.right_leader_port ?? '/dev/leader_arm_2',
+    left_robot_id: config.left_robot_id ?? 'my_so101_follower_1',
+    right_robot_id: config.right_robot_id ?? 'my_so101_follower_2',
+    left_teleop_id: config.left_teleop_id ?? 'my_so101_leader_1',
+    right_teleop_id: config.right_teleop_id ?? 'my_so101_leader_2',
+    record_task: config.record_task ?? '',
     record_episodes: Number(config.record_episodes ?? 50),
-    record_repo_id: (config.record_repo_id as string) ?? defaultRepoId,
+    record_repo_id: config.record_repo_id ?? defaultRepoId,
     record_resume: Boolean(config.record_resume),
     record_push_to_hub: Boolean(config.record_push_to_hub),
     cameras: mappedCameras,
   })
 
 
-  const repoId = (config.record_repo_id as string) ?? defaultRepoId
+  const repoId = config.record_repo_id ?? defaultRepoId
   const repoError = useMemo(() => {
     const repo = repoId.trim()
     if (!repo) return 'Repo ID is required'
@@ -357,14 +357,14 @@ export function RecordTab({ active }: RecordTabProps) {
     () =>
       mode === 'single'
         ? [
-            (config.follower_port as string) ?? '/dev/follower_arm_1',
-            (config.leader_port as string) ?? '/dev/leader_arm_1',
+            config.follower_port ?? '/dev/follower_arm_1',
+            config.leader_port ?? '/dev/leader_arm_1',
           ]
         : [
-            (config.left_follower_port as string) ?? '/dev/follower_arm_1',
-            (config.right_follower_port as string) ?? '/dev/follower_arm_2',
-            (config.left_leader_port as string) ?? '/dev/leader_arm_1',
-            (config.right_leader_port as string) ?? '/dev/leader_arm_2',
+            config.left_follower_port ?? '/dev/follower_arm_1',
+            config.right_follower_port ?? '/dev/follower_arm_2',
+            config.left_leader_port ?? '/dev/leader_arm_1',
+            config.right_leader_port ?? '/dev/leader_arm_2',
           ],
     [
       config.follower_port,
@@ -515,7 +515,7 @@ export function RecordTab({ active }: RecordTabProps) {
           <label>Task Description <span className="muted" style={{ fontSize: 11, fontWeight: 400 }}>(optional)</span></label>
           <input
             type="text"
-            value={(config.record_task as string) ?? ''}
+            value={config.record_task ?? ''}
             onChange={(e) => update('record_task', e.target.value)}
             placeholder="Example: Pick up red block and place in left bin"
           />
@@ -547,7 +547,7 @@ export function RecordTab({ active }: RecordTabProps) {
           {mode === 'single' ? (
             <>
               <label>Follower Arm Port</label>
-              <select value={(config.follower_port as string) ?? '/dev/follower_arm_1'} onChange={(e) => update('follower_port', e.target.value)}>
+              <select value={config.follower_port ?? '/dev/follower_arm_1'} onChange={(e) => update('follower_port', e.target.value)}>
                 {followerPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -555,7 +555,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Follower Arm ID</label>
-              <select value={(config.robot_id as string) ?? 'my_so101_follower_1'} onChange={(e) => update('robot_id', e.target.value)}>
+              <select value={config.robot_id ?? 'my_so101_follower_1'} onChange={(e) => update('robot_id', e.target.value)}>
                 {followerIdOptions.map((id) => (
                   <option key={id} value={id}>
                     {id}
@@ -564,7 +564,7 @@ export function RecordTab({ active }: RecordTabProps) {
               </select>
               <div className="field-help">Arm ID selects the calibration profile file name (without .json).</div>
               <label>Leader Arm Port</label>
-              <select value={(config.leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('leader_port', e.target.value)}>
+              <select value={config.leader_port ?? '/dev/leader_arm_1'} onChange={(e) => update('leader_port', e.target.value)}>
                 {leaderPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -572,7 +572,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Leader Arm ID</label>
-              <select value={(config.teleop_id as string) ?? 'my_so101_leader_1'} onChange={(e) => update('teleop_id', e.target.value)}>
+              <select value={config.teleop_id ?? 'my_so101_leader_1'} onChange={(e) => update('teleop_id', e.target.value)}>
                 {leaderIdOptions.map((id) => (
                   <option key={id} value={id}>
                     {id}
@@ -584,7 +584,7 @@ export function RecordTab({ active }: RecordTabProps) {
           ) : (
             <>
               <label>Left Follower Port</label>
-              <select value={(config.left_follower_port as string) ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)}>
+              <select value={config.left_follower_port ?? '/dev/follower_arm_1'} onChange={(e) => update('left_follower_port', e.target.value)}>
                 {leftFollowerPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -592,7 +592,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Left Follower ID</label>
-              <select value={(config.left_robot_id as string) ?? 'my_so101_follower_1'} onChange={(e) => update('left_robot_id', e.target.value)}>
+              <select value={config.left_robot_id ?? 'my_so101_follower_1'} onChange={(e) => update('left_robot_id', e.target.value)}>
                 {leftFollowerIdOptions.map((id) => (
                   <option key={id} value={id}>
                     {id}
@@ -600,7 +600,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Right Follower Port</label>
-              <select value={(config.right_follower_port as string) ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)}>
+              <select value={config.right_follower_port ?? '/dev/follower_arm_2'} onChange={(e) => update('right_follower_port', e.target.value)}>
                 {rightFollowerPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -608,7 +608,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Right Follower ID</label>
-              <select value={(config.right_robot_id as string) ?? 'my_so101_follower_2'} onChange={(e) => update('right_robot_id', e.target.value)}>
+              <select value={config.right_robot_id ?? 'my_so101_follower_2'} onChange={(e) => update('right_robot_id', e.target.value)}>
                 {rightFollowerIdOptions.map((id) => (
                   <option key={id} value={id}>
                     {id}
@@ -616,7 +616,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Left Leader Port</label>
-              <select value={(config.left_leader_port as string) ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)}>
+              <select value={config.left_leader_port ?? '/dev/leader_arm_1'} onChange={(e) => update('left_leader_port', e.target.value)}>
                 {leftLeaderPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -624,7 +624,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Left Leader ID</label>
-              <select value={(config.left_teleop_id as string) ?? 'my_so101_leader_1'} onChange={(e) => update('left_teleop_id', e.target.value)}>
+              <select value={config.left_teleop_id ?? 'my_so101_leader_1'} onChange={(e) => update('left_teleop_id', e.target.value)}>
                 {leftLeaderIdOptions.map((id) => (
                   <option key={id} value={id}>
                     {id}
@@ -632,7 +632,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Right Leader Port</label>
-              <select value={(config.right_leader_port as string) ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)}>
+              <select value={config.right_leader_port ?? '/dev/leader_arm_2'} onChange={(e) => update('right_leader_port', e.target.value)}>
                 {rightLeaderPortOpts.map((p) => (
                   <option key={p} value={p}>
                     {p}
@@ -640,7 +640,7 @@ export function RecordTab({ active }: RecordTabProps) {
                 ))}
               </select>
               <label>Right Leader ID</label>
-              <select value={(config.right_teleop_id as string) ?? 'my_so101_leader_2'} onChange={(e) => update('right_teleop_id', e.target.value)}>
+              <select value={config.right_teleop_id ?? 'my_so101_leader_2'} onChange={(e) => update('right_teleop_id', e.target.value)}>
                 {rightLeaderIdOptions.map((id) => (
                   <option key={id} value={id}>
                     {id}

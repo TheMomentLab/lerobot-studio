@@ -97,7 +97,7 @@ export function EvalConfigPanel({
           <label>Checkpoint</label>
           {checkpoints.length === 0 ? <div className="field-help" style={{ marginBottom: 8, color: 'var(--yellow)' }}>No checkpoints found. Train a model first.</div> : null}
           <select
-            value={(config.eval_policy_path as string) ?? ''}
+            value={config.eval_policy_path ?? ''}
             onChange={(e) => {
               const path = e.target.value
               void buildConfig({ eval_policy_path: path, eval_env_type: '', eval_task: '' })
@@ -119,7 +119,7 @@ export function EvalConfigPanel({
           <label>Policy Repo ID</label>
           <input
             type="text"
-            value={(config.eval_policy_path as string) ?? ''}
+            value={config.eval_policy_path ?? ''}
             placeholder="e.g. lerobot/act_pusht_diffusion"
             onChange={(e) => { void buildConfig({ eval_policy_path: e.target.value }) }}
           />
@@ -130,7 +130,7 @@ export function EvalConfigPanel({
       <label>Episodes</label>
       <input type="number" min={1} value={totalEpisodes} onChange={(e) => { void buildConfig({ eval_episodes: Number(e.target.value) }) }} />
       <label>Compute Device</label>
-      <select value={(config.eval_device as string) ?? 'cuda'} onChange={(e) => { void buildConfig({ eval_device: e.target.value }) }}>
+      <select value={config.eval_device ?? 'cuda'} onChange={(e) => { void buildConfig({ eval_device: e.target.value }) }}>
         <option value="cuda">CUDA (GPU)</option>
         <option value="cpu">CPU</option>
         <option value="mps">MPS (Apple Silicon)</option>

@@ -784,3 +784,249 @@
   cursor: not-allowed;
 }
 
+
+
+/* === Motor Monitor (MotorSetupTab Step 2) === */
+.motor-mon-section {
+  margin-top: 16px;
+}
+
+.motor-mon-connect-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.motor-mon-connect-bar select {
+  flex: 1;
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.motor-mon-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text2);
+  margin-left: auto;
+}
+
+.motor-mon-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.motor-mon-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.15s;
+}
+
+.motor-mon-card:hover {
+  border-color: var(--accent);
+}
+
+.motor-mon-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.motor-mon-position {
+  text-align: center;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--green);
+  line-height: 1;
+  padding: 4px 0;
+}
+
+.motor-mon-position.error {
+  color: var(--red);
+  font-size: 1rem;
+}
+
+.motor-mon-position.unknown {
+  color: var(--text2);
+}
+
+.motor-mon-target-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.motor-mon-target-row input[type='number'] {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.9rem;
+  padding: 4px 6px;
+}
+
+.motor-mon-step-btn {
+  background: var(--surface3, var(--surface2));
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text1);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.motor-mon-step-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.motor-mon-move-btn {
+  width: 100%;
+  padding: 5px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--green) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green) 40%, var(--border));
+  border-radius: 6px;
+  color: var(--green);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.motor-mon-move-btn:hover {
+  background: color-mix(in srgb, var(--green) 25%, transparent);
+}
+
+.motor-mon-emergency-btn {
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border));
+  border-radius: 6px;
+  color: var(--red);
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.motor-mon-emergency-btn:hover {
+  background: color-mix(in srgb, var(--red) 25%, transparent);
+}
+
+/* ── Motor Monitor: move btn disabled state ────────────────────────────── */
+.motor-mon-move-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Motor Monitor: load / current metric row ──────────────────────────── */
+.motor-mon-metrics {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0;
+}
+
+.motor-mon-metric {
+  font-size: 0.75rem;
+  font-family: 'Consolas', 'Courier New', monospace;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text2);
+}
+
+.motor-mon-metric.mon-val-ok {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 35%, var(--border));
+}
+
+.motor-mon-metric.mon-val-warn {
+  color: var(--yellow);
+  border-color: color-mix(in srgb, var(--yellow) 35%, var(--border));
+}
+
+.motor-mon-metric.mon-val-danger {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 35%, var(--border));
+  font-weight: 700;
+}
+
+/* ── Motor Monitor: collision state ────────────────────────────────────── */
+.motor-mon-card-collision {
+  border-color: var(--red) !important;
+  background: color-mix(in srgb, var(--red) 6%, var(--surface1)) !important;
+}
+
+.motor-mon-collision-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--red);
+  animation: collision-pulse 1s ease-in-out infinite;
+}
+
+@keyframes collision-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.motor-mon-clear-collision-btn {
+  width: 100%;
+  padding: 4px 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--border));
+  border-radius: 5px;
+  color: var(--red);
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background 0.15s;
+}
+
+.motor-mon-clear-collision-btn:hover {
+  background: color-mix(in srgb, var(--red) 22%, transparent);
+}
+
+/* ── Motor Monitor: freewheel banner ───────────────────────────────────── */
+.motor-mon-freewheel-banner {
+  font-size: 0.82rem;
+  color: var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--yellow) 35%, var(--border));
+  border-radius: 6px;
+  padding: 7px 12px;
+  margin-bottom: 12px;
+}
+
+/* ── Motor Monitor: freewheel active button ─────────────────────────────── */
+.btn-active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
