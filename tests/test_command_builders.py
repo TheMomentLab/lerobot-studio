@@ -168,8 +168,71 @@ def test_build_train_args_maps_tdmpc2_and_optional_fields():
     assert "--optimizer.lr=0.0001" in args
 
 
-def test_build_eval_args_defaults_and_task():
-    args = cb.build_eval_args("/py", {"train_repo_id": "u/train", "eval_task": "pick-red"})
-    assert "--policy.path=outputs/train/checkpoints/last/pretrained_model" in args
-    assert "--dataset.repo_id=u/train" in args
-    assert "--env.task=pick-red" in args
+def test_build_eval_args_requires_env_type_when_not_inferable():
+    try:
+        cb.build_eval_args("/py", {"eval_task": "pick-red"})
+    except ValueError as exc:
+        assert "env.type" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError when env.type is missing")
+
+
+def test_build_eval_args_includes_dataset_override_when_provided():
+    args = cb.build_eval_args("/py", {"eval_repo_id": "u/ds", "eval_env_type": "aloha", "eval_task": "AlohaInsertion-v0"})
+    assert "--dataset.repo_id=u/ds" in args
+
+
+def test_build_eval_args_passes_env_type_as_is():
+    args = cb.build_eval_args("/py", {"eval_env_type": "gym_manipulator", "eval_task": "real_robot"})
+    assert "--env.type=gym_manipulator" in args
+    assert "--env.task=real_robot" in args
+
+
+def test_build_eval_args_infers_env_from_train_config(tmp_path: Path):
+    policy_dir = tmp_path / "policy"
+    policy_dir.mkdir(parents=True)
+    (policy_dir / "train_config.json").write_text('{"env": {"type": "aloha", "task": "AlohaInsertion-v0"}}')
+
+    args = cb.build_eval_args("/py", {"eval_policy_path": str(policy_dir)})
+
+    assert "--env.type=aloha" in args
+    assert "--env.task=AlohaInsertion-v0" in args
+
+
+def test_build_eval_args_preserves_gym_prefix_and_uses_env_name_fallback(tmp_path: Path):
+    policy_dir = tmp_path / "policy"
+    policy_dir.mkdir(parents=True)
+    (policy_dir / "train_config.json").write_text('{"env": {"type": "gym_manipulator", "name": "real_robot"}}')
+
+    args = cb.build_eval_args("/py", {"eval_policy_path": str(policy_dir)})
+
+    assert "--env.type=gym_manipulator" in args
+    assert "--env.task=real_robot" in args
+
+
+def test_build_eval_args_error_message_for_null_env_in_real_robot_checkpoint(tmp_path: Path):
+    """When train_config.json has env: null (real-robot training), the error
+    message should guide the user to set Env Type override."""
+    policy_dir = tmp_path / "policy"
+    policy_dir.mkdir(parents=True)
+    (policy_dir / "train_config.json").write_text('{"env": null}')
+
+    try:
+        cb.build_eval_args("/py", {"eval_policy_path": str(policy_dir)})
+    except ValueError as exc:
+        msg = str(exc)
+        assert "env.type" in msg
+        assert "Env Type override" in msg or "Advanced Overrides" in msg
+    else:
+        raise AssertionError("Expected ValueError for null env")
+
+
+def test_build_eval_args_error_message_for_missing_task():
+    """When env.type is set but task is missing, error should guide user to set Task."""
+    try:
+        cb.build_eval_args("/py", {"eval_env_type": "manipulator"})
+    except ValueError as exc:
+        msg = str(exc)
+        assert "env.task" in msg or "Task" in msg
+    else:
+        raise AssertionError("Expected ValueError for missing task")

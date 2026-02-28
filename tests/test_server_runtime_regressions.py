@@ -54,7 +54,8 @@ def test_api_proc_stop_train_stops_train_and_installer(monkeypatch, tmp_path: Pa
 
 
 def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatch, tmp_path: Path):
-    captured: dict[str, object] = {"stop_calls": 0}
+    captured: dict[str, object] = {}
+    stop_calls = {"count": 0}
 
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
@@ -65,7 +66,7 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
         return True
 
     def fake_stop_streamers():
-        captured["stop_calls"] = int(captured["stop_calls"]) + 1
+        stop_calls["count"] += 1
 
     def fake_build_args(python_exe: str, cfg: dict, resume_enabled: bool):
         captured["cfg"] = dict(cfg)
@@ -88,7 +89,7 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
     assert payload["ok"] is True
     assert payload["resume_requested"] is False
     assert payload["resume_enabled"] is False
-    assert captured["stop_calls"] == 1
+    assert stop_calls["count"] == 1
     assert captured["name"] == "record"
 
     cfg = captured["cfg"]
@@ -306,7 +307,7 @@ def test_train_colab_link_defaults_to_starter_notebook(monkeypatch, tmp_path: Pa
 
     assert payload["ok"] is True
     assert payload["repo_id"] == "user/my-dataset"
-    assert payload["url"] == "https://colab.research.google.com/github/googlecolab/colabtools/blob/main/notebooks/colab-github-demo.ipynb"
+    assert payload["url"] == "https://colab.research.google.com/github/TheMomentLab/lerobot-studio/blob/dev/notebooks/lerobot_train.ipynb"
 
 
 def test_train_colab_link_does_not_mutate_colab_root_url(monkeypatch, tmp_path: Path):
@@ -330,3 +331,33 @@ def test_train_colab_link_expands_placeholders_when_present(monkeypatch, tmp_pat
     assert payload["ok"] is True
     assert "repo_id=user%2Fmy-dataset" in payload["url"]
     assert "config_path=lestudio_train_config.json" in payload["url"]
+
+
+def test_api_checkpoints_scans_nested_train_run_layout(monkeypatch, tmp_path: Path):
+    monkeypatch.chdir(tmp_path)
+
+    pretrained = (
+        tmp_path
+        / "outputs"
+        / "train"
+        / "2026-02-28"
+        / "02-34-35_act"
+        / "checkpoints"
+        / "020000"
+        / "pretrained_model"
+    )
+    pretrained.mkdir(parents=True)
+    (pretrained / "config.json").write_text("{}")
+    (pretrained / "model.safetensors").write_text("weights")
+    (pretrained / "train_config.json").write_text('{"policy": {"type": "act"}}')
+
+    app = _make_app(tmp_path)
+    endpoint = _find_endpoint(app, "/api/checkpoints", "GET")
+    payload = endpoint()
+
+    assert payload["ok"] is True
+    checkpoints = payload["checkpoints"]
+    assert len(checkpoints) == 1
+    assert checkpoints[0]["display"] == "2026-02-28/02-34-35_act/020000"
+    assert checkpoints[0]["path"].endswith("outputs/train/2026-02-28/02-34-35_act/checkpoints/020000/pretrained_model")
+    assert checkpoints[0]["step"] == 20000

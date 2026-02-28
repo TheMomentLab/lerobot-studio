@@ -16,6 +16,9 @@ def test_build_parser_defaults_host_to_localhost():
 
 
 def test_find_lerobot_src_uses_find_spec(monkeypatch, tmp_path: Path):
+    # Use a cwd that has no local lerobot dirs so the function falls through to find_spec
+    monkeypatch.chdir(tmp_path)
+
     pkg_dir = tmp_path / "site-packages" / "lerobot"
     pkg_dir.mkdir(parents=True)
 
@@ -24,7 +27,6 @@ def test_find_lerobot_src_uses_find_spec(monkeypatch, tmp_path: Path):
 
     resolved = cli.find_lerobot_src()
     assert resolved == pkg_dir.parent
-
 
 def test_resolve_config_dir_prefers_new_default_and_migrates(monkeypatch, tmp_path: Path):
     fake_home = tmp_path / "home"
