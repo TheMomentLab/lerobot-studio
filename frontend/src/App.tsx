@@ -85,19 +85,6 @@ function App() {
 
 
 
-      if (e.code === 'Space') {
-        if (activeTab === 'teleop') {
-          e.preventDefault()
-          ;(document.querySelector('#tab-teleop .btn-row button') as HTMLButtonElement | null)?.click()
-          return
-        }
-        if (activeTab === 'record') {
-          e.preventDefault()
-          ;(document.querySelector('#tab-record #record-ep-controls button') as HTMLButtonElement | null)?.click()
-          return
-        }
-      }
-
       if (activeTab === 'record' && procStatus.record) {
         if (e.code === 'ArrowRight') {
           e.preventDefault()

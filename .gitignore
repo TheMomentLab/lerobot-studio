@@ -59,3 +59,22 @@ coverage.xml
 
 # Training outputs
 outputs/
+node_modules
+
+# Frontend source libraries (must be tracked)
+!frontend/src/lib/
+!frontend/src/lib/**
+
+# Local workspace/runtime artifacts
+.claude/
+nul
+rollback_help.txt
+
+# wireframe_test generated artifacts
+wireframe_test/node_modules/
+wireframe_test/dist/
+wireframe_test/*.log
+wireframe_test/**/devserver.log
+wireframe_test/ux_audit/
+wireframe_test/workflow_audit/
+wireframe_test/test_*.png
