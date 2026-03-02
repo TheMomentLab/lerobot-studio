@@ -209,20 +209,16 @@ export function BlockerCard({
           action: "border-amber-500/30 text-amber-600 dark:text-amber-400 bg-amber-500/10 hover:bg-amber-500/20",
         };
 
+  const message = textReasons.length > 0 ? textReasons.join(" · ") : title;
+
   return (
     <div className={cn("flex items-center gap-2 px-3 py-2 rounded-lg border", tone.shell)}>
-      <AlertTriangle size={13} className={cn("flex-none self-start mt-0.5", tone.text)} />
-      <div className="flex-1 flex flex-col gap-0.5">
-        {textReasons.length > 1 ? (
-          textReasons.map((r, i) => (
-            <span key={i} className={cn("text-sm", tone.text)}>• {r}</span>
-          ))
-        ) : (
-          <span className={cn("text-sm", tone.text)}>{textReasons[0] ?? title}</span>
-        )}
-      </div>
+      <AlertTriangle size={13} className={cn("flex-none", tone.text)} />
+      <span className={cn("text-sm flex-1", tone.text)}>
+        {message}
+      </span>
       {linkReasons.length > 0 && (
-        <div className="ml-auto flex items-center gap-2 self-start">
+        <div className="ml-auto flex items-center gap-2">
           {linkReasons.map((r, i) => (
             <Link
               key={`${r.text}-${i}`}

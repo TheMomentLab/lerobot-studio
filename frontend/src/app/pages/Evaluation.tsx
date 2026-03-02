@@ -444,17 +444,17 @@ export function Evaluation() {
             </div>
           )}
 
-          {/* Config blocker — missing inputs */}
-          {!isRunning && configBlockers.length > 0 && (
+          {/* Config blockers — one card per reason */}
+          {!isRunning && configBlockers.map((reason, i) => (
             <BlockerCard
-              title="Configuration"
+              key={i}
               severity="warning"
               reasons={[
-                ...configBlockers.map((b) => b),
-                ...(noLocalCheckpoint ? [{ text: "Go to Train", to: "/training" }] : []),
+                reason,
+                ...(reason === "No checkpoint selected" ? [{ text: "Go to Train", to: "/training" }] : []),
               ]}
             />
-          )}
+          ))}
 
 
           {/* Gym plugin install card */}
