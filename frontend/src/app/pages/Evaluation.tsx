@@ -144,8 +144,8 @@ export function Evaluation() {
   }, [preflightOk, preflightReason, noLocalCheckpoint, envTypeMissing, envTaskMissing, envType, installedEnvSet, conflictProcess]);
 
   const evalReady = evalBlockers.length === 0;
+  const preflightFixLabel = preflightAction === "install_python_dep" ? "Install Missing Packages" : "Run Fix";
   const selectedEnv = envTypes.find((e) => e.type === envType);
-
   // Stats (for chart results)
   const avgReward = episodeResults.length > 0
     ? (episodeResults.reduce((s, r) => s + r.reward, 0) / episodeResults.length)
@@ -324,6 +324,34 @@ export function Evaluation() {
     }
   }, [addToast, appendLog, gymInstallCommand, gymModuleName]);
 
+  const installCudaTorch = useCallback(async () => {
+    appendLog("eval", "[INFO] Starting PyTorch CUDA installer from GUI...", "info");
+    try {
+      const res = await apiPost<{ ok: boolean; error?: string }>("/api/train/install_pytorch", { nightly: true, cuda_tag: "cu128" });
+      if (!res.ok) return appendLog("eval", `[ERROR] ${res.error ?? "Failed to start CUDA installer."}`, "error");
+      addToast("CUDA PyTorch install started", "info");
+      void refreshPreflight();
+    } catch (e) {
+      appendLog("eval", `[ERROR] ${e instanceof Error ? e.message : "Installer request failed."}`, "error");
+    }
+  }, [addToast, appendLog, refreshPreflight]);
+
+  const runPreflightFix = useCallback(async () => {
+    if (!preflightCommand) return;
+    appendLog("eval", `[INFO] Running: ${preflightCommand}`, "info");
+    try {
+      const res = await apiPost<{ ok: boolean; error?: string }>("/api/train/install_torchcodec_fix", { command: preflightCommand });
+      if (!res.ok) return appendLog("eval", `[ERROR] ${res.error ?? "Failed to start installer."}`, "error");
+      addToast("Fix installer started — check console for progress", "info");
+    } catch (e) {
+      appendLog("eval", `[ERROR] ${e instanceof Error ? e.message : "Installer request failed."}`, "error");
+    }
+  }, [addToast, appendLog, preflightCommand]);
+
+  const stopInstallProcess = useCallback(() => {
+    void apiPost("/api/process/train_install/stop");
+    addToast("Install stop requested", "info");
+  }, [addToast]);
   // ── Checkpoint change handler ────────────────────────────────────────────
   const handleCheckpointChange = useCallback((path: string) => {
     updateConfig({ eval_policy_path: path, eval_env_type: "", eval_task: "" });
@@ -356,6 +384,18 @@ export function Evaluation() {
             subtitle="Evaluate trained AI policies on real robots or simulated environments"
             action={<RefreshButton onClick={() => { void refreshPreflight(); }} />}
           />
+
+          {/* Blockers */}
+          {!isRunning && !evalReady && evalBlockers.length > 0 && (
+            <BlockerCard
+              title="Evaluation Blocked"
+              severity="warning"
+              reasons={[
+                ...evalBlockers.map((b) => b),
+                ...(noLocalCheckpoint ? [{ text: "Go to Train", to: "/training" }] : []),
+              ]}
+            />
+          )}
 
 
           {/* Gym plugin install card */}
@@ -445,7 +485,69 @@ export function Evaluation() {
                         <option value="CPU">CPU</option>
                         <option value="MPS">MPS (Apple Silicon)</option>
                       </select>
-                      {!preflightOk && <div className="text-sm text-amber-600 dark:text-amber-400 mt-1">{preflightReason}</div>}
+                      {!preflightOk && (
+                        <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 flex flex-col gap-2.5">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 flex-none" />
+                            <span className="text-sm text-amber-600 dark:text-amber-400">{preflightReason || "Device preflight failed. Evaluation is blocked."}</span>
+                          </div>
+                          {preflightAction === "install_torch_cuda" && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => { void installCudaTorch(); }}
+                                disabled={installing}
+                                className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                              >
+                                {installing ? "Installing..." : "Install CUDA PyTorch (Nightly)"}
+                              </button>
+                            </div>
+                          )}
+                          {preflightAction === "install_python_dep" && preflightCommand && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => { void runPreflightFix(); }}
+                                disabled={installing}
+                                className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                              >
+                                {installing ? "Installing..." : preflightFixLabel}
+                              </button>
+                              {installing && (
+                                <button
+                                  onClick={stopInstallProcess}
+                                  className="px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                                >
+                                  Stop
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {preflightCommand && preflightAction !== "install_torch_cuda" && preflightAction !== "install_python_dep" && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => { void runPreflightFix(); }}
+                                disabled={installing}
+                                className="px-3 py-1.5 rounded border border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all disabled:opacity-50"
+                              >
+                                {installing ? "Installing..." : "Run Fix"}
+                              </button>
+                            </div>
+                          )}
+                          {installing && (
+                            <div className="flex items-center gap-2 text-sm text-zinc-400">
+                              <Loader2 size={12} className="animate-spin" />
+                              <span>Fix in progress… check console for details</span>
+                            </div>
+                          )}
+                          {!installing && (
+                            <button
+                              onClick={() => { setDeviceLabel("CPU"); void refreshPreflight(); }}
+                              className="text-sm text-zinc-400 hover:text-zinc-300 transition-colors cursor-pointer self-start"
+                            >
+                              → Switch to CPU instead
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <div className="text-sm text-zinc-500 mb-1.5">Number of Episodes</div>

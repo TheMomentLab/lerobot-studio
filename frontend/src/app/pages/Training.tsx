@@ -186,6 +186,7 @@ export function Training() {
   const [trainStatus, setTrainStatus] = useState<TrainStatus>("idle");
   const [cudaState, setCudaState] = useState<CudaState>("ok");
   const [cudaFixRunning, setCudaFixRunning] = useState(false);
+  const [preflightReason, setPreflightReason] = useState<string>("");
 
   // Progress
   const [currentStep, setCurrentStep] = useState(0);
@@ -335,7 +336,9 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
       const preflight = await apiGet<PreflightResponse>(`/api/train/preflight?device=${encodeURIComponent(preflightDevice)}`);
       if (!preflight.ok) {
         setTrainStatus("idle");
+        setCudaState("fail");
         const reason = preflight.reason ?? "train preflight failed";
+        setPreflightReason(reason);
         setFlowError(reason);
         notifyError(reason);
         return;
@@ -479,6 +482,29 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
     return () => clearInterval(timer);
   }, []);
 
+  // Preflight check on mount and device change
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const preflightDevice = normalizeDeviceKey(device);
+        const res = await apiGet<PreflightResponse>(`/api/train/preflight?device=${encodeURIComponent(preflightDevice)}`);
+        if (cancelled) return;
+        if (res.ok) {
+          setCudaState("ok");
+          setPreflightReason(res.reason ?? "");
+        } else {
+          setCudaState("fail");
+          setPreflightReason(res.reason ?? "CUDA preflight failed");
+        }
+      } catch {
+        // preflight fetch failed — leave current state
+      }
+    };
+    void run();
+    return () => { cancelled = true; };
+  }, [device]);
+
   useEffect(() => {
     if (!flowError) return;
     lastErrorAtRef.current = Date.now();
@@ -610,23 +636,25 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                 <div className="flex items-center gap-2.5">
                   <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
                   <span className="text-sm text-emerald-600 dark:text-emerald-400">CUDA Preflight Passed</span>
-                  <span className="text-sm text-zinc-500 font-mono">PyTorch 2.5.1+cu121 · RTX 3090 (24GB)</span>
-                  <button
-                    onClick={() => setCudaState("fail")}
-                    className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer"
-                    title="Demo: View failed state"
-                  >
-                    …
-                  </button>
+                  {preflightReason && <span className="text-sm text-zinc-500 font-mono">{preflightReason}</span>}
+                  {import.meta.env.DEV && (
+                    <button
+                      onClick={() => setCudaState("fail")}
+                      className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer"
+                      title="Demo: View failed state"
+                    >
+                      …
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3.5 flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none" />
                     <span className="text-sm text-red-600 dark:text-red-400">CUDA Preflight Failed</span>
-                    <button onClick={() => setCudaState("ok")} className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer">✕</button>
+                    {import.meta.env.DEV && <button onClick={() => setCudaState("ok")} className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer">✕</button>}
                   </div>
-                  <p className="text-sm text-zinc-400">CUDA requires PyTorch built for your CUDA version.</p>
+                  <p className="text-sm text-zinc-400">{preflightReason || "CUDA requires PyTorch built for your CUDA version."}</p>
                   {cudaState === "fail" && !cudaFixRunning && (
                     <div className="flex gap-2">
                       <button

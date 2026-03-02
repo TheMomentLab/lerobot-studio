@@ -1429,6 +1429,12 @@ export function DatasetManagement() {
 
               {/* Dataset Header / Actions */}
               <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+                {!selectedDataset ? (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
+                    <Database size={28} className="text-zinc-300 dark:text-zinc-600" />
+                    <p className="text-sm text-zinc-400">Select a dataset to view details.</p>
+                  </div>
+                ) : (<>
                 {/* Header bar: title + actions */}
                 <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0">
