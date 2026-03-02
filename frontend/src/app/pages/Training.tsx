@@ -634,56 +634,43 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           {trainStatus === "idle" && !completed && (
             <div className="flex flex-col gap-4">
 
-              {/* Preflight — inline badge */}
-              {cudaState === "ok" ? (
-                <div className="flex items-center gap-2.5">
-                  <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
-                  <span className="text-sm text-emerald-600 dark:text-emerald-400">Preflight Passed</span>
-                  {preflightReason && <span className="text-sm text-zinc-500 font-mono">{preflightReason}</span>}
-                  {import.meta.env.DEV && (
-                    <button
-                      onClick={() => setCudaState("fail")}
-                      className="ml-auto text-sm text-zinc-600 hover:text-zinc-400 cursor-pointer"
-                      title="Demo: View failed state"
-                    >
-                      …
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3.5 flex flex-col gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-amber-400 flex-none" />
-                    <span className="text-sm font-medium text-amber-400">Preflight Failed</span>
-                    {import.meta.env.DEV && <button onClick={() => { setCudaState("ok"); setPreflightAction(null); }} className="ml-auto text-sm text-zinc-500 hover:text-zinc-400 cursor-pointer">✕</button>}
+              {/* Preflight — compact card (hidden when OK) */}
+              {cudaState !== "ok" && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5">
+                  <AlertTriangle size={13} className="text-amber-600 dark:text-amber-400 flex-none" />
+                  <span className="text-sm text-amber-600 dark:text-amber-400 flex-1 truncate">{preflightReason || "Environment check failed."}</span>
+                  <div className="flex items-center gap-2 flex-none">
+                    {cudaFixRunning ? (
+                      <>
+                        <span className="flex items-center gap-1.5 text-sm text-zinc-400">
+                          <Loader2 size={12} className="animate-spin" /> Installing…
+                        </span>
+                        <button
+                          onClick={() => { void apiPost("/api/process/train_install/stop"); setCudaFixRunning(false); }}
+                          className="px-2 py-1 rounded border border-zinc-600 text-zinc-400 text-xs cursor-pointer hover:bg-zinc-800 transition-colors"
+                        >Stop</button>
+                      </>
+                    ) : (
+                      <>
+                        {preflightAction === "install_torch_cuda" && (
+                          <button
+                            onClick={handleInstallCuda}
+                            className="px-2.5 py-1 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
+                          >Install CUDA PyTorch</button>
+                        )}
+                        {preflightAction && preflightAction !== "install_torch_cuda" && (
+                          <button
+                            onClick={() => { void handleInstallTorchcodecFix(); }}
+                            className="px-2.5 py-1 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
+                          >Auto Fix</button>
+                        )}
+                        <button
+                          onClick={() => { setDevice("CPU"); setCudaState("ok"); setPreflightAction(null); }}
+                          className="px-2.5 py-1 rounded border border-zinc-600 text-zinc-400 text-sm cursor-pointer hover:bg-zinc-800 transition-colors"
+                        >Use CPU</button>
+                      </>
+                    )}
                   </div>
-                  <p className="text-sm text-zinc-400">{preflightReason || "Environment check failed."}</p>
-                  {!cudaFixRunning && preflightAction === "install_torch_cuda" && (
-                    <div className="flex gap-2">
-                      <button onClick={handleInstallCuda} className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all">
-                        Install CUDA PyTorch (Nightly)
-                      </button>
-                      <button onClick={() => { void handleInstallTorchcodecFix(); }} className="px-3 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-sm font-medium cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all">
-                        Run Fix
-                      </button>
-                    </div>
-                  )}
-                  {!cudaFixRunning && preflightAction && preflightAction !== "install_torch_cuda" && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => { void handleInstallTorchcodecFix(); }}
-                        className="px-3 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-400 text-sm font-medium cursor-pointer hover:bg-amber-500/20 transition-all"
-                      >
-                        Auto Fix
-                      </button>
-                    </div>
-                  )}
-                  {cudaFixRunning && (
-                    <div className="flex items-center gap-2 text-sm text-zinc-400">
-                      <Loader2 size={12} className="animate-spin" />
-                      <span>Fix in progress… check console for details</span>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -1241,6 +1228,9 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           )}
           {completed && (
             <span className="text-sm text-emerald-600 dark:text-emerald-400">Training Complete ✓</span>
+          )}
+          {trainStatus === "idle" && !completed && cudaState === "fail" && (
+            <span className="text-sm text-zinc-400 truncate">{preflightReason || "Preflight failed"}</span>
           )}
         </div>
         <div className="flex items-center gap-3">
