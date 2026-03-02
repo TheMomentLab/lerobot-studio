@@ -132,19 +132,17 @@ export function Evaluation() {
   const envTaskMissing = !task && !envTaskFromCheckpoint;
   const noLocalCheckpoint = policySource === "local" && !policyPath;
 
-  const evalBlockers = useMemo(() => {
+  const configBlockers = useMemo(() => {
     const blockers: string[] = [];
-    if (!preflightOk && preflightReason) blockers.push(preflightReason);
-    else if (!preflightOk) blockers.push("Device preflight failed");
     if (noLocalCheckpoint) blockers.push("No checkpoint selected");
     if (envTypeMissing) blockers.push("Env Type is required");
     if (envTaskMissing) blockers.push("Task is required");
     if (envType && !installedEnvSet.has(envType)) blockers.push(`${envType} environment not installed`);
     if (conflictProcess) blockers.push(`${conflictProcess} process running`);
     return blockers;
-  }, [preflightOk, preflightReason, noLocalCheckpoint, envTypeMissing, envTaskMissing, envType, installedEnvSet, conflictProcess]);
+  }, [noLocalCheckpoint, envTypeMissing, envTaskMissing, envType, installedEnvSet, conflictProcess]);
 
-  const evalReady = evalBlockers.length === 0 && preflightOk;
+  const evalReady = configBlockers.length === 0 && preflightOk;
   const preflightFixLabel = preflightAction === "install_python_dep" ? "Install Missing Packages" : "Run Fix";
   const selectedEnv = envTypes.find((e) => e.type === envType);
   // Stats (for chart results)
@@ -386,23 +384,15 @@ export function Evaluation() {
             action={<RefreshButton onClick={() => { void refreshPreflight(); }} />}
           />
 
-          {/* Blockers */}
-          {!isRunning && !evalReady && evalBlockers.length > 0 && (
-            <BlockerCard
-              title="Evaluation Blocked"
-              severity="warning"
-              reasons={[
-                ...evalBlockers.map((b) => b),
-                ...(noLocalCheckpoint ? [{ text: "Go to Train", to: "/training" }] : []),
-              ]}
-            />
-          )}
-
-          {/* Preflight action buttons (unified — no inline card below) */}
+          {/* System blocker — preflight / install issues */}
           {!isRunning && !preflightOk && (
-            <div className="flex flex-col gap-2.5 px-4 py-3 rounded-lg border border-amber-500/30 bg-amber-500/5">
-              {preflightAction === "install_torch_cuda" && (
-                <div className="flex gap-2">
+            <div className="flex flex-col gap-2.5 px-3 py-2.5 rounded-lg border border-amber-500/30 bg-amber-500/5">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={13} className="text-amber-600 dark:text-amber-400 flex-none" />
+                <span className="text-sm text-amber-600 dark:text-amber-400">{preflightReason || "Device preflight failed"}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {preflightAction === "install_torch_cuda" && (
                   <button
                     onClick={() => { void installCudaTorch(); }}
                     disabled={installing}
@@ -410,10 +400,8 @@ export function Evaluation() {
                   >
                     {installing ? "Installing..." : "Install CUDA PyTorch (Nightly)"}
                   </button>
-                </div>
-              )}
-              {preflightAction === "install_python_dep" && preflightCommand && (
-                <div className="flex items-center gap-2">
+                )}
+                {preflightAction === "install_python_dep" && preflightCommand && (
                   <button
                     onClick={() => { void runPreflightFix(); }}
                     disabled={installing}
@@ -421,18 +409,8 @@ export function Evaluation() {
                   >
                     {installing ? "Installing..." : preflightFixLabel}
                   </button>
-                  {installing && (
-                    <button
-                      onClick={stopInstallProcess}
-                      className="px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                      Stop
-                    </button>
-                  )}
-                </div>
-              )}
-              {preflightCommand && preflightAction !== "install_torch_cuda" && preflightAction !== "install_python_dep" && (
-                <div className="flex items-center gap-2">
+                )}
+                {preflightCommand && preflightAction !== "install_torch_cuda" && preflightAction !== "install_python_dep" && (
                   <button
                     onClick={() => { void runPreflightFix(); }}
                     disabled={installing}
@@ -440,23 +418,42 @@ export function Evaluation() {
                   >
                     {installing ? "Installing..." : "Run Fix"}
                   </button>
-                </div>
-              )}
-              {installing && (
-                <div className="flex items-center gap-2 text-sm text-zinc-400">
-                  <Loader2 size={12} className="animate-spin" />
-                  <span>Fix in progress… check console for details</span>
-                </div>
-              )}
-              {!installing && (
-                <button
-                  onClick={() => { setDeviceLabel("CPU"); void refreshPreflight(); }}
-                  className="text-sm text-zinc-400 hover:text-zinc-300 transition-colors cursor-pointer self-start"
-                >
-                  → Switch to CPU instead
-                </button>
-              )}
+                )}
+                {installing && (
+                  <button
+                    onClick={stopInstallProcess}
+                    className="px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 text-xs cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    Stop
+                  </button>
+                )}
+                {installing && (
+                  <span className="flex items-center gap-1.5 text-sm text-zinc-400">
+                    <Loader2 size={12} className="animate-spin" /> Fix in progress…
+                  </span>
+                )}
+                {!installing && (
+                  <button
+                    onClick={() => { setDeviceLabel("CPU"); void refreshPreflight(); }}
+                    className="text-sm text-zinc-400 hover:text-zinc-300 transition-colors cursor-pointer"
+                  >
+                    → Switch to CPU instead
+                  </button>
+                )}
+              </div>
             </div>
+          )}
+
+          {/* Config blocker — missing inputs */}
+          {!isRunning && configBlockers.length > 0 && (
+            <BlockerCard
+              title="Configuration"
+              severity="warning"
+              reasons={[
+                ...configBlockers.map((b) => b),
+                ...(noLocalCheckpoint ? [{ text: "Go to Train", to: "/training" }] : []),
+              ]}
+            />
           )}
 
 
@@ -987,8 +984,10 @@ export function Evaluation() {
               {" "}· Success: <span className={cn("font-mono", (computedSuccessRate ?? 0) >= 60 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{computedSuccessRate ?? "—"}%</span>
             </span>
           )}
-          {!isRunning && !hasResults && !evalReady && evalBlockers.length > 0 && (
-            <span className="text-sm text-zinc-400 truncate">{evalBlockers[0]}</span>
+          {!isRunning && !hasResults && !evalReady && (
+            <span className="text-sm text-zinc-400 truncate">
+              {!preflightOk ? (preflightReason || "Device preflight failed") : configBlockers[0]}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">
