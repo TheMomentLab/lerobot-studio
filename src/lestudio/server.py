@@ -12,8 +12,10 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+from starlette.types import Scope
 
 from lestudio._logging import configure_logging
 from lestudio._auth import TokenAuthMiddleware, generate_token
@@ -24,6 +26,33 @@ from lestudio import device_registry
 
 logger = logging.getLogger(__name__)
 configure_logging()
+
+
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: Scope):
+        try:
+            response = await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404:
+                raise
+            response = None
+
+        if response is not None and response.status_code != 404:
+            return response
+
+        normalized = path.lstrip("/")
+        top_level = normalized.split("/", 1)[0]
+        if top_level in {"api", "ws"}:
+            if response is not None:
+                return response
+            raise StarletteHTTPException(status_code=404)
+
+        if Path(normalized).suffix:
+            if response is not None:
+                return response
+            raise StarletteHTTPException(status_code=404)
+
+        return await super().get_response("index.html", scope)
 # ─── nvidia pip 패키지의 .so를 LD_LIBRARY_PATH에 자동 추가 ─────────────────
 def _patch_nvidia_lib_path():
     existing = os.environ.get("LD_LIBRARY_PATH", "")
@@ -95,7 +124,6 @@ def create_app(
 
     STATIC_DIR = Path(__file__).parent / "static"
     CONFIG_PATH = config_dir / "config.json"
-    PROFILES_DIR = config_dir / "profiles"
     FALLBACK_RULES_PATH = config_dir / "99-lerobot.rules"
     HISTORY_PATH = config_dir / "history.json"
     HISTORY_MAX = 200
@@ -129,7 +157,6 @@ def create_app(
         proc_mgr=None,  # type: ignore[arg-type]  # set below
         config_path=CONFIG_PATH,
         config_dir=config_dir,
-        profiles_dir=PROFILES_DIR,
         rules_path=rules_path,
         fallback_rules_path=FALLBACK_RULES_PATH,
         history_path=HISTORY_PATH,
@@ -157,6 +184,5 @@ def create_app(
 
     # ─── Static + Root ─────────────────────────────────────────────────────────
     # Vite builds assets to STATIC_DIR with root-relative paths (/assets/...)
-    # Mount at "/" with html=True so /assets/* resolves and SPA fallback works.
-    app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+    app.mount("/", SPAStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
     return app

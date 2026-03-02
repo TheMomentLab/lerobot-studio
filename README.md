@@ -45,7 +45,6 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 ### General
 - **Global Console Drawer**: Unified stdout/stderr stream and stdin routing per process.
 - **Error Translation**: CLI stderr patterns → user-friendly guidance messages.
-- **Profiles**: Save/load/import/export/delete full configuration profiles.
 - **Session History**: Timeline of recording, training, and evaluation events.
 - **Desktop Notifications**: Browser notifications on process completion or error.
 - **Guided/Advanced Modes**: Guided mode for step-by-step setup; Advanced mode unlocks all tabs.

@@ -132,7 +132,13 @@ def create_router(state: AppState) -> APIRouter:
                 return Response(content=frame, media_type="image/jpeg",
                                 headers={"Cache-Control": "no-store"})
 
-        return Response(status_code=503)
+        return Response(
+            status_code=503,
+            headers={
+                "Cache-Control": "no-store",
+                "Retry-After": "1",
+            },
+        )
     # ─── Camera Stats ──────────────────────────────────────────────────────────
     @router.get("/api/camera/stats")
     def api_camera_stats():

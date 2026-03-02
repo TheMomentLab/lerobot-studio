@@ -176,7 +176,47 @@ DoD 검증 근거 (2026-03-02):
 - Section 8 cutover gate 전 항목 [x] 상태와 빌드/리허설 증적 동기화 완료
 - `wireframe_test/DESIGN_GUIDE.md` 20장(컷오버 문서 연계) 추가로 유지보수 규칙 문서화
 
-## 10) 사용 방법
+## 10) 카드 스타일 일관성 전수조사 (2026-03-02)
+
+기준:
+
+- 기준 규칙: `docs/wireframe/spec.md`의 **3.8 페이지 공통 레이아웃 규칙 (카드 적용 기준)**
+- raw card wrapper 판정 문자열(정규 기준): `rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden`
+- 조사 대상: `frontend/src/app/pages/*.tsx` 9개 페이지
+
+정량 결과:
+
+- raw card wrapper(정규 기준) 총 31건
+- 페이지별 분포: Training 6, Evaluation 5, SystemStatus 5, MotorSetup 5, DatasetManagement 5, CameraSetup 2, Recording 1, Teleop 1, Calibration 1
+- 공유 `Card` 컴포넌트 사용: Calibration 3건, MotorSetup 3건
+- 카드 계열 컨테이너 총계(raw wrapper + `Card`) 37건
+- `BlockerCard` 사용: 5개 페이지 7건 (Training/Teleop/Recording/Calibration/MotorSetup)
+
+페이지별 판정:
+
+| 페이지 | 판정 | 근거 |
+| --- | --- | --- |
+| `Training.tsx` | PASS | 메인 학습 설정 카드 유지 (`frontend/src/app/pages/Training.tsx:650`) + 보조 카드 일관 |
+| `Evaluation.tsx` | PASS | 메인 평가 설정 카드 유지 (`frontend/src/app/pages/Evaluation.tsx:383`), 독립 패널 카드 패턴 일관 |
+| `SystemStatus.tsx` | PASS | 핵심 패널은 카드, 상단 verdict는 유틸 스트립로 분리 (`frontend/src/app/pages/SystemStatus.tsx:98`, `frontend/src/app/pages/SystemStatus.tsx:111`) |
+| `DatasetManagement.tsx` | PASS | 목록/상세/패널 단위 카드 경계 일관 (`frontend/src/app/pages/DatasetManagement.tsx:1349`) |
+| `CameraSetup.tsx` | PASS | 장치/카메라 주요 블록 카드 유지 (`frontend/src/app/pages/CameraSetup.tsx:261`, `frontend/src/app/pages/CameraSetup.tsx:316`) |
+| `Teleop.tsx` | PASS (의도적 Mixed) | 서브탭 내부 입력폼 비카드(`frontend/src/app/pages/Teleop.tsx:273`), 카메라 설정은 카드(`frontend/src/app/pages/Teleop.tsx:329`) |
+| `Recording.tsx` | PASS (의도적 Mixed) | 계획/디바이스 입력폼 비카드(`frontend/src/app/pages/Recording.tsx:337`, `frontend/src/app/pages/Recording.tsx:377`), 카메라 설정 카드(`frontend/src/app/pages/Recording.tsx:430`) |
+| `MotorSetup.tsx` | REVIEW | **동시에 보이는** 동일 레벨 패널에서 shared `Card` + raw card wrapper 혼용 (`frontend/src/app/pages/MotorSetup.tsx:1213`, `frontend/src/app/pages/MotorSetup.tsx:762`) |
+| `Calibration.tsx` | REVIEW | **동시에 보이는** 동일 레벨 패널에서 shared `Card` + raw card wrapper 혼용 (`frontend/src/app/pages/Calibration.tsx:372`, `frontend/src/app/pages/Calibration.tsx:509`) |
+
+우선순위 개선 권고:
+
+1. **P1 (일관성 핵심)**: `MotorSetup`, `Calibration`의 동일 레벨 패널 컨테이너를 `Card` 중심으로 수렴하거나, raw wrapper 유지 시 예외 규칙을 페이지 상단 주석/문서에 명시.
+2. **P2 (확장성)**: 신규/대규모 수정 페이지는 독립 패널에 raw wrapper 추가 대신 `components/wireframe`의 `Card` 우선 사용.
+3. **P3 (디자인 안정성)**: 비카드 폼은 서브탭 내부 연속 입력 흐름에만 제한하고, 메인 설정 블록은 카드 유지 원칙 고수.
+
+판정 주의사항:
+
+- Mixed 판정은 상호 배타적 탭 상태 간 차이가 아니라, **동일 뷰포트 상태에서 동시에 노출되는 sibling 패널** 혼용일 때만 적용한다.
+
+## 11) 사용 방법
 
 - 기능을 추가/수정할 때마다 2번(매핑)과 6번(탭별 기준)을 먼저 업데이트한다.
 - 디자인 리뷰 전에는 3번/4번을 체크하고, 개발 착수 전에는 5번 런타임 계약을 확정한다.

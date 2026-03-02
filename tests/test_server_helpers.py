@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from lestudio._cors import _parse_cors_origins
-from lestudio._config_helpers import _is_valid_profile_name
 from lestudio._udev_helpers import _build_rules, _parse_udev_rules, _manual_udev_install_commands
 from lestudio._train_helpers import (
     _ensure_non_interactive_conda_args,
@@ -22,12 +21,6 @@ def test_parse_cors_origins_handles_empty_and_csv():
     assert _parse_cors_origins(None) == []
     assert _parse_cors_origins("https://a.com, http://b.local ") == ["https://a.com", "http://b.local"]
 
-
-def test_is_valid_profile_name():
-    assert _is_valid_profile_name("default")
-    assert _is_valid_profile_name("my-profile_1")
-    assert not _is_valid_profile_name("../bad")
-    assert not _is_valid_profile_name("white space")
 
 
 def test_build_rules_contains_camera_and_arm_rules(tmp_path: Path):

@@ -29,7 +29,6 @@ It replaces the CLI-heavy LeRobot workflow with a browser-based interface that r
 
 ### General
 - **Global Console Drawer** — Unified stdout/stderr stream and stdin routing per process.
-- **Profiles** — Save/load/import/export/delete full configuration profiles.
 - **Dark/Light Theme** — CSS variable-based theme toggle.
 - **Responsive Layout** — Desktop sidebar, tablet icon rail, mobile drawer.
 

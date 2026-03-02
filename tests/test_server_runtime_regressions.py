@@ -126,6 +126,7 @@ def test_snapshot_camera_returns_503_when_frame_unavailable(monkeypatch, tmp_pat
     response = asyncio.run(endpoint("video0"))
 
     assert response.status_code == 503
+    assert response.headers.get("retry-after") == "1"
 
 
 def test_train_preflight_cache_is_used_and_invalidated(monkeypatch, tmp_path: Path):

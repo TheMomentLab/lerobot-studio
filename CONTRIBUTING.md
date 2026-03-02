@@ -30,6 +30,10 @@ cd frontend
 npm run dev
 ```
 
+Restart guidance (what to restart after frontend/backend changes):
+
+- See `docs/developer-manual.md`
+
 ## Non-Negotiable Architecture Rule
 
 Do not import `lerobot.*` outside these 4 adapter files:

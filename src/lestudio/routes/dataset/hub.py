@@ -251,8 +251,107 @@ def register_routes(router: APIRouter, state: AppState):
             return result
         except ImportError:
             return {"ok": False, "username": None, "error": "huggingface_hub_not_installed"}
-        except Exception:
+        except Exception as e:
+            status_code: int | None = None
+            response = getattr(e, "response", None)
+            msg = str(e).lower()
+            if response is not None:
+                status_raw = getattr(response, "status_code", None)
+                if isinstance(status_raw, int):
+                    status_code = status_raw
+
+            if status_code in (401, 403):
+                if (
+                    "expired" in msg
+                    or "expiration" in msg
+                    or "has expired" in msg
+                ):
+                    return {"ok": False, "username": None, "error": "expired_token"}
+                return {"ok": False, "username": None, "error": "invalid_token"}
+
+            if (
+                "401" in msg
+                or "403" in msg
+                or "unauthorized" in msg
+                or "forbidden" in msg
+                or "invalid token" in msg
+            ):
+                if "expired" in msg or "expiration" in msg or "has expired" in msg:
+                    return {"ok": False, "username": None, "error": "expired_token"}
+                return {"ok": False, "username": None, "error": "invalid_token"}
+
+            if (
+                "timed out" in msg
+                or "timeout" in msg
+                or "connection" in msg
+                or "network" in msg
+                or "temporary failure" in msg
+                or "name resolution" in msg
+                or "503" in msg
+                or "502" in msg
+                or "504" in msg
+            ):
+                return {"ok": False, "username": None, "error": "network_error"}
+
             return {"ok": False, "username": None, "error": "auth_failed"}
+
+    # ─── My Hub Datasets ───────────────────────────────────────────────────────
+    @router.get("/api/hf/my-datasets")
+    def api_hf_my_datasets(limit: int = 50):
+        """Return datasets owned by the authenticated HF user."""
+        token, _ = _resolve_hf_token()
+        if not token:
+            return {"ok": False, "error": "no_token", "datasets": []}
+
+        try:
+            hub_mod = __import__("huggingface_hub")
+            whoami = getattr(hub_mod, "whoami")
+            list_datasets = getattr(hub_mod, "list_datasets")
+        except ImportError:
+            return {"ok": False, "error": "huggingface_hub is not installed", "datasets": []}
+
+        try:
+            info = whoami(token=token)
+            username = info.get("name") if isinstance(info, dict) else None
+            if not username:
+                return {"ok": False, "error": "no_username", "datasets": []}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "datasets": []}
+
+        local_root = Path.home() / ".cache" / "huggingface" / "lerobot"
+        limit = max(1, min(limit, 200))
+        try:
+            results = []
+            for ds in list_datasets(author=username, limit=limit, full=False):
+                repo_id = ds.id
+                local_path = local_root / repo_id
+                local_sync = local_path.exists()
+                # estimate local size
+                size_str = ""
+                if local_sync:
+                    try:
+                        total_bytes = sum(f.stat().st_size for f in local_path.rglob("*") if f.is_file())
+                        if total_bytes >= 1_073_741_824:
+                            size_str = f"{total_bytes / 1_073_741_824:.1f} GB"
+                        elif total_bytes >= 1_048_576:
+                            size_str = f"{total_bytes / 1_048_576:.0f} MB"
+                        else:
+                            size_str = f"{total_bytes / 1024:.0f} KB"
+                    except Exception:
+                        size_str = ""
+                last_mod = getattr(ds, "last_modified", None)
+                modified_str = str(last_mod)[:10] if last_mod else ""
+                results.append({
+                    "id": repo_id,
+                    "downloads": getattr(ds, "downloads", 0) or 0,
+                    "likes": getattr(ds, "likes", 0) or 0,
+                    "size": size_str,
+                    "modified": modified_str,
+                    "local_sync": local_sync,
+                })
+            return {"ok": True, "username": username, "datasets": results}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "datasets": []}
 
     # ─── Hub Search / Download ─────────────────────────────────────────────────
     @router.get("/api/hub/datasets/search")

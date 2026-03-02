@@ -1,9 +1,8 @@
-"""Config and profile management helpers."""
+"""Config management helpers."""
 from __future__ import annotations
 
 import json
 import logging
-import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -38,7 +37,6 @@ DEFAULT_CONFIG = {
     "record_episodes": 50,
     "record_repo_id":  "user/my-dataset",
     "record_resume":   False,
-    "profile_name":    "default",
     "train_dataset_source": "local",
     "train_output_repo": "",
     "process_view_url": "",
@@ -68,36 +66,3 @@ def _save_config(config_path: Path, cfg: dict):
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(cfg, indent=2))
 
-
-def _is_valid_profile_name(name: str) -> bool:
-    return re.fullmatch(r"[A-Za-z0-9._-]+", name or "") is not None
-
-
-def _profile_path(profiles_dir: Path, name: str) -> Path:
-    return profiles_dir / f"{name}.json"
-
-
-def _list_profiles(profiles_dir: Path) -> list[str]:
-    if not profiles_dir.exists():
-        return []
-    names = []
-    for p in profiles_dir.glob("*.json"):
-        if p.is_file():
-            names.append(p.stem)
-    return sorted(names)
-
-
-def _load_profile(profiles_dir: Path, name: str) -> dict | None:
-    path = _profile_path(profiles_dir, name)
-    if not path.exists():
-        return None
-    try:
-        data = json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return None
-    return {**DEFAULT_CONFIG, **data}
-
-
-def _save_profile(profiles_dir: Path, name: str, cfg: dict):
-    profiles_dir.mkdir(parents=True, exist_ok=True)
-    _profile_path(profiles_dir, name).write_text(json.dumps(cfg, indent=2))

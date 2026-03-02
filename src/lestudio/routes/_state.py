@@ -36,7 +36,6 @@ class AppState:
     proc_mgr: ProcessManager
     config_path: Path
     config_dir: Path
-    profiles_dir: Path
     rules_path: Path
     fallback_rules_path: Path
     history_path: Path

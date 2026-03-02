@@ -39,13 +39,6 @@ class CameraPathsRequest(BaseModel):
     paths: list[str] = Field(default_factory=list)
 
 
-# ─── Config / Profile endpoints ────────────────────────────────────────────
-
-class ProfileImportRequest(BaseModel):
-    """Body for POST /api/profiles-import — imports a named config profile."""
-    name: str = Field(description="Profile name (alphanumeric, hyphens, underscores)")
-    config: dict[str, Any] = Field(default_factory=dict)
-
 
 # ─── HF Token ──────────────────────────────────────────────────────────────
 
