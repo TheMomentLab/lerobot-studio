@@ -20,7 +20,6 @@
 - `dataset-feature-adoption-plan.md` — Dataset 고도화 기능 도입 실행 계획
 - `INDEX.md` — Active/Archive 문서 인덱스 + 소스 오브 트루스
 - `refactoring-plan.md` — 코드 품질 개선 리팩토링 계획
-
 - `plan_mobile.md` — 모바일 앱 제품 전략
 - `release-checklist.md` — 릴리즈 코드 품질 게이트 체크리스트
 - `license-audit-lerobot-ws-2026-02-26.md` — lerobot_ws OSS 라이선스 스냅샷 (2026-02-26)
