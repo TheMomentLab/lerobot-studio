@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router";
-import { Trash2, Ruler, AlertTriangle, Play, Bot } from "lucide-react";
+import { Trash2, Ruler, AlertTriangle, Play, Square, Bot } from "lucide-react";
 import {
   PageHeader, Card, SectionHeader, WireSelect, WireInput, FieldRow,
   ProcessButtons, ModeToggle, StatusBadge, EmptyState, StickyControlBar, BlockerCard, RefreshButton
@@ -439,13 +439,25 @@ export function Calibration() {
                     </>
                   )}
 
-                  <ProcessButtons
-                    running={running}
-                    onStart={() => { void handleStart(); }}
-                    onStop={() => { void handleStop(); }}
-                    startLabel={<><Play size={13} className="fill-current" /> Start Calibration</>}
-                    disabled={typeMismatch || blocked}
-                  />
+                  <div className="flex justify-end">
+                    {!running ? (
+                      <button
+                        type="button"
+                        onClick={() => { void handleStart(); }}
+                        disabled={typeMismatch || blocked}
+                        className={`px-4 py-2 rounded border text-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${typeMismatch || blocked ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+                      >
+                        <Play size={13} className="fill-current" /> Start Calibration
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => { void handleStop(); }}
+                        className="px-4 py-2 rounded border border-red-500/30 text-sm text-red-500 hover:bg-red-500/10 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                      >
+                        <Square size={11} className="fill-current" /> Stop
+                      </button>
+                    )}
                 </div>
               </Card>
 
@@ -488,7 +500,7 @@ export function Calibration() {
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); void handleDeleteFile(f); }}
-                        className="p-1 text-zinc-300 dark:text-zinc-600 hover:text-red-400 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 cursor-pointer"
+                        className="p-1 text-zinc-300 dark:text-zinc-600 hover:text-red-400 cursor-pointer"
                       >
                         <Trash2 size={12} />
                       </button>

@@ -191,23 +191,6 @@ export function CameraSetup() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <Link to="/" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          ← System Status
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-300 dark:text-zinc-600">System Status</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">Camera Setup</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/motor-setup" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Motor Setup</Link>
-        </div>
-        <Link to="/motor-setup" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Motor Setup →
-        </Link>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
@@ -328,11 +311,10 @@ export function CameraSetup() {
                 return (
                 <div key={cam.device}>
                   {/* Camera row */}
-                  <div className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/50 last:border-0">
+                  <div onClick={() => togglePreview(cam.device)} className="flex items-center gap-4 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors border-b border-zinc-100 dark:border-zinc-800/50 last:border-0 cursor-pointer">
                     {/* Camera icon — click to toggle preview */}
                     <div
-                      onClick={() => togglePreview(cam.device)}
-                      className={`size-12 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-none cursor-pointer overflow-hidden relative group${dimmed ? " opacity-40" : ""}`}
+                      className={`size-12 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-none overflow-hidden relative group${dimmed ? " opacity-40" : ""}`}
                     >
                       {activePreviews[cam.device] ? (
                         <WireBox className="absolute inset-0 border-0 rounded-none text-[8px]" label="LIVE" />
@@ -348,7 +330,7 @@ export function CameraSetup() {
                     </div>
 
                     {/* Role selection */}
-                    <div className="w-44 flex-none">
+                    <div className="w-44 flex-none" onClick={(e) => e.stopPropagation()}>
                       <WireSelect
                         value={labelForRole(role)}
                         options={CAMERA_ROLES.map(labelForRole)}

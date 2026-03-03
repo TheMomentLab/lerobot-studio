@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import {
   PageHeader, StatusBadge, FieldRow, WireSelect, WireInput,
-  ProcessButtons, StickyControlBar, WireToggle, Chip, BlockerCard, RefreshButton,
+  ProcessButtons, StickyControlBar, WireToggle, Chip, BlockerCard, RefreshButton, ModeToggle,
 } from "../components/wireframe";
 import { useHfAuth } from "../hf-auth-context";
 import { cn } from "../components/ui/utils";
@@ -122,13 +122,28 @@ const STARTING_STEPS = [
   { label: "Starting Training Loop", delay: 200 },
 ];
 
+type LossTooltipEntry = {
+  value?: number;
+};
+
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: LossTooltipEntry[];
+  label?: number | string;
+}) {
   if (!active || !payload?.length) return null;
+  const loss = payload[0]?.value;
+  if (typeof loss !== "number") return null;
+
   return (
     <div className="px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-mono shadow-xl">
       <div className="text-zinc-400 mb-1">Step {label?.toLocaleString()}</div>
-      <div className="text-zinc-800 dark:text-zinc-200">loss: {payload[0]?.value?.toFixed(5)}</div>
+      <div className="text-zinc-800 dark:text-zinc-200">loss: {loss.toFixed(5)}</div>
     </div>
   );
 }
@@ -459,12 +474,6 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
   }, [completed, refreshCheckpoints]);
 
   useEffect(() => {
-    if (colabRepoId) return;
-    if (!selectedRepoId || !selectedRepoId.includes("/")) return;
-    setColabRepoId(selectedRepoId);
-  }, [colabRepoId, selectedRepoId]);
-
-  useEffect(() => {
     const poll = async () => {
       const response = await apiGet<DatasetResponse>("/api/datasets");
       const next = (response.datasets ?? [])
@@ -601,23 +610,6 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <Link to="/dataset" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          ← Dataset
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-300 dark:text-zinc-600">Dataset</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">Training</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/evaluation" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Evaluation</Link>
-        </div>
-        <Link to="/evaluation" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Evaluation →
-        </Link>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
 
@@ -686,13 +678,11 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     {/* Policy Type */}
                     <div className="md:pr-4">
                       <div className="text-sm text-zinc-500 mb-1.5">Policy Type</div>
-                      <select
+                      <WireSelect
                         value={policyType}
-                        onChange={(e) => setPolicyType(e.target.value)}
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
-                      >
-                        {POLICY_TYPES.map((p) => <option key={p} value={p}>{p}</option>)}
-                      </select>
+                        options={POLICY_TYPES}
+                        onChange={setPolicyType}
+                      />
                     </div>
 
                     {/* Vertical divider */}
@@ -702,31 +692,14 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     <div className="md:pl-4">
                       <div className="text-sm text-zinc-500 mb-1.5">Dataset</div>
                       <div className="flex items-center gap-1.5">
-                        <div className="flex gap-0.5 p-0.5 rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800/30 flex-none">
-                          <button
-                            onClick={() => setDatasetSource("local")}
-                            className={cn("px-2 py-1 rounded text-sm transition-colors cursor-pointer leading-none",
-                              datasetSource === "local"
-                                ? "bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 shadow-sm"
-                                : "text-zinc-400 hover:text-zinc-500"
-                            )}
-                          >
-                            Local
-                          </button>
-                          <button
-                            onClick={() => { if (hfAuth === "ready") setDatasetSource("hf"); }}
-                            className={cn("px-2 py-1 rounded text-sm transition-colors leading-none flex items-center gap-1",
-                              datasetSource === "hf" && hfAuth === "ready"
-                                ? "bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-200 shadow-sm cursor-pointer"
-                                : "text-zinc-400 hover:text-zinc-500 cursor-pointer",
-                              hfAuth !== "ready" && "opacity-40 cursor-not-allowed"
-                            )}
-                            title={hfAuth !== "ready" ? "HF token required — configure in header" : "Load dataset from Hugging Face Hub"}
-                          >
-                            {hfAuth !== "ready" && <Lock size={10} />}
-                            HF
-                          </button>
-                        </div>
+                        <ModeToggle
+                          options={["Local", "HF"]}
+                          value={datasetSource === "local" ? "Local" : "HF"}
+                          onChange={(v) => {
+                            if (v === "HF" && hfAuth !== "ready") return;
+                            setDatasetSource(v === "Local" ? "local" : "hf");
+                          }}
+                        />
                         <div className="flex-1 min-w-0">
                           {datasetSource === "local" ? (
                             <WireSelect
@@ -747,13 +720,11 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     {/* Compute Device */}
                     <div className="md:pr-4">
                       <div className="text-sm text-zinc-500 mb-1.5">Compute Device</div>
-                      <select
+                      <WireSelect
                         value={device}
-                        onChange={(e) => setDevice(e.target.value)}
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
-                      >
-                        {["CUDA (GPU)", "CPU", "MPS (Apple Silicon)"].map((d) => <option key={d} value={d}>{d}</option>)}
-                      </select>
+                        options={["CUDA (GPU)", "CPU", "MPS (Apple Silicon)"]}
+                        onChange={setDevice}
+                      />
                       {device === "MPS (Apple Silicon)" && (
                         <p className="text-sm text-amber-600 dark:text-amber-400 mt-1">⚠ Colab automatically uses CUDA.</p>
                       )}
@@ -766,26 +737,19 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                     <div className="md:pl-4">
                       <div className="text-sm text-zinc-500 mb-1.5">Training Steps</div>
                       <div className="flex items-center gap-2">
-                        <div className="flex gap-1">
-                          {(Object.entries(PRESETS) as [PresetKey, typeof PRESETS[PresetKey]][]).map(([key, p]) => (
-                            <button
-                              key={key}
-                              onClick={() => handlePreset(key)}
-                              className={cn("px-2.5 py-1.5 rounded border text-sm transition-colors cursor-pointer",
-                                preset === key
-                                  ? "border-zinc-900 dark:border-zinc-100 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium shadow-sm"
-                                  : "border-zinc-200 dark:border-zinc-700 text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600"
-                              )}
-                            >
-                              {p.label} ({p.tag})
-                            </button>
-                          ))}
-                        </div>
+                        <ModeToggle
+                          options={Object.values(PRESETS).map((p) => `${p.label} (${p.tag})`)}
+                          value={`${PRESETS[preset].label} (${PRESETS[preset].tag})`}
+                          onChange={(v) => {
+                            const key = (Object.entries(PRESETS) as [PresetKey, typeof PRESETS[PresetKey]][]).find(([, p]) => `${p.label} (${p.tag})` === v)?.[0];
+                            if (key) handlePreset(key);
+                          }}
+                        />
                         <input
                           type="number"
                           value={customSteps}
                           onChange={(e) => { setCustomSteps(Number(e.target.value)); setPreset("standard"); }}
-                          className="w-24 h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none font-mono focus:border-blue-500 dark:focus:border-blue-400"
+                          className="w-24 h-9 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm font-mono outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                         />
                       </div>
                     </div>
@@ -808,7 +772,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                               type="text"
                               value={lrValue}
                               onChange={(e) => setLrValue(e.target.value)}
-                              className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none font-mono focus:border-blue-500 dark:focus:border-blue-400"
+                              className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm font-mono outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                             />
                           </FieldRow>
                         </div>
@@ -823,10 +787,10 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                                 placeholder="username/model-name (optional)"
                                 disabled={hfAuth !== "ready"}
                                 className={cn(
-                                  "w-full h-7 px-2 rounded border text-sm outline-none placeholder:text-zinc-500 focus:border-blue-500 dark:focus:border-blue-400",
+                                  "w-full h-9 px-3 py-2 rounded-lg border text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all",
                                   hfAuth !== "ready"
                                     ? "border-amber-500/30 bg-amber-500/5 text-zinc-400 cursor-not-allowed"
-                                    : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300"
+                                    : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200"
                                 )}
                               />
                               {hfAuth !== "ready" && (

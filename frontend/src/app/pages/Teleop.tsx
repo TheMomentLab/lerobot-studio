@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { Link } from "react-router";
-import { ChevronDown, ChevronUp, Play, Pause, Loader2, CheckCircle2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Play, Pause, Loader2, CheckCircle2, Camera } from "lucide-react";
 import { cn } from "../components/ui/utils";
 import { apiGet, apiPost } from "../services/apiClient";
 import { useLeStudioStore } from "../store";
@@ -18,8 +18,8 @@ import {
 } from "../services/notifications";
 import {
   PageHeader, StatusBadge, WireSelect,
-  FieldRow, ProcessButtons, ModeToggle, StickyControlBar,
-  WireBox, BlockerCard, RefreshButton,
+  FieldRow, ProcessButtons, ModeToggle, StickyControlBar, SubTabs,
+  WireBox, BlockerCard, RefreshButton, EmptyState,
 } from "../components/wireframe";
 import { toVideoName, useCameraFeeds } from "../hooks/useCameraFeeds";
 
@@ -36,7 +36,6 @@ type CameraStatsResponse = {
   cameras?: Record<string, { fps: number; mbps: number }>;
 };
 
-type CameraCheckResponse = Record<string, boolean>;
 
 type DevicesResponse = {
   cameras: Array<{ device: string; path: string; kernels: string; symlink: string; model: string }>;
@@ -67,7 +66,6 @@ export function Teleop() {
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
   const [cameraStats, setCameraStats] = useState<Record<string, { fps: number; mbps: number }>>({});
-  const [cameraPathOk, setCameraPathOk] = useState<Record<string, boolean>>({});
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
   const [armPortOptions, setArmPortOptions] = useState<string[]>([]);
   const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
@@ -196,12 +194,6 @@ export function Teleop() {
       setSelectedLeaderId((prev) => (prev && leaders.includes(prev) ? prev : leaders[0] ?? ""));
       setSelectedBimanualId((prev) => (prev && bimanual.includes(prev) ? prev : bimanual[0] ?? ""));
 
-      if (mapped.length > 0) {
-        const pathCheck = await apiPost<CameraCheckResponse>("/api/camera/check_paths", {
-          paths: mapped.map((cam) => cam.path),
-        });
-        setCameraPathOk(pathCheck);
-      }
     };
     void run();
   }, [refreshKey]);
@@ -237,30 +229,12 @@ export function Teleop() {
     return () => clearInterval(timer);
   }, [phase]);
 
-  const validCameraCount = camerasMapped.filter((cam) => cameraPathOk[cam.path] !== false).length;
   const activeFpsValues = camerasMapped.map((cam) => cameraStats[cam.role]?.fps).filter((v): v is number => typeof v === "number");
   const avgFps = activeFpsValues.length > 0 ? activeFpsValues.reduce((sum, cur) => sum + cur, 0) / activeFpsValues.length : 30;
   const loopMs = Math.max(1, Math.round(1000 / avgFps));
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <Link to="/motor-setup" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          ← Motor Setup
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-300 dark:text-zinc-600">Motor Setup</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">Teleop</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/recording" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Recording</Link>
-        </div>
-        <Link to="/recording" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Recording →
-        </Link>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
@@ -282,39 +256,36 @@ export function Teleop() {
           {/* ─── IDLE: Sub-tabs for settings ─── */}
           {phase === "idle" && (
             <div className="flex flex-col gap-4">
-              <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit mx-auto">
-                {[
+              <SubTabs
+                tabs={[
                   { key: "motor", label: "Motor Setting" },
                   { key: "camera", label: "Camera Setting" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setTeleopTab(tab.key)}
-                    className={cn(
-                      "px-3.5 py-1.5 rounded-md text-sm font-medium transition-all",
-                      teleopTab === tab.key
-                        ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                        : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+                ]}
+                activeKey={teleopTab}
+                onChange={setTeleopTab}
+                className="mx-auto"
+              />
 
               {/* Motor Setting Tab */}
               {teleopTab === "motor" && (
-                <div className="flex flex-col gap-3">
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+                  <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Motor Configuration</span>
+                  </div>
+                  <div className="p-4 flex flex-col gap-3">
                   <p className="text-sm text-zinc-400">Select robot type and control method.</p>
-                  <FieldRow label="Robot Type">
-                    <WireSelect value="so101_follower" options={["so101_follower", "so100_follower", "aloha"]} />
-                  </FieldRow>
-                  <FieldRow label="Teleop Type">
-                    <WireSelect value="so101_leader" options={["so101_leader", "so100_leader", "keyboard"]} />
-                  </FieldRow>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                    <FieldRow label="Robot Type">
+                      <WireSelect value="so101_follower" options={["so101_follower", "so100_follower", "aloha"]} />
+                    </FieldRow>
+                    <FieldRow label="Teleop Type">
+                      <WireSelect value="so101_leader" options={["so101_leader", "so100_leader", "keyboard"]} />
+                    </FieldRow>
+                  </div>
 
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
                     <p className="text-sm text-zinc-400">Select device port to connect.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
                     {mode === "Single Arm" ? (
                       <>
                         <FieldRow label="Follower Port">
@@ -346,10 +317,12 @@ export function Teleop() {
                         ))}
                       </>
                     )}
+                    </div>
                   </div>
 
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
                     <p className="text-sm text-zinc-400">Select calibration profile.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
                     {mode === "Single Arm" ? (
                       <>
                         <FieldRow label="Follower ID">
@@ -379,8 +352,10 @@ export function Teleop() {
                         />
                       </FieldRow>
                     )}
+                    </div>
+                  </div>
                 </div>
-              </div>
+                </div>
               )}
 
               {/* Camera Setting Tab — settings above, preview below */}
@@ -390,10 +365,21 @@ export function Teleop() {
                   <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
                     <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                       <span className="text-sm text-zinc-500">Camera feed settings</span>
-                      <StatusBadge status={validCameraCount === camerasMapped.length ? "ready" : "warning"} label={`${validCameraCount}/${camerasMapped.length} available`} />
+                      <StatusBadge status="ready" label={`${camerasMapped.length} cameras`} />
                     </div>
                     <div className="p-4 flex flex-col gap-3">
-                      {camerasMapped.map((cam) => (
+                      {camerasMapped.length === 0 ? (
+                        <EmptyState
+                          icon={<Camera size={28} />}
+                          message={
+                            <>
+                              No camera mappings. First connect cameras in the{" "}
+                              <a href="/camera-setup" className="underline hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">Camera Setup</a> tab.
+                            </>
+                          }
+                          messageClassName="max-w-none"
+                        />
+                      ) : camerasMapped.map((cam) => (
                         <div key={cam.role} className="flex items-center gap-2 px-2 py-1.5 rounded border border-zinc-100 dark:border-zinc-800/50">
                           <span className="size-1.5 rounded-full bg-emerald-400 flex-none" />
                           <span className="text-sm text-zinc-600 dark:text-zinc-300 font-mono">{cam.role}</span>
@@ -430,7 +416,16 @@ export function Teleop() {
                   </div>
 
                   {/* Camera feed previews — compact thumbnails */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className={cn(
+                    "grid gap-2",
+                    camerasMapped.length === 1
+                      ? "grid-cols-1"
+                      : camerasMapped.length === 2
+                        ? "grid-cols-1 sm:grid-cols-2"
+                        : camerasMapped.length === 3
+                          ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+                          : "grid-cols-2 sm:grid-cols-4",
+                  )}>
                     {camerasMapped.map((cam) => {
                       const frameSrc = cameraFrames[cam.role];
                       return (
@@ -493,7 +488,7 @@ export function Teleop() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-zinc-400">Camera:</span>
-                  <StatusBadge status="running" label="2/2" />
+                  <StatusBadge status="running" label={`${camerasMapped.length}/${camerasMapped.length}`} />
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-zinc-400">Conflict:</span>
@@ -553,7 +548,7 @@ export function Teleop() {
                 <div className="ml-2 w-16 h-1 rounded-full bg-emerald-500/30">
                   <div className="h-full w-3/4 rounded-full bg-emerald-400" />
                 </div>
-                <span className="ml-auto text-sm text-zinc-500">{mode} · {speed} · {validCameraCount}/{camerasMapped.length} cams</span>
+                <span className="ml-auto text-sm text-zinc-500">{mode} · {speed} · {camerasMapped.length} cams</span>
               </div>
             </div>
           )}
@@ -571,7 +566,7 @@ export function Teleop() {
             />
             {running && (
               <span className="text-sm text-zinc-400">
-                {mode} · Loop 12ms
+                {mode} · Loop {loopMs}ms
               </span>
             )}
           </div>

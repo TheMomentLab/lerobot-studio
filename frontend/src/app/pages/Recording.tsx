@@ -14,7 +14,7 @@ import {
 } from "../services/contracts";
 import {
   PageHeader, StatusBadge, WireSelect, WireInput,
-  FieldRow, ModeToggle, StickyControlBar, WireBox, WireToggle, ProcessButtons,
+  FieldRow, ModeToggle, StickyControlBar, WireBox, WireToggle, ProcessButtons, SubTabs,
   BlockerCard, EmptyState, RefreshButton,
 } from "../components/wireframe";
 import { useHfAuth } from "../hf-auth-context";
@@ -77,6 +77,14 @@ export function Recording() {
   const { hfAuth } = useHfAuth();
   const [recordRepoId, setRecordRepoId] = useState(() => getConfigString(config, "record_repo_id", "lerobot-user/pick_cube_dataset"));
   const [recordTask, setRecordTask] = useState(() => getConfigString(config, "record_task", ""));
+  const [availableDatasets, setAvailableDatasets] = useState<string[]>([]);
+
+  useEffect(() => {
+    apiGet<{ datasets?: { id: string }[] }>("/api/datasets").then((res) => {
+      const ids = (res.datasets ?? []).map((d) => d.id).filter(Boolean);
+      setAvailableDatasets(ids);
+    }).catch(() => {});
+  }, []);
   const [resumeEnabled, setResumeEnabled] = useState(() => getConfigBool(config, "record_resume", false));
   const [pushToHub, setPushToHub] = useState(() => hfAuth === "ready" && getConfigBool(config, "record_push_to_hub", true));
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
@@ -306,23 +314,6 @@ export function Recording() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <Link to="/teleop" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          ← Teleop
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-300 dark:text-zinc-600">Teleop</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">Recording</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/dataset" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Dataset</Link>
-        </div>
-        <Link to="/dataset" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Dataset →
-        </Link>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
@@ -344,45 +335,56 @@ export function Recording() {
           {/* ─── IDLE: Sub-tabs for settings ─── */}
           {phase === "idle" && (
             <div className="flex flex-col gap-4">
-              <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit mx-auto">
-                {[
+              <SubTabs
+                tabs={[
                   { key: "plan", label: "Recording Plan" },
                   { key: "device", label: "Device" },
                   { key: "camera", label: "Camera" },
-                ].map((tab) => (
-                  <button
-                    key={tab.key}
-                    onClick={() => setRecTab(tab.key)}
-                    className={cn(
-                      "px-3.5 py-1.5 rounded-md text-sm font-medium transition-all",
-                      recTab === tab.key
-                        ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                        : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+                ]}
+                activeKey={recTab}
+                onChange={setRecTab}
+                className="mx-auto"
+              />
 
               {/* 녹화 계획 Tab */}
               {recTab === "plan" && (
-                <div className="flex flex-col gap-3">
-                  <FieldRow label="Number of Episodes">
-                    <input
-                      type="number"
-                      value={totalEps}
-                      onChange={(e) => setTotalEps(Math.max(1, Number(e.target.value) || 1))}
-                      className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none focus:border-blue-500 dark:focus:border-blue-400"
-                    />
-                  </FieldRow>
-                  <FieldRow label="Dataset Repo ID">
-                    <WireInput value={recordRepoId} onChange={setRecordRepoId} placeholder="username/dataset-name" />
-                  </FieldRow>
-                  <FieldRow label="Task Description">
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+                  <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Episode Settings</span>
+                  </div>
+                  <div className="p-4 flex flex-col gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <div className="text-sm text-zinc-500 mb-1.5">Number of Episodes</div>
+                      <input
+                        type="number"
+                        value={totalEps}
+                        onChange={(e) => setTotalEps(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-sm text-zinc-500 mb-1.5">Dataset Repo ID</div>
+                      {availableDatasets.length > 0 ? (
+                        <select
+                          value={recordRepoId}
+                          onChange={(e) => setRecordRepoId(e.target.value)}
+                          className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                        >
+                          {availableDatasets.map((id) => (
+                            <option key={id} value={id}>{id}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <WireInput value={recordRepoId} onChange={setRecordRepoId} placeholder="username/dataset-name" />
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-zinc-500 mb-1.5">Task Description</div>
                     <WireInput value={recordTask} onChange={setRecordTask} placeholder="Pick the red cube and place it..." />
-                  </FieldRow>
-                  <div className="flex flex-col gap-2.5 pt-1">
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 pt-1">
                     <div className="flex items-center gap-2">
                       <WireToggle label="Resume — continue recording to existing dataset" checked={resumeEnabled} onChange={setResumeEnabled} />
                     </div>
@@ -399,85 +401,97 @@ export function Recording() {
                       )}
                     </div>
                   </div>
+                  </div>
                 </div>
               )}
 
               {/* 디바이스 Tab */}
               {recTab === "device" && (
-                <div className="flex flex-col gap-3">
+                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
+                  <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Device Configuration</span>
+                  </div>
+                  <div className="p-4 flex flex-col gap-3">
                   <p className="text-sm text-zinc-400">Select robot type and control method.</p>
-                  <FieldRow label="Robot Type">
-                    <WireSelect value="so101_follower" options={["so101_follower", "so100_follower"]} />
-                  </FieldRow>
-                  <FieldRow label="Teleop Type">
-                    <WireSelect value="so101_leader" options={["so101_leader", "keyboard"]} />
-                  </FieldRow>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                    <FieldRow label="Robot Type">
+                      <WireSelect value="so101_follower" options={["so101_follower", "so100_follower"]} />
+                    </FieldRow>
+                    <FieldRow label="Teleop Type">
+                      <WireSelect value="so101_leader" options={["so101_leader", "keyboard"]} />
+                    </FieldRow>
+                  </div>
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
                     <p className="text-sm text-zinc-400">Select device ports to connect.</p>
-                    {mode === "Single Arm" ? (
-                      <>
-                        <FieldRow label="Follower Port">
-                          <WireSelect
-                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
-                            value={selectedFollowerPort}
-                            options={armPortOptions}
-                            onChange={setSelectedFollowerPort}
-                          />
-                        </FieldRow>
-                        <FieldRow label="Leader Port">
-                          <WireSelect
-                            placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
-                            value={selectedLeaderPort}
-                            options={armPortOptions}
-                            onChange={setSelectedLeaderPort}
-                          />
-                        </FieldRow>
-                      </>
-                    ) : (
-                      <>
-                        {["Left Follower", "Right Follower", "Left Leader", "Right Leader"].map((label) => (
-                          <FieldRow key={label} label={label}>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                      {mode === "Single Arm" ? (
+                        <>
+                          <FieldRow label="Follower Port">
                             <WireSelect
-                              placeholder={armPortOptions.length === 0 ? "No ports detected" : `${label} Port`}
+                              placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                              value={selectedFollowerPort}
                               options={armPortOptions}
+                              onChange={setSelectedFollowerPort}
                             />
                           </FieldRow>
-                        ))}
-                      </>
-                    )}
+                          <FieldRow label="Leader Port">
+                            <WireSelect
+                              placeholder={armPortOptions.length === 0 ? "No ports detected" : undefined}
+                              value={selectedLeaderPort}
+                              options={armPortOptions}
+                              onChange={setSelectedLeaderPort}
+                            />
+                          </FieldRow>
+                        </>
+                      ) : (
+                        <>
+                          {["Left Follower", "Right Follower", "Left Leader", "Right Leader"].map((label) => (
+                            <FieldRow key={label} label={label}>
+                              <WireSelect
+                                placeholder={armPortOptions.length === 0 ? "No ports detected" : `${label} Port`}
+                                options={armPortOptions}
+                              />
+                            </FieldRow>
+                          ))}
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-2">
                     <p className="text-sm text-zinc-400">Select calibration profile.</p>
-                    {mode === "Single Arm" ? (
-                      <>
-                        <FieldRow label="Follower ID">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                      {mode === "Single Arm" ? (
+                        <>
+                          <FieldRow label="Follower ID">
+                            <WireSelect
+                              placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
+                              value={selectedFollowerId}
+                              options={followerIdOptions}
+                              onChange={setSelectedFollowerId}
+                            />
+                          </FieldRow>
+                          <FieldRow label="Leader ID">
+                            <WireSelect
+                              placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
+                              value={selectedLeaderId}
+                              options={leaderIdOptions}
+                              onChange={setSelectedLeaderId}
+                            />
+                          </FieldRow>
+                        </>
+                      ) : (
+                        <FieldRow label="Robot ID">
                           <WireSelect
-                            placeholder={followerIdOptions.length === 0 ? "No calibration files" : undefined}
-                            value={selectedFollowerId}
-                            options={followerIdOptions}
-                            onChange={setSelectedFollowerId}
+                            placeholder={bimanualIdOptions.length === 0 ? "No calibration files" : undefined}
+                            value={selectedBimanualId}
+                            options={bimanualIdOptions}
+                            onChange={setSelectedBimanualId}
                           />
                         </FieldRow>
-                        <FieldRow label="Leader ID">
-                          <WireSelect
-                            placeholder={leaderIdOptions.length === 0 ? "No calibration files" : undefined}
-                            value={selectedLeaderId}
-                            options={leaderIdOptions}
-                            onChange={setSelectedLeaderId}
-                          />
-                        </FieldRow>
-                      </>
-                    ) : (
-                      <FieldRow label="Robot ID">
-                        <WireSelect
-                          placeholder={bimanualIdOptions.length === 0 ? "No calibration files" : undefined}
-                          value={selectedBimanualId}
-                          options={bimanualIdOptions}
-                          onChange={setSelectedBimanualId}
-                        />
-                      </FieldRow>
-                    )}
+                      )}
+                    </div>
                   </div>
+                </div>
                 </div>
               )}
 
@@ -534,7 +548,16 @@ export function Recording() {
                   </div>
 
                   {/* Compact thumbnails */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className={cn(
+                    "grid gap-2",
+                    camerasMapped.length === 1
+                      ? "grid-cols-1"
+                      : camerasMapped.length === 2
+                        ? "grid-cols-1 sm:grid-cols-2"
+                        : camerasMapped.length === 3
+                          ? "grid-cols-1 sm:grid-cols-2 xl:grid-cols-3"
+                          : "grid-cols-2 sm:grid-cols-4",
+                  )}>
                     {camerasMapped.map((cam) => {
                       const frameSrc = cameraFrames[cam.role];
                       return (

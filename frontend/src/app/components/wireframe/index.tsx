@@ -268,8 +268,10 @@ export function ProcessButtons({
     <div className={cn("flex items-center gap-2", className)}>
       {!running ? (
         <button
+          type="button"
           onClick={onStart}
           disabled={disabled}
+          aria-label={typeof startLabel === "string" ? startLabel : "Start process"}
           className={cn(
             btnBase,
             fullWidth && "w-full",
@@ -282,7 +284,9 @@ export function ProcessButtons({
         </button>
       ) : (
         <button
+          type="button"
           onClick={onStop}
+          aria-label="Stop process"
           className={cn(
             btnBase,
             "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 cursor-pointer",
@@ -306,7 +310,7 @@ export function FieldRow({
 }) {
   return (
     <div className="flex items-center gap-3 min-h-9">
-      <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300 whitespace-nowrap flex-none w-[120px]">{label}</span>
+      <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300 whitespace-nowrap flex-none w-[130px]">{label}</span>
       <div className="flex-1">{children}</div>
     </div>
   );
@@ -316,6 +320,7 @@ export function FieldRow({
 export function WireSelect({ placeholder, value, options, onChange, disabled }: { placeholder?: string; value?: string; options?: string[]; onChange?: (v: string) => void; disabled?: boolean }) {
   return (
     <select
+      aria-label={placeholder ?? "Select option"}
       value={value ?? ""}
       onChange={onChange ? (e) => onChange(e.target.value) : () => {}}
       disabled={disabled}
@@ -334,6 +339,7 @@ export function WireInput({ placeholder, value, onChange, disabled }: { placehol
   return (
     <input
       type="text"
+      aria-label={placeholder ?? "Input value"}
       value={value ?? ""}
       readOnly={!onChange}
       onChange={onChange ? (e) => onChange(e.target.value) : undefined}
@@ -442,7 +448,11 @@ export function WireToggle({
   const [on, setOn] = React.useState(checked ?? false);
   return (
     <label className="flex items-center gap-2 cursor-pointer">
-      <div
+      <button
+        type="button"
+        role="switch"
+        aria-label={label ?? "Toggle"}
+        aria-checked={on}
         className={cn(
           "w-8 h-4 rounded-full relative transition-colors",
           on ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
@@ -455,7 +465,7 @@ export function WireToggle({
             on ? "translate-x-4" : "translate-x-0.5"
           )}
         />
-      </div>
+      </button>
       {label && <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300 select-none">{label}</span>}
     </label>
   );
@@ -471,21 +481,63 @@ export function ModeToggle({
   value: string;
   onChange?: (v: string) => void;
 }) {
-  const [active, setActive] = React.useState(value);
   return (
     <div className="inline-flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg">
       {options.map((o) => (
         <button
+          type="button"
           key={o}
-          onClick={() => { setActive(o); onChange?.(o); }}
+          aria-pressed={value === o}
+          aria-label={`${o} mode`}
+          onClick={() => { onChange?.(o); }}
           className={cn(
             "px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer",
-            active === o
+            value === o
               ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
               : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
           )}
         >
           {o}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Sub Tabs ────────────────────────────────────────────────────────────────
+export type SubTabItem = {
+  key: string;
+  label: string;
+  icon?: React.ReactNode;
+};
+
+export function SubTabs({
+  tabs,
+  activeKey,
+  onChange,
+  className,
+}: {
+  tabs: readonly SubTabItem[];
+  activeKey: string;
+  onChange: (key: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit", className)}>
+      {tabs.map((tab) => (
+        <button
+          type="button"
+          key={tab.key}
+          onClick={() => onChange(tab.key)}
+          className={cn(
+            "flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer",
+            activeKey === tab.key
+              ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+              : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+          )}
+        >
+          {tab.icon}
+          {tab.label}
         </button>
       ))}
     </div>
@@ -524,11 +576,81 @@ export function RefreshButton({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       title={title}
+      aria-label={title}
       className="p-1.5 rounded-md text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-all cursor-pointer"
     >
       <RefreshCw size={15} />
     </button>
+  );
+}
+
+// ─── Stepper Nav ──────────────────────────────────────────────────────────────
+const PIPELINE_STEPS = [
+  { path: "/", label: "System Status" },
+  { path: "/camera-setup", label: "Camera Setup" },
+  { path: "/motor-setup", label: "Motor Setup" },
+  { path: "/teleop", label: "Teleop" },
+  { path: "/recording", label: "Recording" },
+  { path: "/dataset", label: "Dataset" },
+  { path: "/training", label: "Training" },
+  { path: "/evaluation", label: "Evaluation" },
+] as const;
+
+export function StepperNav({ currentPath }: { currentPath: string }) {
+  const idx = PIPELINE_STEPS.findIndex((s) => s.path === currentPath);
+  const prev = idx > 0 ? PIPELINE_STEPS[idx - 1] : null;
+  const next = idx < PIPELINE_STEPS.length - 1 ? PIPELINE_STEPS[idx + 1] : null;
+
+  const progress = 5 + (idx / (PIPELINE_STEPS.length - 1)) * 95;
+
+  return (
+    <div className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 text-sm text-zinc-400">
+        {prev ? (
+          <Link to={prev.path} className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+            ← {prev.label}
+          </Link>
+        ) : <div aria-hidden="true" />}
+
+        <div className="flex items-center gap-1.5">
+          {PIPELINE_STEPS.map((step, i) => {
+            const isCurrent = i === idx;
+            const isNeighbor = i === idx - 1 || i === idx + 1;
+            return (
+              <React.Fragment key={step.path}>
+                {isNeighbor && i === idx - 1 && (
+                  <Link to={step.path} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">{step.label}</Link>
+                )}
+                {isNeighbor && i === idx - 1 && <span className="text-zinc-300 dark:text-zinc-600">›</span>}
+                {isCurrent && (
+                  <span className="text-zinc-700 dark:text-zinc-200 font-medium">{step.label}</span>
+                )}
+                {isNeighbor && i === idx + 1 && <span className="text-zinc-300 dark:text-zinc-600">›</span>}
+                {isNeighbor && i === idx + 1 && (
+                  <Link to={step.path} className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">{step.label}</Link>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        {next ? (
+          <Link to={next.path} className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
+            {next.label} →
+          </Link>
+        ) : <div aria-hidden="true" />}
+      </div>
+
+      {/* 2px green progress bar */}
+      <div className="h-0.5 w-full bg-zinc-200 dark:bg-zinc-800">
+        <div
+          className="h-full bg-emerald-500 transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
   );
 }

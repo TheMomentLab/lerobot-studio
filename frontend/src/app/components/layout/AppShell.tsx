@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
 import { cn } from "../ui/utils";
 import { useTheme } from "../../theme-context";
 import { HfAuthProvider, useHfAuth } from "../../hf-auth-context";
+import { StepperNav } from "../wireframe";
 import { getLeStudioState, mapActiveTabToPath, mapPathnameToActiveTab, useLeStudioStore } from "../../store";
 import {
   apiGet,
@@ -16,7 +17,7 @@ import {
 } from "../../services/apiClient";
 import {
   Monitor, Camera, Settings, Video, Database, Brain, FlaskConical,
-  Moon, Sun, Menu, X, ChevronRight, Terminal, ChevronUp, ChevronDown, Copy, Trash2, Play, RefreshCw,
+  Moon, Sun, Menu, X, ChevronRight, Terminal, ChevronUp, ChevronDown, Copy, Trash2, Play, RefreshCw, Square,
 } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "../ui/popover";
 
@@ -252,7 +253,7 @@ function RuntimeConsoleDrawer() {
   const addToast = useLeStudioStore((s) => s.addToast);
   const logLines = useLeStudioStore((s) => s.logLines);
 
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [activeProcess, setActiveProcess] = useState<RuntimeProcessName>("teleop");
   const [stdinValue, setStdinValue] = useState("");
   const [elapsedByProcess, setElapsedByProcess] = useState<Record<string, number>>({});
@@ -260,6 +261,7 @@ function RuntimeConsoleDrawer() {
   const dragging = useRef(false);
   const startY = useRef(0);
   const startH = useRef(0);
+  const dragOpenedRef = useRef(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const prevRunningByProcessRef = useRef<Record<string, boolean>>({});
   const startTimesRef = useRef<Record<string, number>>({});
@@ -276,15 +278,21 @@ function RuntimeConsoleDrawer() {
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     dragging.current = true;
     startY.current = e.clientY;
-    startH.current = consoleHeight;
+    startH.current = collapsed ? MIN_CONSOLE_HEIGHT : consoleHeight;
+    dragOpenedRef.current = collapsed;
     e.preventDefault();
-  }, [consoleHeight]);
+  }, [collapsed, consoleHeight]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!dragging.current) return;
       const delta = startY.current - e.clientY;
-      setConsoleHeight(Math.max(MIN_CONSOLE_HEIGHT, Math.min(500, startH.current + delta)));
+      const newHeight = Math.max(MIN_CONSOLE_HEIGHT, Math.min(500, startH.current + delta));
+      if (dragOpenedRef.current && delta > 10) {
+        dragOpenedRef.current = false;
+        setCollapsed(false);
+      }
+      setConsoleHeight(newHeight);
     };
     const onUp = () => { dragging.current = false; };
     window.addEventListener("mousemove", onMove);
@@ -451,12 +459,14 @@ function RuntimeConsoleDrawer() {
 
   useEffect(() => {
     let started: RuntimeProcessName | null = null;
+    let anyRunning = false;
     for (const processName of PROCESS_NAMES) {
       const runningNow = isRuntimeProcessRunning(procStatus, processName);
       const wasRunning = !!prevRunningByProcessRef.current[processName];
       if (!wasRunning && runningNow && started === null) {
         started = processName;
       }
+      if (runningNow) anyRunning = true;
       prevRunningByProcessRef.current[processName] = runningNow;
     }
 
@@ -661,15 +671,15 @@ function RuntimeConsoleDrawer() {
           </button>
           <button
             className={cn(
-              "px-2 py-1 text-[10px] font-mono rounded border cursor-pointer",
+              "p-1 cursor-pointer",
               running
-                ? "border-red-500/60 text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 font-semibold"
-                : "border-zinc-300 dark:border-zinc-700 text-zinc-500 dark:text-zinc-400 opacity-50 cursor-not-allowed",
+                ? "text-red-600 dark:text-red-400 hover:text-red-500"
+                : "text-zinc-400 opacity-50 cursor-not-allowed",
             )}
             onClick={() => { if (running) void handleStop(activeProcess); }}
             title="Stop process"
           >
-            STOP
+            <Square size={11} className="fill-current" />
           </button>
           <button
             onClick={() => setCollapsed(!collapsed)}
@@ -802,6 +812,7 @@ function Header({
           <ellipse cx="50" cy="50" rx="48" ry="16" transform="rotate(-15 50 50)" />
         </svg>
         <span className="text-sm text-zinc-800 dark:text-zinc-200">LeStudio</span>
+        <span className="text-[10px] font-bold tracking-wide uppercase leading-none px-1.5 py-0.5 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-500 dark:text-amber-400">BETA</span>
       </NavLink>
 
       <div className="flex-1" />
@@ -1021,6 +1032,7 @@ export function AppShell() {
 
           {/* Main content */}
           <main className="flex-1 overflow-y-auto">
+            <StepperNav currentPath={location.pathname} />
             <Outlet />
           </main>
         </div>

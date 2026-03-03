@@ -25,10 +25,14 @@ export type UiResourcesData = {
   cache_size: number;
 };
 
+export type HistoryCategory = "eval" | "train" | "teleop" | "record" | "motor" | "other";
+
 export type UiHistoryEntry = {
   type: string;
   ts: string;
   meta: string;
+  summary: string;
+  category: HistoryCategory;
 };
 
 export type UiLocalDataset = {
@@ -317,6 +321,82 @@ function formatHistoryMeta(value: unknown): string {
   }
 }
 
+function classifyEvent(type: string): HistoryCategory {
+  if (type.startsWith("eval")) return "eval";
+  if (type.startsWith("train")) return "train";
+  if (type.startsWith("teleop")) return "teleop";
+  if (type.startsWith("record")) return "record";
+  if (type.startsWith("motor") || type.startsWith("calibrat")) return "motor";
+  return "other";
+}
+
+function extractShortPath(policyPath: string): string {
+  // "outputs/train/2026-02-28/02-34-35_act/checkpoints/last/pretrained_model" → "act / last"
+  const parts = policyPath.split("/");
+  const cpIdx = parts.indexOf("checkpoints");
+  if (cpIdx >= 1 && cpIdx + 1 < parts.length) {
+    const trainDir = parts[cpIdx - 1] ?? "";
+    const policyName = trainDir.replace(/^\d{2}-\d{2}-\d{2}_/, "");
+    const checkpoint = parts[cpIdx + 1] ?? "";
+    return `${policyName} / ${checkpoint}`;
+  }
+  // fallback: last 2 segments
+  return parts.slice(-2).join("/");
+}
+
+function formatTimeOnly(ts: string): string {
+  // "2026-02-28T11:09:42" → "11:09"
+  const match = ts.match(/T?(\d{2}:\d{2})/);
+  return match ? match[1] : ts;
+}
+
+function summarizeHistoryEntry(type: string, meta: string): string {
+  const category = classifyEvent(type);
+  const isEnd = type.endsWith("_end");
+
+  // _end events with empty meta
+  if (isEnd && (!meta || meta === "{}" || meta === "\"{}\"")) {
+    const baseName = type.replace(/_end$/, "").replace(/_/g, " ");
+    return `${baseName} finished`;
+  }
+
+  // Try to parse JSON meta
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    let raw = meta;
+    // Handle double-encoded JSON strings
+    if (raw.startsWith('"') && raw.endsWith('"')) {
+      raw = JSON.parse(raw) as string;
+    }
+    const result = JSON.parse(raw);
+    if (typeof result === "object" && result !== null) parsed = result as Record<string, unknown>;
+  } catch { /* not JSON, use raw */ }
+
+  if (!parsed) return meta || type.replace(/_/g, " ");
+
+  switch (category) {
+    case "eval": {
+      const path = typeof parsed.policy_path === "string" ? extractShortPath(parsed.policy_path) : "";
+      const device = typeof parsed.device === "string" ? parsed.device.toUpperCase() : "";
+      return [path, device].filter(Boolean).join(" · ") || "eval started";
+    }
+    case "train": {
+      const policy = typeof parsed.policy === "string" ? parsed.policy.toUpperCase() : "";
+      const repo = typeof parsed.repo_id === "string" ? parsed.repo_id.split("/").pop() : "";
+      const steps = typeof parsed.steps === "number" ? `${parsed.steps} steps` : "";
+      const device = typeof parsed.device === "string" ? parsed.device.toUpperCase() : "";
+      return [policy, repo, steps, device].filter(Boolean).join(" · ") || "train started";
+    }
+    case "record": {
+      const repo = typeof parsed.repo_id === "string" ? parsed.repo_id.split("/").pop() : "";
+      const task = typeof parsed.task === "string" ? parsed.task : "";
+      return [repo, task].filter(Boolean).join(" · ") || "record started";
+    }
+    default:
+      return meta;
+  }
+}
+
 export function fromBackendHistory(payload: unknown): UiHistoryEntry[] {
   const root = asRecord(payload);
   const entries = root && Array.isArray(root.entries) ? root.entries : Array.isArray(payload) ? payload : [];
@@ -325,10 +405,14 @@ export function fromBackendHistory(payload: unknown): UiHistoryEntry[] {
     .map((entry) => {
       const item = asRecord(entry);
       if (!item) return null;
+      const type = getString(item, "type", "unknown");
+      const meta = formatHistoryMeta(item.meta);
       return {
-        type: getString(item, "type", "unknown"),
+        type,
         ts: String(item.ts ?? ""),
-        meta: formatHistoryMeta(item.meta),
+        meta,
+        summary: summarizeHistoryEntry(type, meta),
+        category: classifyEvent(type),
       };
     })
     .filter((item): item is UiHistoryEntry => item !== null);

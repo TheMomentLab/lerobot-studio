@@ -4,15 +4,15 @@ import {
   RefreshCw, Trash2, Search, Upload, ExternalLink, Cloud,
   Play, Pause, SkipBack, SkipForward, CheckCircle2, ThumbsUp, ThumbsDown,
   Heart, Download, AlertTriangle, MoreVertical, FileWarning, MonitorPlay,
-  Filter, Settings, Lock, Loader2, Square
+  Filter, Settings, Lock, Loader2, Square, Activity, Zap, Film, HardDrive
 } from "lucide-react";
 import {
   PageHeader, StatusBadge, WireSelect, WireInput, FieldRow,
-  WireBox, WireToggle, StickyControlBar, RefreshButton,
+  WireBox, WireToggle, StickyControlBar, RefreshButton, SubTabs,
 } from "../components/wireframe";
 import { useHfAuth } from "../hf-auth-context";
 import { cn } from "../components/ui/utils";
-import { apiGet, apiPost } from "../services/apiClient";
+import { apiDelete, apiGet, apiPost } from "../services/apiClient";
 import {
   buildHubSearchPath,
   fromBackendDatasetList,
@@ -23,6 +23,20 @@ import { useLeStudioStore } from "../store";
 // ─── Types ───────────────────────────────────────────────────────────────────
 type LocalDataset = { id: string; episodes: number; frames: number; size: string; modified: string; tags?: string[] };
 type HubResult = { id: string; desc: string; downloads: number; likes: number; tags: string[]; modified: string };
+type MyHubDataset = {
+  id: string;
+  downloads: number;
+  likes: number;
+  size: string;
+  modified: string;
+  local_sync: boolean;
+};
+type MyHubDatasetsResponse = {
+  ok?: boolean;
+  username?: string;
+  datasets?: MyHubDataset[];
+  error?: string;
+};
 type HubDownloadStartResponse = { ok?: boolean; job_id?: string; error?: string };
 type HubDownloadStatusResponse = {
   ok?: boolean;
@@ -40,6 +54,12 @@ type DatasetPushStatusResponse = {
   progress?: number;
   logs?: string[];
   repo_id?: string;
+  error?: string;
+};
+
+type DatasetDeleteResponse = {
+  ok?: boolean;
+  detail?: string;
   error?: string;
 };
 
@@ -133,20 +153,7 @@ function HfGateBanner({ authState, level }: HfGateBannerProps) {
   );
 }
 
-const MY_HUB_DATASETS = [
-  { id: "lerobot-user/pick_cube", downloads: 18, likes: 3, size: "1.2 GB", modified: "2026-03-01", localSync: true },
-  { id: "lerobot-user/place_cup", downloads: 7, likes: 1, size: "720 MB", modified: "2026-02-28", localSync: true },
-  { id: "lerobot-user/old_grasp_v1", downloads: 42, likes: 5, size: "2.1 GB", modified: "2026-01-15", localSync: false },
-];
-
 type TagType = "good" | "bad" | "review" | "untagged";
-
-const TAG_STYLES: Record<TagType, string> = {
-  good: "bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 border-emerald-500/20",
-  bad: "bg-red-500/10 text-red-500 dark:text-red-400 border-red-500/20",
-  review: "bg-amber-500/10 text-amber-500 dark:text-amber-400 border-amber-500/20",
-  untagged: "bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700",
-};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -165,9 +172,14 @@ function formatMetric(value: number | null | undefined, unit: string): string {
 // 1. Hub Search Panel
 function HubSearchPanel() {
   const addToast = useLeStudioStore((s) => s.addToast);
+  const { hfAuth } = useHfAuth();
   const [query, setQuery] = useState("");
   const [searched, setSearched] = useState(false);
   const [hubResults, setHubResults] = useState<HubResult[]>([]);
+  const [myHubDatasets, setMyHubDatasets] = useState<MyHubDataset[]>([]);
+  const [myHubUsername, setMyHubUsername] = useState("lerobot-user");
+  const [myHubLoading, setMyHubLoading] = useState(false);
+  const [myHubReloadToken, setMyHubReloadToken] = useState(0);
   const [downloading, setDownloading] = useState<Record<string, number>>({});
   const [downloadJobs, setDownloadJobs] = useState<Record<string, string>>({});
   const [downloadNotes, setDownloadNotes] = useState<Record<string, string>>({});
@@ -225,6 +237,39 @@ function HubSearchPanel() {
   };
 
   useEffect(() => {
+    if (hfAuth !== "ready") {
+      setMyHubLoading(false);
+      setMyHubDatasets([]);
+      return;
+    }
+
+    let cancelled = false;
+    setMyHubLoading(true);
+
+    void apiGet<MyHubDatasetsResponse>("/api/hf/my-datasets?limit=50")
+      .then((res) => {
+        if (cancelled) return;
+        if (res.ok) {
+          setMyHubDatasets(Array.isArray(res.datasets) ? res.datasets : []);
+          setMyHubUsername(typeof res.username === "string" && res.username ? res.username : "lerobot-user");
+          return;
+        }
+        setMyHubDatasets([]);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setMyHubDatasets([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMyHubLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hfAuth, myHubReloadToken]);
+
+  useEffect(() => {
     const jobs = Object.entries(downloadJobs);
     if (jobs.length === 0) return;
 
@@ -263,6 +308,7 @@ function HubSearchPanel() {
             });
             setDownloadProgress(repoId, 100);
             if (!cancelled) addToast(`Download complete: ${repoId}`, "success");
+            setMyHubReloadToken((prev) => prev + 1);
             window.setTimeout(() => {
               if (!cancelled) clearDownloadUi(repoId);
             }, 1200);
@@ -316,7 +362,7 @@ function HubSearchPanel() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Hub — dataset ID, tags, keywords..."
-            className="w-full h-9 pl-9 pr-3 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm outline-none focus:border-zinc-400 dark:focus:border-zinc-500 transition-colors placeholder:text-zinc-400"
+            className="w-full h-9 pl-9 pr-3 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
             onKeyDown={(e) => e.key === "Enter" && doSearch()}
           />
         </div>
@@ -403,20 +449,24 @@ function HubSearchPanel() {
           <div className="flex items-center gap-2">
             <Cloud size={13} className="text-zinc-400" />
             <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">My Hub Datasets</span>
-            <span className="text-sm text-zinc-400">{MY_HUB_DATASETS.length} items</span>
+            <span className="text-sm text-zinc-400">{myHubDatasets.length} items</span>
           </div>
-          <a href="https://huggingface.co/lerobot-user" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+          <a href={`https://huggingface.co/${myHubUsername}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
             Hub Profile <ExternalLink size={10} />
           </a>
         </div>
         <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-          {MY_HUB_DATASETS.map((ds) => (
+          {myHubLoading ? (
+            <div className="px-4 py-6 text-sm text-zinc-400 text-center">Loading your Hub datasets...</div>
+          ) : myHubDatasets.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-zinc-400 text-center">No Hub datasets found.</div>
+          ) : myHubDatasets.map((ds) => (
             <div key={ds.id} className="flex items-center justify-between px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
               <div className="flex flex-col gap-0.5 min-w-0 flex-1 mr-4">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-sm font-medium text-blue-500 dark:text-blue-400">{ds.id}</span>
-                  {ds.localSync && (
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-sm text-emerald-500 dark:text-emerald-400 border border-emerald-500/30">Synced locally</span>
+                  <a href={`https://huggingface.co/datasets/${ds.id}`} target="_blank" rel="noopener noreferrer" className="font-mono text-sm font-medium text-blue-500 dark:text-blue-400 hover:underline">{ds.id}</a>
+                  {ds.local_sync && (
+                    <HardDrive size={14} className="text-emerald-500 dark:text-emerald-400 flex-none" title="Synced locally" />
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-sm text-zinc-400">
@@ -427,7 +477,7 @@ function HubSearchPanel() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 flex-none">
-                {!ds.localSync && (
+                {!ds.local_sync && (
                   <button
                     onClick={() => { void startDownload(ds.id); }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-sm font-medium text-zinc-500 dark:text-zinc-400 transition-colors"
@@ -452,19 +502,23 @@ function VideoPlayerPanel({
   detail,
   datasetId,
   onTagsChanged,
+  initialEpisode,
 }: {
   detail: DatasetDetail;
   datasetId: string;
   onTagsChanged?: () => void;
+  initialEpisode?: number;
 }) {
   const addToast = useLeStudioStore((s) => s.addToast);
   const [selectedEpisode, setSelectedEpisode] = useState(detail.episodes[0]?.episode_index ?? 0);
+  useEffect(() => { if (initialEpisode !== undefined) setSelectedEpisode(initialEpisode); }, [initialEpisode]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [episodeTags, setEpisodeTags] = useState<Record<string, TagType>>({});
   const [tagFilter, setTagFilter] = useState<string>("All");
+  const [episodeQuery, setEpisodeQuery] = useState("");
   const [autoNext, setAutoNext] = useState(false);
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
@@ -493,6 +547,20 @@ function VideoPlayerPanel({
 
   const parsedId = parseDatasetId(datasetId);
   const currentTag: TagType = (episodeTags[String(selectedEpisode)] as TagType) ?? "untagged";
+
+  const filteredEpisodes = useMemo(() => {
+    if (tagFilter === "All") return detail.episodes;
+    return detail.episodes.filter((ep) => {
+      const tag = episodeTags[String(ep.episode_index)] ?? "untagged";
+      return tag === tagFilter;
+    });
+  }, [detail.episodes, tagFilter, episodeTags]);
+
+  const searchedEpisodes = useMemo(() => {
+    const q = episodeQuery.trim();
+    if (!q) return filteredEpisodes;
+    return filteredEpisodes.filter((ep) => String(ep.episode_index).includes(q));
+  }, [filteredEpisodes, episodeQuery]);
 
   const selectedEpisodeData = useMemo(
     () => detail.episodes.find((ep) => ep.episode_index === selectedEpisode) ?? null,
@@ -655,7 +723,7 @@ function VideoPlayerPanel({
     }
   };
 
-  const epIndex = detail.episodes.findIndex((ep) => ep.episode_index === selectedEpisode);
+  const epIndex = searchedEpisodes.findIndex((ep) => ep.episode_index === selectedEpisode);
 
   return (
     <div>
@@ -664,20 +732,26 @@ function VideoPlayerPanel({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1 text-sm font-mono text-zinc-500">
             Episode <span className="text-zinc-900 dark:text-zinc-100 font-bold">{selectedEpisode}</span>
-            <span className="text-zinc-400">/ {detail.total_episodes - 1}</span>
+            <span className="text-zinc-400">/ {Math.max(0, searchedEpisodes.length - 1)}</span>
           </div>
-          <span className={cn("text-sm px-2 py-0.5 rounded border uppercase font-medium", TAG_STYLES[currentTag])}>
-            {currentTag}
-          </span>
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input
+              value={episodeQuery}
+              onChange={(e) => setEpisodeQuery(e.target.value)}
+              placeholder="Find episode..."
+              className="pl-6 pr-2 py-1 h-7 w-36 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 placeholder:text-zinc-400 outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+            />
+          </div>
           <div className="relative">
             <Filter size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
             <select
               value={tagFilter}
               onChange={(e) => setTagFilter(e.target.value)}
-              className="pl-6 pr-2 py-1 h-7 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 outline-none focus:border-zinc-400"
+              className="pl-6 pr-2 py-1 h-7 text-sm rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
             >
               <option>All</option>
               <option>good</option>
@@ -688,15 +762,15 @@ function VideoPlayerPanel({
           </div>
           <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700 mx-1" />
           <button
-            onClick={() => { if (epIndex > 0) setSelectedEpisode(detail.episodes[epIndex - 1].episode_index); }}
+            onClick={() => { if (epIndex > 0) setSelectedEpisode(searchedEpisodes[epIndex - 1].episode_index); }}
             disabled={epIndex <= 0}
             className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <SkipBack size={16} />
           </button>
           <button
-            onClick={() => { if (epIndex < detail.episodes.length - 1) setSelectedEpisode(detail.episodes[epIndex + 1].episode_index); }}
-            disabled={epIndex >= detail.episodes.length - 1}
+            onClick={() => { if (epIndex < searchedEpisodes.length - 1) setSelectedEpisode(searchedEpisodes[epIndex + 1].episode_index); }}
+            disabled={epIndex >= searchedEpisodes.length - 1}
             className="p-1 text-zinc-400 hover:text-zinc-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <SkipForward size={16} />
@@ -710,7 +784,13 @@ function VideoPlayerPanel({
           ref={videoContainerRef}
           className={cn(
             "gap-2 bg-zinc-100 dark:bg-zinc-950 rounded-lg p-2 grid",
-            detail.cameras.length === 1 ? "grid-cols-1" : detail.cameras.length <= 4 ? "grid-cols-2" : "grid-cols-3",
+            detail.cameras.length === 1
+              ? "grid-cols-1"
+              : detail.cameras.length === 2
+                ? "grid-cols-1 md:grid-cols-2"
+                : detail.cameras.length === 3
+                  ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+                  : "grid-cols-1 md:grid-cols-2 xl:grid-cols-4",
           )}
         >
           {detail.cameras.length === 0 ? (
@@ -796,27 +876,30 @@ function VideoPlayerPanel({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => { void tagEpisode("good"); }}
-                className={cn("flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border transition-colors", currentTag === "good" ? TAG_STYLES.good + " border-emerald-500" : "border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800")}
+                className={cn("p-1.5 rounded transition-colors", currentTag === "good" ? "text-emerald-500 dark:text-emerald-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
+                title="Good"
               >
-                <ThumbsUp size={12} /> Good
+                <ThumbsUp size={14} />
               </button>
               <button
                 onClick={() => { void tagEpisode("bad"); }}
-                className={cn("flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border transition-colors", currentTag === "bad" ? TAG_STYLES.bad + " border-red-500" : "border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800")}
+                className={cn("p-1.5 rounded transition-colors", currentTag === "bad" ? "text-red-500 dark:text-red-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
+                title="Bad"
               >
-                <ThumbsDown size={12} /> Bad
+                <ThumbsDown size={14} />
               </button>
               <button
                 onClick={() => { void tagEpisode("review"); }}
-                className={cn("flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border transition-colors", currentTag === "review" ? TAG_STYLES.review + " border-amber-500" : "border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800")}
+                className={cn("p-1.5 rounded transition-colors", currentTag === "review" ? "text-amber-500 dark:text-amber-400" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300")}
+                title="Review"
               >
-                <FileWarning size={12} /> Review
+                <FileWarning size={14} />
               </button>
               {currentTag !== "untagged" && (
-                <button onClick={() => { void tagEpisode("untagged"); }} className="p-1.5 text-zinc-400 hover:text-zinc-600 transition-colors" title="Clear Tag">
+                <button onClick={() => { void tagEpisode("untagged"); }} className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" title="Clear Tag">
                   <Trash2 size={14} />
                 </button>
               )}
@@ -833,11 +916,15 @@ function VideoPlayerPanel({
 function AutoFlagPanelContent({
   datasetId,
   totalEpisodes,
+  tags,
   onTagsChanged,
+  onPreviewEpisode,
 }: {
   datasetId: string;
   totalEpisodes: number;
+  tags: Record<string, TagType>;
   onTagsChanged: () => void;
+  onPreviewEpisode?: (episodeIndex: number) => void;
 }) {
   const addToast = useLeStudioStore((s) => s.addToast);
   const parsed = parseDatasetId(datasetId);
@@ -846,22 +933,29 @@ function AutoFlagPanelContent({
   const [jobProgress, setJobProgress] = useState(0);
   const [jobPhase, setJobPhase] = useState("idle");
   const [tagging, setTagging] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const didAutoRun = useRef(false);
 
   const flagged = useMemo(
     () => stats.filter((ep) => ep.frames < 30 || ep.movement < 0.01 || ep.jerk_score > 5),
     [stats],
   );
 
-  const fetchStats = async () => {
-    if (!parsed) return;
+  const pendingFlagged = useMemo(
+    () => flagged.filter((ep) => tags[String(ep.episode_index)] !== "bad"),
+    [flagged, tags],
+  );
+
+  const fetchStats = async (): Promise<boolean> => {
+    if (!parsed) return false;
     const res = await apiGet<DatasetStatsResponse>(
       `/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/stats`,
     );
     if (!res.ok || !Array.isArray(res.episodes)) {
-      addToast(res.error ?? "Failed to fetch stats", "error");
-      return;
+      return false;
     }
     setStats(res.episodes);
+    return res.episodes.length > 0;
   };
 
   const handleRecompute = async () => {
@@ -888,10 +982,10 @@ function AutoFlagPanelContent({
   };
 
   const handleBulkTag = async () => {
-    if (!parsed || flagged.length === 0) return;
+    if (!parsed || pendingFlagged.length === 0) return;
     setTagging(true);
     try {
-      const updates = flagged.map((ep) => ({ episode_index: ep.episode_index, tag: "bad" as const }));
+      const updates = pendingFlagged.map((ep) => ({ episode_index: ep.episode_index, tag: "bad" as const }));
       const res = await apiPost<BulkTagsResponse>(
         `/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/tags/bulk`,
         { updates },
@@ -900,13 +994,33 @@ function AutoFlagPanelContent({
         addToast(res.error ?? "Bulk tagging failed", "error");
         return;
       }
-      addToast(`Bulk tagging complete: ${res.applied ?? flagged.length} episodes`, "success");
+      addToast(`Bulk tagging complete: ${res.applied ?? pendingFlagged.length} episodes`, "success");
       onTagsChanged();
     } catch (error) {
       addToast(error instanceof Error ? error.message : "Bulk tagging failed", "error");
     } finally {
       setTagging(false);
     }
+  };
+
+  const handleSingleTag = async (episodeIndex: number, tag: TagType) => {
+    if (!parsed) return;
+    try {
+      await apiPost(`/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/tags`, { episode_index: episodeIndex, tag });
+      onTagsChanged();
+    } catch (err) {
+      addToast(`Tag failed: ${String(err)}`, "error");
+    }
+  };
+
+  const handleDismiss = async (episodeIndex: number) => { await handleSingleTag(episodeIndex, "good"); };
+
+  const getViolations = (ep: EpisodeStat) => {
+    const v: string[] = [];
+    if (ep.frames < 30) v.push("frames");
+    if (ep.movement < 0.01) v.push("motion");
+    if (ep.jerk_score > 5) v.push("jerk");
+    return v;
   };
 
   const handleCancelJob = async () => {
@@ -937,61 +1051,140 @@ function AutoFlagPanelContent({
     return () => window.clearInterval(timer);
   }, [addToast, jobId]);
 
+  // Auto-run on tab mount: try cached stats first, if none then recompute
+  useEffect(() => {
+    if (didAutoRun.current || !parsed) return;
+    didAutoRun.current = true;
+    (async () => {
+      const hasCached = await fetchStats();
+      if (!hasCached) {
+        await handleRecompute();
+      }
+      setInitialLoading(false);
+    })();
+  }, [parsed]);
+
   return (
     <div className="p-4 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-zinc-500">Auto-flag criteria: frames &lt; 30, motion &lt; 0.01, jerk &gt; 5.0</span>
-        <div className="flex items-center gap-2">
+      {/* Loading / computing state */}
+      {(initialLoading || jobId) && (
+        <div className="flex flex-col items-center justify-center py-8 gap-3">
+          <RefreshCw size={20} className="text-zinc-400 animate-spin" />
+          <span className="text-sm text-zinc-500">
+            {jobId ? `${jobPhase}… ${jobProgress}%` : "Loading stats…"}
+          </span>
           {jobId && (
             <button
               onClick={() => { void handleCancelJob(); }}
               className="px-3 py-1.5 text-xs rounded border border-red-500/30 text-red-500 hover:bg-red-500/10"
             >
-              <Square size={10} className="inline mr-1" /> Cancel
+              Cancel
             </button>
           )}
-          <button
-            onClick={() => { void handleRecompute(); }}
-            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-zinc-500 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 rounded-lg"
-          >
-            <RefreshCw size={12} className={cn(jobId && "animate-spin")} /> Recompute Stats
-          </button>
-        </div>
-      </div>
-
-      {jobId && (
-        <div className="rounded border border-zinc-200 dark:border-zinc-700 p-3">
-          <div className="flex items-center justify-between text-xs text-zinc-500 mb-2">
-            <span>{jobPhase}</span>
-            <span>{jobProgress}%</span>
-          </div>
-          <div className="h-1.5 rounded bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
-            <div className="h-full bg-zinc-900 dark:bg-zinc-100" style={{ width: `${jobProgress}%` }} />
-          </div>
         </div>
       )}
 
-      <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Results Report</span>
-          <span className="text-sm text-zinc-500">{flagged.length} / {totalEpisodes} detected</span>
-        </div>
-        <div className="max-h-28 overflow-auto space-y-1 mb-3">
-          {flagged.slice(0, 6).map((ep) => (
-            <div key={ep.episode_index} className="text-sm text-zinc-500">
-              Episode {ep.episode_index}: frames {ep.frames}, movement {ep.movement.toFixed(3)}, jerk {ep.jerk_score.toFixed(3)}
+      {/* Results */}
+      {!initialLoading && !jobId && (
+        <>
+          {/* Criteria pills */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-zinc-500">Criteria</span>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"><Film size={10} /> frames &lt; 30</span>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"><Activity size={10} /> motion &lt; 0.01</span>
+            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700"><Zap size={10} /> jerk &gt; 5.0</span>
+            <div className="flex-1" />
+            <button
+              onClick={() => { void handleRecompute(); }}
+              className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+              title="Recompute Stats"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+
+          {flagged.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
+              <CheckCircle2 size={14} />
+              All {totalEpisodes} episodes passed
             </div>
-          ))}
-          {flagged.length === 0 && <div className="text-sm text-zinc-400">No flagged episodes.</div>}
-        </div>
-        <button
-          onClick={() => { void handleBulkTag(); }}
-          disabled={flagged.length === 0 || tagging}
-          className="w-full py-1.5 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 text-sm font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          {tagging ? "Tagging..." : `Bulk tag ${flagged.length} flagged episodes as Bad`}
-        </button>
-      </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {/* Progress bar */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{flagged.length} / {totalEpisodes} flagged</span>
+                  <span className="text-sm text-zinc-400">{pendingFlagged.length} unreviewed</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden">
+                  <div className="h-full rounded-full bg-emerald-400 dark:bg-emerald-500 transition-all" style={{ width: `${((flagged.length - pendingFlagged.length) / flagged.length) * 100}%` }} />
+                </div>
+              </div>
+
+              {/* Episode cards */}
+              <div className="max-h-64 overflow-auto space-y-2">
+                {flagged.map((ep) => (
+                  <div key={ep.episode_index} className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-2.5 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Ep {ep.episode_index}</span>
+                        {getViolations(ep).map((v) => (
+                          <span key={v} className="text-amber-500 dark:text-amber-400" title={v}>
+                            {v === "frames" && <Film size={12} />}
+                            {v === "motion" && <Activity size={12} />}
+                            {v === "jerk" && <Zap size={12} />}
+                          </span>
+                        ))}
+                        {tags[String(ep.episode_index)] === "bad" && (
+                          <ThumbsDown size={12} className="text-zinc-400" />
+                        )}
+                        {tags[String(ep.episode_index)] === "good" && (
+                          <ThumbsUp size={12} className="text-emerald-500" />
+                        )}
+                      </div>
+                      <div className="text-xs text-zinc-400">{ep.frames} frames · motion {ep.movement.toFixed(3)} · jerk {ep.jerk_score.toFixed(3)}</div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-none">
+                      {onPreviewEpisode && (
+                        <button onClick={() => onPreviewEpisode(ep.episode_index)} className="p-1.5 rounded text-zinc-400 hover:text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer" title="Preview in Playback">
+                          <Play size={12} />
+                        </button>
+                      )}
+                      {tags[String(ep.episode_index)] !== "bad" && tags[String(ep.episode_index)] !== "good" && (
+                        <>
+                          <button onClick={() => { void handleSingleTag(ep.episode_index, "bad"); }} className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 hover:bg-zinc-500/10 transition-colors cursor-pointer" title="Tag as Bad">
+                            <ThumbsDown size={12} />
+                          </button>
+                          <button onClick={() => { void handleDismiss(ep.episode_index); }} className="p-1.5 rounded text-zinc-400 hover:text-emerald-500 hover:bg-emerald-500/10 transition-colors cursor-pointer" title="Dismiss (not bad)">
+                            <ThumbsUp size={12} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Bottom action / completion signal */}
+              {pendingFlagged.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400 py-2">
+                  <CheckCircle2 size={14} />
+                  All flagged episodes reviewed
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { void handleBulkTag(); }}
+                  disabled={tagging}
+                  className="w-full py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                >
+                  {tagging ? "Tagging..." : `Bulk tag ${pendingFlagged.length} remaining as Bad`}
+                </button>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1008,9 +1201,11 @@ function CurationPanelContent({
   onDerived: (newRepoId: string) => void;
 }) {
   const addToast = useLeStudioStore((s) => s.addToast);
+  const hfUsername = useLeStudioStore((s) => s.hfUsername);
   const parsed = parseDatasetId(datasetId);
+  const defaultRepoId = `${hfUsername ?? "lerobot-user"}/${parsed.repo}_curated_v1`;
   const [deriveMode, setDeriveMode] = useState<"filter" | "good" | "exclude_bad">("good");
-  const [newRepoId, setNewRepoId] = useState("");
+  const [newRepoId, setNewRepoId] = useState(defaultRepoId);
   const [jobId, setJobId] = useState("");
   const [job, setJob] = useState<DeriveStatusResponse | null>(null);
 
@@ -1081,48 +1276,38 @@ function CurationPanelContent({
   const running = Boolean(jobId);
 
   return (
-    <div className="p-4 flex flex-col gap-4">
-      <div className="flex gap-2">
-        {[
-          { key: "filter", label: "Current Filter" },
-          { key: "good", label: "Good Only" },
-          { key: "exclude_bad", label: "Exclude Bad" },
-        ].map((opt) => (
-          <button
-            key={opt.key}
-            onClick={() => {
-              if (!running) setDeriveMode(opt.key as "filter" | "good" | "exclude_bad");
-            }}
-            className={cn(
-              "px-4 py-2 rounded-lg border text-sm flex-1",
-              deriveMode === opt.key
-                ? "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 border-zinc-900 dark:border-zinc-100 font-medium"
-                : "border-zinc-200 dark:border-zinc-700 text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800",
-            )}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center justify-between text-sm px-2">
-        <span className="text-zinc-400">Preview:</span>
-        <div className="flex gap-4">
+    <div className="p-4 flex flex-col gap-3">
+      {/* Row 1: Filter mode + Keep/Drop stats */}
+      <div className="flex flex-col md:flex-row md:items-center gap-4">
+        <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg flex-1">
+          {[
+            { key: "filter", label: "Current Filter" },
+            { key: "good", label: "Good Only" },
+            { key: "exclude_bad", label: "Exclude Bad" },
+          ].map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => {
+                if (!running) setDeriveMode(opt.key as "filter" | "good" | "exclude_bad");
+              }}
+              className={cn(
+                "flex-1 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all cursor-pointer",
+                deriveMode === opt.key
+                  ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-4 text-sm px-2 md:px-0 justify-end md:justify-start flex-shrink-0">
           <span className="text-zinc-700 dark:text-zinc-300 font-medium">Keep: {keepIndices.length} eps</span>
           <span className="text-zinc-400 font-medium">Drop: {Math.max(0, detail.total_episodes - keepIndices.length)} eps</span>
         </div>
       </div>
 
-      <FieldRow label="New Repo ID">
-        <WireInput
-          value={newRepoId}
-          onChange={(v) => {
-            if (!running) setNewRepoId(v);
-          }}
-          placeholder="lerobot-user/pick_cube_curated_v1"
-        />
-      </FieldRow>
-
+      {/* Job progress */}
       {job && (
         <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
           <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
@@ -1152,18 +1337,32 @@ function CurationPanelContent({
         </div>
       )}
 
-      <button
-        onClick={() => { void handleStartDerive(); }}
-        disabled={running || keepIndices.length === 0 || keepIndices.length >= detail.total_episodes}
-        className={cn(
-          "w-full py-2 rounded-lg text-sm font-medium",
-          running
-            ? "bg-zinc-300 dark:bg-zinc-700 text-zinc-500 cursor-not-allowed"
-            : "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90",
-        )}
-      >
-        Create Derived Dataset
-      </button>
+      {/* Row 2: Repo ID + Create button */}
+      <div className="flex flex-col md:flex-row md:items-end gap-2">
+        <div className="flex-1">
+          <FieldRow label="New Repo ID">
+            <WireInput
+              value={newRepoId}
+              onChange={(v) => {
+                if (!running) setNewRepoId(v);
+              }}
+              placeholder={defaultRepoId}
+            />
+          </FieldRow>
+        </div>
+        <button
+          onClick={() => { void handleStartDerive(); }}
+          disabled={running || keepIndices.length === 0 || keepIndices.length >= detail.total_episodes}
+          className={cn(
+            "px-6 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex-shrink-0",
+            running
+              ? "bg-zinc-300 dark:bg-zinc-700 text-zinc-500 cursor-not-allowed"
+              : "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90",
+          )}
+        >
+          Create Derived Dataset
+        </button>
+      </div>
     </div>
   );
 }
@@ -1182,9 +1381,11 @@ export function DatasetManagement() {
   const [qualityData, setQualityData] = useState<DatasetQualityResponse | null>(null);
   const [qualityLoading, setQualityLoading] = useState(false);
   const [datasetTags, setDatasetTags] = useState<Record<string, TagType>>({});
+  const [deletingDatasetId, setDeletingDatasetId] = useState<string | null>(null);
   const [pushJobId, setPushJobId] = useState("");
   const [pushStatus, setPushStatus] = useState<DatasetPushStatusResponse | null>(null);
   const [detailTab, setDetailTab] = useState<"player" | "quality" | "curation">("player");
+  const [jumpEpisode, setJumpEpisode] = useState<number | undefined>(undefined);
 
   const fetchDetail = async (datasetId: string) => {
     const parsed = parseDatasetId(datasetId);
@@ -1210,6 +1411,13 @@ export function DatasetManagement() {
       if (datasets.length > 0) {
         setSelectedDataset(datasets[0]);
         void fetchDetail(datasets[0].id);
+      } else {
+        setSelectedDataset(null);
+        setDetailData(null);
+        setQualityData(null);
+        setDatasetTags({});
+        setPushJobId("");
+        setPushStatus(null);
       }
     });
   };
@@ -1297,6 +1505,43 @@ export function DatasetManagement() {
     }
   };
 
+  const handleDeleteDataset = async (datasetId: string) => {
+    if (deletingDatasetId) return;
+    const parsed = parseDatasetId(datasetId);
+    if (!parsed) return;
+
+    const confirmed = window.confirm(
+      `Delete local dataset "${datasetId}"?\n\nThis will remove the local cache files permanently.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingDatasetId(datasetId);
+    try {
+      const res = await apiDelete<DatasetDeleteResponse>(
+        `/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}`,
+      );
+      if (!res.ok) {
+        addToast(res.detail ?? res.error ?? "Failed to delete dataset", "error");
+        return;
+      }
+
+      addToast(`Deleted: ${datasetId}`, "success");
+
+      if (selectedDataset?.id === datasetId) {
+        setSelectedDataset(null);
+        setDetailData(null);
+        setQualityData(null);
+        setDatasetTags({});
+      }
+
+      await loadDatasets();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : "Failed to delete dataset", "error");
+    } finally {
+      setDeletingDatasetId(null);
+    }
+  };
+
   useEffect(() => {
     if (!pushJobId) return;
     const timer = window.setInterval(async () => {
@@ -1317,23 +1562,6 @@ export function DatasetManagement() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <Link to="/recording" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          ← Recording
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-300 dark:text-zinc-600">Recording</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">Dataset</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/training" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Training</Link>
-        </div>
-        <Link to="/training" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Training →
-        </Link>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 max-w-[1600px] mx-auto flex flex-col gap-6">
           <PageHeader
@@ -1343,26 +1571,15 @@ export function DatasetManagement() {
           />
 
           {/* Page-level Tabs */}
-          <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit mx-auto">
-            {([
+          <SubTabs
+            tabs={[
               { key: "local", icon: <MonitorPlay size={13} />, label: "Local Datasets" },
               { key: "hub", icon: <Download size={13} />, label: "Hub Download" },
-            ] as const).map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setPageTab(tab.key)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-sm font-medium transition-all",
-                  pageTab === tab.key
-                    ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                    : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300",
-                )}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </div>
+            ]}
+            activeKey={pageTab}
+            onChange={(k) => setPageTab(k as "local" | "hub")}
+            className="mx-auto"
+          />
 
           {/* Hub Download Tab */}
           {pageTab === "hub" && (
@@ -1409,7 +1626,17 @@ export function DatasetManagement() {
                           {ds.episodes} eps · {ds.frames} frames · {ds.size}
                         </div>
                       </div>
-                      <button className="p-1 rounded text-zinc-400 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-all flex-none" title="Delete">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleDeleteDataset(ds.id);
+                        }}
+                        disabled={deletingDatasetId === ds.id}
+                        className="p-1 rounded text-zinc-400 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-all flex-none disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Delete"
+                        aria-label={`Delete ${ds.id}`}
+                      >
                         <Trash2 size={12} />
                       </button>
                     </div>
@@ -1453,38 +1680,32 @@ export function DatasetManagement() {
                       </button>
                     ) : null}
                     <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedDataset?.id) {
+                          void handleDeleteDataset(selectedDataset.id);
+                        }
+                      }}
                       disabled={!selectedDataset}
                       className="p-1 rounded text-zinc-400 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-zinc-400 transition-colors"
                       title="Delete dataset"
+                      aria-label="Delete dataset"
                     >
                       <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
                 {/* Sub-tabs */}
-                <div className="flex border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/30">
-                  {([
-                    { key: "player", icon: <Play size={12} />, label: "Playback" },
-                    { key: "quality", icon: <AlertTriangle size={12} />, label: "Quality Check" },
-                    { key: "curation", icon: <Filter size={12} />, label: "Curation" },
-                  ] as const).map(tab => (
-                    <button
-                      key={tab.key}
-                      onClick={() => setDetailTab(tab.key)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors relative",
-                        detailTab === tab.key
-                          ? "text-zinc-900 dark:text-zinc-100"
-                          : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300",
-                      )}
-                    >
-                      {tab.icon}
-                      {tab.label}
-                      {detailTab === tab.key && (
-                        <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-full" />
-                      )}
-                    </button>
-                  ))}
+                <div className="px-2 pt-2">
+                  <SubTabs
+                    tabs={[
+                      { key: "player", icon: <Play size={12} />, label: "Playback" },
+                      { key: "quality", icon: <AlertTriangle size={12} />, label: "Quality Check" },
+                      { key: "curation", icon: <Filter size={12} />, label: "Curation" },
+                    ]}
+                    activeKey={detailTab}
+                    onChange={(k) => setDetailTab(k as "player" | "quality" | "curation")}
+                  />
                 </div>
                 {/* Info row */}
                 <div className="px-3 py-2.5 flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800">
@@ -1565,6 +1786,7 @@ export function DatasetManagement() {
                       detail={detailData}
                       datasetId={selectedDataset.id}
                       onTagsChanged={() => { void refreshDatasetTags(selectedDataset.id); }}
+                      initialEpisode={jumpEpisode}
                     />
                   ) : (
                     <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
@@ -1579,7 +1801,9 @@ export function DatasetManagement() {
                   <AutoFlagPanelContent
                     datasetId={selectedDataset.id}
                     totalEpisodes={detailData?.total_episodes ?? selectedDataset.episodes}
+                    tags={datasetTags}
                     onTagsChanged={() => { void refreshDatasetTags(selectedDataset.id); }}
+                    onPreviewEpisode={(ep) => { setJumpEpisode(ep); setDetailTab("player"); }}
                   />
                 )}
                 {detailTab === "curation" && selectedDataset && detailData && (
@@ -1611,16 +1835,6 @@ export function DatasetManagement() {
         </div>
       </div>
 
-      {pageTab === "local" && selectedDataset && (
-        <StickyControlBar>
-          <div className="flex items-center gap-3 min-w-0">
-            <StatusBadge status="ready" label="READY" />
-            <span className="text-sm text-zinc-400 truncate">
-              {selectedDataset.id} · {selectedDataset.episodes} eps · {selectedDataset.size}
-            </span>
-          </div>
-        </StickyControlBar>
-      )}
     </div>
   );
 }

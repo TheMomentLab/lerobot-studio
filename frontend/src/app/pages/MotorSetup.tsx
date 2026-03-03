@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Link } from "react-router";
 import {
   PageHeader, Card, StatusBadge, WireSelect, WireInput, FieldRow,
-  ProcessButtons, WireToggle, ModeToggle, EmptyState, BlockerCard, RefreshButton
+  ProcessButtons, WireToggle, ModeToggle, EmptyState, BlockerCard, RefreshButton, SubTabs
 } from "../components/wireframe";
-import { AlertCircle, AlertTriangle, Bot, Zap, Ruler, Play, Check, Circle, Loader2, CornerDownLeft, RotateCcw } from "lucide-react";
+import { AlertCircle, AlertTriangle, Bot, Zap, Ruler, Play, Square, Check, Circle, Loader2, CornerDownLeft, RotateCcw, Trash2 } from "lucide-react";
 import { cn } from "../components/ui/utils";
 import { apiDelete, apiGet, apiPost } from "../services/apiClient";
 import { useLeStudioStore } from "../store";
@@ -253,7 +253,6 @@ export function MotorSetup() {
   const [calibBiLeftPort, setCalibBiLeftPort] = useState("");
   const [calibBiRightPort, setCalibBiRightPort] = useState("");
   const [calibFiles, setCalibFiles] = useState<CalibrationFileItem[]>([]);
-  const [calibFileMeta, setCalibFileMeta] = useState<string>("Check file status.");
 
   // ── Setup Wizard ──────────────────────────────────────────────────────────
   const [wizardRunning, setWizardRunning] = useState(false);
@@ -297,6 +296,24 @@ export function MotorSetup() {
         setCalibPort((prev) => prev || bestPort);
         setCalibBiLeftPort((prev) => prev || bestPort);
         setCalibBiRightPort((prev) => prev || secondPort);
+      }
+
+      // Pre-populate armRoleMap from existing symlinks
+      const ARM_ROLE_OPTIONS = ["Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"];
+      const symToLabel = Object.fromEntries(
+        ARM_ROLE_OPTIONS.map((label) => [label.toLowerCase().replace(/ /g, "_"), label]),
+      );
+      const initialMap: Record<string, string> = {};
+      for (const arm of nextArms) {
+        if (arm.symlink && symToLabel[arm.symlink]) {
+          initialMap[arm.device] = symToLabel[arm.symlink];
+        }
+      }
+      if (Object.keys(initialMap).length > 0) {
+        setArmRoleMap((prev) => {
+          const hasExisting = Object.values(prev).some((v) => v && v !== "(none)");
+          return hasExisting ? prev : { ...prev, ...initialMap };
+        });
       }
     } catch {
       // ignore
@@ -495,28 +512,6 @@ export function MotorSetup() {
     void refreshCalibrationList();
   }, [refreshCalibrationList]);
 
-  const refreshCalibrationFileStatus = useCallback(async () => {
-    const type = calibMode === "Bi-Arm" ? calibBiType : calibArmType;
-    const id = calibMode === "Bi-Arm" ? calibBiId : calibArmId;
-    try {
-      const res = await apiGet<CalibrationFileStatusResponse>(
-        `/api/calibrate/file?robot_type=${encodeURIComponent(type)}&robot_id=${encodeURIComponent(id)}`,
-      );
-      if (res.exists) {
-        const modified = typeof res.modified === "string" ? res.modified : "";
-        const size = typeof res.size === "number" ? `${res.size} bytes` : "";
-        setCalibFileMeta(`Found: ${id}.json ${modified || size ? `· ${[modified, size].filter(Boolean).join(" · ")}` : ""}`);
-      } else {
-        setCalibFileMeta("");
-      }
-    } catch {
-      setCalibFileMeta("Failed to check file status.");
-    }
-  }, [calibArmId, calibArmType, calibBiId, calibBiType, calibMode]);
-
-  useEffect(() => {
-    void refreshCalibrationFileStatus();
-  }, [refreshCalibrationFileStatus]);
 
   const handleCalibrationStart = async () => {
     const payload = calibMode === "Bi-Arm"
@@ -557,6 +552,7 @@ export function MotorSetup() {
   };
 
   const handleCalibrationDelete = async (file: CalibrationFileItem) => {
+    if (!window.confirm(`Delete calibration file?\n\n${file.id}\n\nThis cannot be undone.`)) return;
     const guessedType = typeof file.guessed_type === "string" && file.guessed_type ? file.guessed_type : calibArmType;
     const body = await apiDelete<ActionResponse>(
       `/api/calibrate/file?robot_type=${encodeURIComponent(guessedType)}&robot_id=${encodeURIComponent(file.id)}`,
@@ -689,23 +685,6 @@ export function MotorSetup() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <Link to="/camera-setup" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          ← Camera Setup
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-300 dark:text-zinc-600">Camera Setup</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">Motor Setup</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/teleop" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Teleop</Link>
-        </div>
-        <Link to="/teleop" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Teleop →
-        </Link>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
@@ -728,28 +707,18 @@ export function MotorSetup() {
           />
 
           <div className="flex flex-col gap-6">
-            <div className="flex gap-1 bg-zinc-100 dark:bg-zinc-800/50 p-1 rounded-lg w-fit mx-auto">
-              {[
+            <SubTabs
+              tabs={[
                 { key: "identify", label: "Arm Identify" },
                 { key: "mapping", label: "Mapping" },
                 { key: "setup", label: "Motor Setup" },
                 { key: "monitor", label: "Motor Monitor" },
                 { key: "calibration", label: "Calibration" },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setMotorTab(tab.key)}
-                  className={cn(
-                    "px-3.5 py-1.5 rounded-md text-sm font-medium transition-all",
-                    motorTab === tab.key
-                      ? "bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm"
-                      : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+              ]}
+              activeKey={motorTab}
+              onChange={setMotorTab}
+              className="mx-auto"
+            />
 
             {/* udev 규칙 상태 — 공통 */}
             <div className="flex items-center justify-between">
@@ -812,27 +781,29 @@ export function MotorSetup() {
                     />
                   </Card>
                 ) : (
-                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                    <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                      <span className="text-sm text-zinc-500">Connected Arms ({arms.length})</span>
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
+                    <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Connected Arms ({arms.length})</span>
                     </div>
-                    <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                      {arms.map((arm) => (
-                        <div key={arm.device} className="flex items-center gap-3 px-3 py-2">
-                          <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                            <Bot size={14} className="text-zinc-500" />
+                    <div className="px-4 flex-1">
+                      <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                        {arms.map((arm) => (
+                          <div key={arm.device} className="flex items-center gap-3 py-2.5">
+                            <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                              <Bot size={14} className="text-zinc-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{arm.path}</div>
+                              {arm.serial && <div className="text-sm text-zinc-400">S/N: {arm.serial}</div>}
+                            </div>
+                            <StatusBadge status={arm.symlink ? "ready" : "warning"} label={arm.symlink ?? "no symlink"} />
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{arm.path}</div>
-                            {arm.serial && <div className="text-sm text-zinc-400">S/N: {arm.serial}</div>}
-                          </div>
-                          <StatusBadge status={arm.symlink ? "ready" : "warning"} label={arm.symlink ?? "no symlink"} />
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
 
                     {identifyStep === "idle" && (
-                      <div className="px-3 py-2 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center gap-3">
+                      <div className="px-4 py-3 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center gap-3">
                         <span className="text-sm text-zinc-500">Disconnect one arm from USB, then click Start.</span>
                         <button
                           onClick={() => setIdentifyStep("waiting")}
@@ -886,29 +857,32 @@ export function MotorSetup() {
             {/* ─── 매핑 탭 ───────────────────────────────────────────────── */}
             {motorTab === "mapping" && (
               <div className="flex flex-col gap-4">
-                <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
-                  <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-                    <div className="flex items-center gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Arm Mapping ({arms.length})</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm">
-                      <span className="flex items-center gap-1">
-                        <span className={`size-1.5 rounded-full ${mappedCount === arms.length && arms.length > 0 ? "bg-emerald-400" : "bg-zinc-400"}`} />
+                {arms.length === 0 ? (
+                  <Card
+                    title={`Arm Mapping (${arms.length})`}
+                    action={
+                      <span className="flex items-center gap-1 text-sm">
+                        <span className="size-1.5 rounded-full bg-zinc-400" />
+                        <span className="text-zinc-400">{mappedCount} / {arms.length} complete</span>
+                      </span>
+                    }
+                  >
+                    <EmptyState
+                      icon={<Zap size={28} />}
+                      message="No arms detected. Connect USB and refresh."
+                      messageClassName="max-w-none whitespace-nowrap"
+                    />
+                  </Card>
+                ) : (
+                  <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
+                    <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Arm Mapping ({arms.length})</span>
+                      <span className="flex items-center gap-1 text-sm">
+                        <span className={`size-1.5 rounded-full ${mappedCount === arms.length ? "bg-emerald-400" : "bg-zinc-400"}`} />
                         <span className="text-zinc-400">{mappedCount} / {arms.length} complete</span>
                       </span>
                     </div>
-                  </div>
-                  <div className="p-4 flex-1">
-                    {arms.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
-                        <div className="text-3xl opacity-30">
-                          <Zap size={28} />
-                        </div>
-                        <p className="text-sm text-zinc-400 max-w-none whitespace-nowrap">No arms detected. Connect USB and refresh.</p>
-                      </div>
-                    ) : (
+                    <div className="px-4 flex-1">
                       <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50">
                         {arms.map((arm) => (
                           <div key={arm.device} className="flex items-center gap-3 py-2.5">
@@ -932,21 +906,19 @@ export function MotorSetup() {
                           </div>
                         ))}
                       </div>
-                    )}
-                  </div>
-                  {arms.length > 0 && (
+                    </div>
                     <div className="px-4 py-3 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center justify-end">
                       <button
                         onClick={() => { void applyArmMapping(); }}
                         disabled={mappingApplied || mappedCount === 0}
-                        className="px-3 py-1.5 rounded-lg border text-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                        className="px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Check size={12} className="inline mr-1" />
                         Apply
                       </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -954,40 +926,46 @@ export function MotorSetup() {
             {motorTab === "setup" && (
               <div className="flex flex-col gap-4">
                 {!wizardRunning && !wizardAllDone && (
-                  <div className="flex flex-col gap-3">
-                    {(noPort || arms.length === 0) && <BlockerCard title="Setup Blocked" reasons={["Cannot detect port. Check USB connection."]} />}
-                    {hasConflict && !noPort && (
-                      <BlockerCard
-                        title="Setup Blocked"
-                        severity="error"
-                        reasons={[{ text: "Teleop process is running", to: "/teleop" }]}
-                      />
-                    )}
-                    <FieldRow label="Arm Role Type">
-                      <WireSelect
-                        value={setupArmType}
-                        options={armTypes}
-                        onChange={setSetupArmType}
-                      />
-                    </FieldRow>
-                    <FieldRow label="Arm Port">
-                      <WireSelect
-                        placeholder={noPort || arms.length === 0 ? "No port detected" : undefined}
-                        value={noPort || arms.length === 0 ? "" : setupPort}
-                        options={noPort || arms.length === 0 ? [] : arms.map((a) => a.path ?? `/dev/${a.device}`)}
-                        onChange={setSetupPort}
-                      />
-                    </FieldRow>
-                    <div className="flex flex-col gap-2 mt-2">
-                      <button
-                        onClick={() => { void handleSetupStart(); }}
-                        disabled={noPort || hasConflict || arms.length === 0}
-                        className="w-full px-4 py-2.5 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm font-medium cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                      >
-                        <Play size={13} className="fill-current" /> Start Motor Setup
-                      </button>
+                    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 flex flex-col">
+                      <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                        <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Setup Configuration</span>
+                      </div>
+                      <div className="px-4 py-4 flex flex-col gap-3">
+                        {(noPort || arms.length === 0) && <BlockerCard title="Setup Blocked" reasons={["Cannot detect port. Check USB connection."]} />}
+                        {hasConflict && !noPort && (
+                          <BlockerCard
+                            title="Setup Blocked"
+                            severity="error"
+                            reasons={[{ text: "Teleop process is running", to: "/teleop" }]}
+                          />
+                        )}
+                        <FieldRow label="Arm Role Type">
+                          <WireSelect
+                            value={setupArmType}
+                            options={armTypes}
+                            onChange={setSetupArmType}
+                          />
+                        </FieldRow>
+                        <FieldRow label="Arm Port">
+                          <WireSelect
+                            placeholder={noPort || arms.length === 0 ? "No port detected" : undefined}
+                            value={noPort || arms.length === 0 ? "" : setupPort}
+                            options={noPort || arms.length === 0 ? [] : arms.map((a) => a.path ?? `/dev/${a.device}`)}
+                            onChange={setSetupPort}
+                          />
+                        </FieldRow>
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={() => { void handleSetupStart(); }}
+                            disabled={noPort || hasConflict || arms.length === 0}
+                            className="px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                          >
+                            <Play size={12} className="inline mr-1.5 fill-current" />
+                            Start Motor Setup
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
                 )}
 
                 {wizardRunning && (
@@ -1094,6 +1072,7 @@ export function MotorSetup() {
                       </div>
                     )}
 
+                    {import.meta.env.DEV && (
                     <div className="flex items-center gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
                       <span className="text-xs text-zinc-400">Demo:</span>
                       <button
@@ -1118,6 +1097,7 @@ export function MotorSetup() {
                         Stop
                       </button>
                     </div>
+                    )}
                   </div>
                 )}
 
@@ -1184,7 +1164,7 @@ export function MotorSetup() {
                         onClick={() => { void handleMonConnect(); }}
                         disabled={monConnecting || !monPort || setupRunning}
                         title={setupRunning ? "Motor Setup is running — stop it first" : ""}
-                        className="px-4 py-2 rounded-lg border border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        className="px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 text-sm cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                       >
                         {monConnecting ? "Connecting…" : <><Zap size={12} className="inline mr-1" />Connect</>}
                       </button>
@@ -1216,13 +1196,13 @@ export function MotorSetup() {
 
                 {monError && (
                   <div className="px-3 py-2 rounded border border-red-500/30 bg-red-500/5 text-sm text-red-400">
-                    ⚠ {monError}
+                    <AlertTriangle size={14} className="inline mr-1 shrink-0" />{monError}
                   </div>
                 )}
 
                 {monConnected && freewheel && (
                   <div className="px-3 py-2 rounded border border-amber-500/30 bg-amber-500/5 text-sm text-amber-400">
-                    <span className="block">⚠ Freewheel enabled</span>
+                    <span className="block flex items-center gap-1"><AlertTriangle size={14} className="shrink-0" />Freewheel enabled</span>
                     <span className="text-sm text-amber-400/60 block mt-0.5">Motor lock released. Move button disabled.</span>
                   </div>
                 )}
@@ -1250,7 +1230,7 @@ export function MotorSetup() {
                       </div>
                       <p className="text-sm text-zinc-400">
                         {setupRunning
-                          ? "⚠ Motor Setup is running. Stop it first."
+                          ? "Motor Setup is running. Stop it first."
                           : "Connect to port to see motor status (100ms polling)"}
                       </p>
                     </div>
@@ -1334,14 +1314,26 @@ export function MotorSetup() {
                           </FieldRow>
                         </>
                       )}
-                      <ProcessButtons
-                        running={calibrateRunning}
-                        onStart={() => { void handleCalibrationStart(); }}
-                        onStop={() => { void handleCalibrationStop(); }}
-                        startLabel={<><Play size={13} className="fill-current" /> Start Calibration</>}
-                        disabled={calibTypeMismatch || arms.length === 0}
-                      />
-                      {calibFileMeta ? <div className="text-sm text-zinc-400">{calibFileMeta}</div> : null}
+                      <div className="flex justify-end">
+                        {!calibrateRunning ? (
+                          <button
+                            type="button"
+                            onClick={() => { void handleCalibrationStart(); }}
+                            disabled={calibTypeMismatch || arms.length === 0}
+                            className={`px-4 py-2 rounded border text-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${calibTypeMismatch || arms.length === 0 ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+                          >
+                            <Play size={13} className="fill-current" /> Start Calibration
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { void handleCalibrationStop(); }}
+                            className="px-4 py-2 rounded border border-red-500/30 text-sm text-red-500 hover:bg-red-500/10 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                          >
+                            <Square size={11} className="fill-current" /> Stop
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </Card>
 
@@ -1353,7 +1345,7 @@ export function MotorSetup() {
                     ) : (
                       <div className="flex flex-col gap-2">
                         {calibFiles.map((file) => (
-                          <div key={`${file.id}-${file.guessed_type ?? "unknown"}`} className="flex items-center gap-2 p-2 rounded border border-zinc-200 dark:border-zinc-700">
+                          <div key={`${file.id}-${file.guessed_type ?? "unknown"}`} className="group flex items-center gap-2 p-2 rounded border border-zinc-200 dark:border-zinc-700">
                             <div className="flex-1 min-w-0">
                               <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{file.id}</div>
                               <div className="text-xs text-zinc-400 truncate">
@@ -1361,10 +1353,10 @@ export function MotorSetup() {
                               </div>
                             </div>
                             <button
-                              onClick={() => { void handleCalibrationDelete(file); }}
-                              className="px-2 py-1 rounded border border-red-500/30 text-red-500 text-xs hover:bg-red-500/10"
+                              onClick={(e) => { e.stopPropagation(); void handleCalibrationDelete(file); }}
+                              className="p-1 text-zinc-300 dark:text-zinc-600 hover:text-red-400 cursor-pointer"
                             >
-                              Delete
+                              <Trash2 size={12} />
                             </button>
                           </div>
                         ))}

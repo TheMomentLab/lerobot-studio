@@ -42,10 +42,27 @@ import { useMappedCameras } from "../hooks/useMappedCameras";
 
 const EMPTY_LOG: LogLine[] = [];
 
+type EvalPreflightResponse = {
+  ok: boolean;
+  reason?: string;
+  action?: string;
+  command?: string;
+};
+
+type RewardTooltipEntry = {
+  payload?: EpisodeResult;
+};
+
 // ─── Reward Tooltip ───────────────────────────────────────────────────────────
-function RewardTooltip({ active, payload }: any) {
-  if (!active || !payload?.length) return null;
-  const ep = payload[0]?.payload as EpisodeResult;
+function RewardTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: RewardTooltipEntry[];
+}) {
+  const ep = payload?.[0]?.payload;
+  if (!active || !ep) return null;
   return (
     <div className="px-3 py-2 rounded border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm shadow-xl">
       <div className="text-zinc-400 mb-1">Episode {ep.ep}</div>
@@ -72,14 +89,16 @@ export function Evaluation() {
   const appendLog = useLeStudioStore((s) => s.appendLog);
   const addToast = useLeStudioStore((s) => s.addToast);
 
+  const hfUsername = useLeStudioStore((s) => s.hfUsername);
   // ── Local state ──────────────────────────────────────────────────────────
   const [policySource, setPolicySource] = useState<"local" | "hf">("local");
   const [deviceLabel, setDeviceLabel] = useState("CUDA (GPU)");
   const [numEpisodes, setNumEpisodes] = useState(10);
-  const [datasetRepo, setDatasetRepo] = useState("lerobot-user/pick_cube");
+  const [datasetRepo, setDatasetRepo] = useState(`${hfUsername ?? "lerobot-user"}/pick_cube`);
   const [datasetOverride, setDatasetOverride] = useState("");
   const [advOpen, setAdvOpen] = useState(false);
   const [cameraConfigOpen, setCameraConfigOpen] = useState(true);
+  const [showBlockers, setShowBlockers] = useState(false);
   const [cameraMapping, setCameraMapping] = useState<Record<string, string>>({});
 
   // ── Preflight ────────────────────────────────────────────────────────────
@@ -163,10 +182,10 @@ export function Evaluation() {
   const showResults = !isRunning && hasResults;
 
   // ── Preflight logic ──────────────────────────────────────────────────────
-  const refreshPreflight = useCallback(async () => {
+  const refreshPreflight = useCallback(async (): Promise<EvalPreflightResponse> => {
     const device = normalizeDeviceKey(deviceLabel);
     try {
-      const res = await apiGet<{ ok: boolean; reason?: string; action?: string; command?: string }>(
+      const res = await apiGet<EvalPreflightResponse>(
         `/api/train/preflight?device=${encodeURIComponent(device)}`,
       );
       setPreflightOk(!!res.ok);
@@ -201,10 +220,12 @@ export function Evaluation() {
     if (autoInstallCommandRef.current === preflightCommand) return;
     autoInstallCommandRef.current = preflightCommand;
     appendLog("eval", "[INFO] Auto-installing missing Python packages in background...", "info");
-    void apiPost("/api/train/install_torchcodec_fix", { command: preflightCommand }).then((res: any) => {
+    void apiPost<{ ok: boolean; error?: string }>("/api/train/install_torchcodec_fix", { command: preflightCommand }).then((res) => {
       if (!res.ok) appendLog("eval", `[ERROR] ${res.error ?? "Failed to start installer."}`, "error");
       else addToast("Auto-install started — check console", "info");
-    }).catch(() => {});
+    }).catch(() => {
+      appendLog("eval", "[ERROR] Failed to request auto-install.", "error");
+    });
   }, [preflightOk, installing, preflightAction, preflightCommand, appendLog, addToast]);
 
   // ── Camera mapping sync ──────────────────────────────────────────────────
@@ -228,6 +249,12 @@ export function Evaluation() {
 
   // ── Start / Stop ─────────────────────────────────────────────────────────
   const startEval = useCallback(async (episodesOverride?: number) => {
+    // Show blockers if required fields are missing
+    if (configBlockers.length > 0) {
+      setShowBlockers(true);
+      return;
+    }
+    setShowBlockers(false);
     try {
       const episodes = episodesOverride ?? numEpisodes;
       const cameraCatalog = mappedCamEntries.map(([sym, path]) => ({ role: sym, path }));
@@ -247,8 +274,8 @@ export function Evaluation() {
       // Preflight check
       const preflight = await refreshPreflight();
       if (!preflight.ok) {
-        appendLog("eval", `[ERROR] ${(preflight as any).reason || "Device compatibility check failed."}`, "error");
-        notifyError((preflight as any).reason || "Device preflight failed");
+        appendLog("eval", `[ERROR] ${preflight.reason ?? "Device compatibility check failed."}`, "error");
+        notifyError(preflight.reason ?? "Device preflight failed");
         return;
       }
 
@@ -299,7 +326,7 @@ export function Evaluation() {
   }, [
     numEpisodes, mappedCamEntries, envType, policySource, policyPath,
     datasetRepo, datasetOverride, deviceLabel, task, cameraMapping, config,
-    refreshPreflight, appendLog, beginEval, evalLogLines.length,
+    configBlockers, refreshPreflight, appendLog, beginEval, evalLogLines.length,
     markError, setEndedAtMs, setProgressStatus, addToast,
   ]);
 
@@ -310,6 +337,10 @@ export function Evaluation() {
     notifyProcessStopRequested("eval");
   }, [doneEpisodes, setEndedAtMs, setProgressStatus]);
 
+  // Reset blocker cards when all blockers are resolved
+  useEffect(() => {
+    if (configBlockers.length === 0) setShowBlockers(false);
+  }, [configBlockers]);
   // ── Gym plugin install ───────────────────────────────────────────────────
   const installGymPlugin = useCallback(async () => {
     if (!gymInstallCommand) return;
@@ -361,19 +392,6 @@ export function Evaluation() {
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <Link to="/training" className="inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          ← Training
-        </Link>
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-300 dark:text-zinc-600">Training</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">Evaluation</span>
-        </div>
-        <div className="justify-self-end" />
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-6 pb-8 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
 
@@ -433,7 +451,7 @@ export function Evaluation() {
           )}
 
           {/* Config blockers — one card per reason */}
-          {!isRunning && configBlockers.map((reason, i) => (
+          {showBlockers && !isRunning && configBlockers.length > 0 && configBlockers.map((reason, i) => (
             <BlockerCard
               key={i}
               severity="warning"
@@ -497,7 +515,7 @@ export function Evaluation() {
                             <select
                               value={policyPath}
                               onChange={(e) => handleCheckpointChange(e.target.value)}
-                              className="w-full h-9 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
+                              className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                             >
                               {checkpoints.map((cp) => (
                                 <option key={cp.path} value={cp.path}>
@@ -512,7 +530,7 @@ export function Evaluation() {
                             value={policyPath}
                             placeholder="e.g. lerobot/act_pusht_diffusion"
                             onChange={(e) => updateConfig({ eval_policy_path: e.target.value })}
-                            className="w-full h-9 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none placeholder:text-zinc-500 focus:border-blue-500 dark:focus:border-blue-400"
+                            className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                           />
                         )}
                       </div>
@@ -526,7 +544,7 @@ export function Evaluation() {
                       <select
                         value={deviceLabel}
                         onChange={(e) => setDeviceLabel(e.target.value)}
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
+                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                       >
                         <option value="CUDA (GPU)">CUDA (GPU)</option>
                         <option value="CPU">CPU</option>
@@ -540,7 +558,7 @@ export function Evaluation() {
                         value={numEpisodes}
                         onChange={(e) => setNumEpisodes(Number(e.target.value))}
                         min={1} max={100}
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none focus:border-blue-500 dark:focus:border-blue-400"
+                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                       />
                     </div>
                     <div>
@@ -549,7 +567,7 @@ export function Evaluation() {
                         type="text"
                         value={datasetRepo}
                         onChange={(e) => setDatasetRepo(e.target.value)}
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none focus:border-blue-500 dark:focus:border-blue-400"
+                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                       />
                     </div>
                   </div>
@@ -565,7 +583,7 @@ export function Evaluation() {
                       <select
                         value={envType}
                         onChange={(e) => updateConfig({ eval_env_type: e.target.value })}
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
+                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                       >
                         <option value="">— Select env type —</option>
                         {envTypes.map((et) => (
@@ -586,7 +604,7 @@ export function Evaluation() {
                         value={task}
                         placeholder="e.g. Pick up the block"
                         onChange={(e) => updateConfig({ eval_task: e.target.value })}
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none focus:border-blue-500 dark:focus:border-blue-400"
+                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                       />
                     </div>
                   </div>
@@ -607,7 +625,7 @@ export function Evaluation() {
                         value={datasetOverride}
                         onChange={(e) => setDatasetOverride(e.target.value)}
                         placeholder="Override with different dataset repo"
-                        className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none placeholder:text-zinc-500 focus:border-blue-500 dark:focus:border-blue-400"
+                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                       />
                     </div>
                   )}
@@ -646,7 +664,7 @@ export function Evaluation() {
                               <select
                                 value={cameraMapping[key] || ""}
                                 onChange={(e) => setCameraMapping((prev) => ({ ...prev, [key]: e.target.value }))}
-                                className="w-full h-7 px-2 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-700 dark:text-zinc-300 text-sm outline-none cursor-pointer focus:border-blue-500 dark:focus:border-blue-400"
+                                className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                               >
                                 <option value="">— Select —</option>
                                 {mappedCamEntries.map(([sym, path]) => (
@@ -950,14 +968,14 @@ export function Evaluation() {
               isRunning ? "running" :
               progressStatus === "completed" ? "ready" :
               progressStatus === "error" ? "blocked" :
-              evalReady ? "ready" : "blocked"
+              !preflightOk ? "blocked" : "ready"
             }
             label={
               showStarting ? "STARTING" :
               isRunning ? "EVALUATING" :
               progressStatus === "completed" ? "DONE" :
               progressStatus === "error" ? "ERROR" :
-              evalReady ? "READY" : "BLOCKED"
+              !preflightOk ? "BLOCKED" : "READY"
             }
             pulse={isRunning}
           />
@@ -972,9 +990,14 @@ export function Evaluation() {
               {" "}· Success: <span className={cn("font-mono", (computedSuccessRate ?? 0) >= 60 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400")}>{computedSuccessRate ?? "—"}%</span>
             </span>
           )}
-          {!isRunning && !hasResults && !evalReady && (
+          {!isRunning && !hasResults && showBlockers && configBlockers.length > 0 && (
+            <span className="text-sm text-amber-600 dark:text-amber-400 truncate">
+              {configBlockers[0]}
+            </span>
+          )}
+          {!isRunning && !hasResults && !preflightOk && (
             <span className="text-sm text-zinc-400 truncate">
-              {!preflightOk ? (preflightReason || "Device preflight failed") : configBlockers[0]}
+              {preflightReason || "Device preflight failed"}
             </span>
           )}
         </div>
@@ -983,7 +1006,7 @@ export function Evaluation() {
             running={isRunning}
             onStart={() => { void startEval(); }}
             onStop={stopEval}
-            disabled={!evalReady || !!conflictProcess}
+            disabled={!!conflictProcess}
             startLabel={<><Play size={13} className="fill-current" /> Start Eval</>}
             compact
           />

@@ -8,6 +8,7 @@ import { apiGet, apiPost } from "../services/apiClient";
 import {
   fromBackendHistory,
   fromBackendResources,
+  type HistoryCategory,
   type UiHistoryEntry,
   type UiResourcesData,
 } from "../services/contracts";
@@ -25,6 +26,7 @@ export function SystemStatus() {
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [historyItems, setHistoryItems] = useState<UiHistoryEntry[]>([]);
   const [historyOpen, setHistoryOpen] = useState(true);
+  const [expandedHistory, setExpandedHistory] = useState<Set<number>>(new Set());
   const [gpuStatus, setGpuStatus] = useState<GpuStatusResponse | null>(null);
 
 
@@ -60,21 +62,6 @@ export function SystemStatus() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Top nav bar */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-zinc-400">
-        <div aria-hidden="true" />
-        <div className="flex items-center gap-2">
-          <span className="text-zinc-700 dark:text-zinc-200 font-medium">System Status</span>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/camera-setup" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Camera Setup</Link>
-          <span className="text-zinc-300 dark:text-zinc-600">›</span>
-          <Link to="/motor-setup" className="hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">Motor Setup</Link>
-        </div>
-        <Link to="/camera-setup" className="justify-self-end inline-flex items-center gap-1 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors">
-          Camera Setup →
-        </Link>
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="p-4 sm:p-6 flex flex-col gap-3 sm:gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
@@ -204,9 +191,9 @@ export function SystemStatus() {
                 {historyItems.length > 0 && (
                   <button
                     onClick={handleClearHistory}
-                    className="flex items-center gap-1 text-sm text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
+                    className="text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
                   >
-                    <Trash2 size={11} /> Clear
+                    <Trash2 size={11} />
                   </button>
                 )}
               </div>
@@ -214,16 +201,18 @@ export function SystemStatus() {
                 historyItems.length > 0 ? (
                   <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 overflow-y-auto max-h-[200px]">
                     {historyItems.map((h, i) => (
-                      <div key={i} className="flex items-center gap-3 px-3 py-2">
-                        <div className="size-2 rounded-full bg-zinc-300 dark:bg-zinc-600 flex-none" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm text-zinc-700 dark:text-zinc-300">{h.type}</span>
-                            <span className="text-sm text-zinc-400">{h.ts}</span>
-                          </div>
-                          <div className="text-sm text-zinc-400">{h.meta}</div>
-                        </div>
-                      </div>
+                      <HistoryRow
+                        key={i}
+                        entry={h}
+                        expanded={expandedHistory.has(i)}
+                        onToggle={() => {
+                          setExpandedHistory((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(i)) next.delete(i); else next.add(i);
+                            return next;
+                          });
+                        }}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -241,5 +230,80 @@ export function SystemStatus() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── History Row ─────────────────────────────────────────────────────────────
+
+const CATEGORY_COLORS: Record<HistoryCategory, string> = {
+  eval: "bg-blue-400",
+  train: "bg-purple-400",
+  teleop: "bg-emerald-400",
+  record: "bg-amber-400",
+  motor: "bg-zinc-400",
+  other: "bg-zinc-400",
+};
+
+const CATEGORY_LABELS: Record<HistoryCategory, string> = {
+  eval: "Eval",
+  train: "Train",
+  teleop: "Teleop",
+  record: "Record",
+  motor: "Motor",
+  other: "Event",
+};
+
+function formatTimeShort(ts: string): string {
+  const match = ts.match(/T?(\d{2}:\d{2})/);
+  return match ? match[1] : ts;
+}
+
+function formatDateLabel(ts: string): string {
+  const match = ts.match(/(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : "";
+}
+
+function HistoryRow({ entry, expanded, onToggle }: {
+  entry: UiHistoryEntry;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const isEnd = entry.type.endsWith("_end");
+  const hasDetail = entry.meta && entry.meta !== "{}" && entry.meta !== "\"{}\"";
+
+  return (
+    <button
+      type="button"
+      onClick={hasDetail ? onToggle : undefined}
+      className={[
+        "flex items-start gap-2.5 px-3 py-1.5 w-full text-left transition-colors",
+        hasDetail ? "cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/40" : "cursor-default",
+      ].join(" ")}
+    >
+      {/* Category dot */}
+      <div className={`size-2 rounded-full mt-1.5 flex-none ${CATEGORY_COLORS[entry.category]}`} />
+
+      <div className="flex-1 min-w-0">
+        {/* Summary line */}
+        <div className="flex items-center gap-1.5 text-sm">
+          <span className="font-medium text-zinc-600 dark:text-zinc-400 flex-none">
+            {CATEGORY_LABELS[entry.category]}
+          </span>
+          {isEnd ? (
+            <span className="text-zinc-400 dark:text-zinc-500">finished</span>
+          ) : (
+            <span className="text-zinc-700 dark:text-zinc-300 truncate">{entry.summary}</span>
+          )}
+          <span className="ml-auto text-xs text-zinc-400 flex-none tabular-nums">{formatTimeShort(entry.ts)}</span>
+        </div>
+
+        {/* Expanded detail */}
+        {expanded && hasDetail && (
+          <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500 font-mono break-all whitespace-pre-wrap leading-relaxed">
+            {entry.meta}
+          </div>
+        )}
+      </div>
+    </button>
   );
 }
