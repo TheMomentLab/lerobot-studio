@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Camera, Bot, Cpu, Download, Trash2, AlertCircle, AlertTriangle, CheckCircle2, Link as LinkIcon, History, Shield } from "lucide-react";
+import { Camera, Bot, Cpu, Download, Eraser, AlertCircle, AlertTriangle, CheckCircle2, Link as LinkIcon, History, Shield } from "lucide-react";
 import {
   PageHeader, ResourceBar, EmptyState, RefreshButton,
 } from "../components/wireframe";
@@ -108,7 +108,7 @@ export function SystemStatus() {
               <Shield size={13} className="text-zinc-400" />
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Prerequisites</span>
             </div>
-            <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
               {/* HF Token */}
               <div className="flex items-center gap-3 px-3 py-2">
                 <div className="flex-1 min-w-0">
@@ -175,7 +175,7 @@ export function SystemStatus() {
                   />
                 </div>
               ) : (
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
                   {[...cameras].sort((a, b) => (b.symlink ? 1 : 0) - (a.symlink ? 1 : 0)).map((cam) => (
                     <div key={cam.device} className="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:py-2">
                       <div className="flex-1 min-w-0">
@@ -204,7 +204,7 @@ export function SystemStatus() {
                   />
                 </div>
               ) : (
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
                   {[...arms].sort((a, b) => (b.symlink ? 1 : 0) - (a.symlink ? 1 : 0)).map((arm) => (
                     <div key={arm.device} className="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:py-2">
                       <div className="flex-1 min-w-0">
@@ -269,12 +269,12 @@ export function SystemStatus() {
                     onClick={handleClearHistory}
                     className="text-zinc-500 hover:text-red-400 transition-colors cursor-pointer"
                   >
-                    <Trash2 size={11} />
+                    <Eraser size={11} />
                   </button>
                 )}
               </div>
               {historyItems.length > 0 ? (
-                  <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 overflow-y-auto max-h-[200px]">
+                  <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50 overflow-y-auto max-h-[200px]">
                     {historyItems.map((h, i) => (
                       <HistoryRow
                         key={i}

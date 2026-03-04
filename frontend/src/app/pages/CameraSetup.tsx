@@ -156,7 +156,7 @@ export function CameraSetup() {
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Cameras ({cameras.length})</span>
             </div>
             <div className="px-4 flex-1">
-              <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50">
+              <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
                 {cameras.map((cam) => {
                   const role = cameraAssignments[cam.device] ?? "(none)";
                   const dimmed = role === "(none)";

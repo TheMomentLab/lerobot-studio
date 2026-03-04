@@ -35,7 +35,7 @@ export function IdentifyTabPanel({
             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Connected Arms ({arms.length})</span>
           </div>
           <div className="px-4 flex-1">
-            <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50">
+            <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
               {arms.map((arm) => (
                 <div key={arm.device} className="flex items-center gap-3 py-2.5">
                   <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">

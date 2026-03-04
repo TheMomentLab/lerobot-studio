@@ -614,7 +614,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
               trainStatus === "running" ? "running" :
               trainStatus === "starting" ? "warning" :
               trainStatus === "blocked" ? "blocked" :
-              "idle"
+              "ready"
             }
             label={
               trainStatus === "running" ? "TRAINING" :
@@ -625,17 +625,19 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
             }
             pulse={trainStatus === "running"}
           />
-          {trainStatus === "running" && (
-            <span className="text-sm text-zinc-400 font-mono truncate min-w-0">
-              Step {currentStep.toLocaleString()} · Loss {latestLoss?.toFixed(5) ?? "—"} · ETA {eta}
-            </span>
-          )}
-          {completed && (
-            <span className="text-sm text-emerald-600 dark:text-emerald-400">Training Complete ✓</span>
-          )}
-          {trainStatus === "idle" && !completed && cudaState === "fail" && (
-            <span className="text-sm text-zinc-400 truncate">{preflightReason || "Preflight failed"}</span>
-          )}
+          <span className="text-sm text-zinc-400 truncate min-w-0">
+            {trainStatus === "running" ? (
+              <span className="font-mono">Step {currentStep.toLocaleString()} · Loss {latestLoss?.toFixed(5) ?? "—"} · ETA {eta}</span>
+            ) : trainStatus === "starting" ? (
+              "Starting training…"
+            ) : completed ? (
+              <span className="text-emerald-600 dark:text-emerald-400">Training complete</span>
+            ) : trainStatus === "blocked" || cudaState === "fail" ? (
+              preflightReason || "Preflight failed"
+            ) : (
+              "Training ready"
+            )}
+          </span>
         </div>
         <div className="flex items-center gap-3">
           <ProcessButtons
@@ -646,6 +648,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
             startLabel={<><Play size={13} className="fill-current" /> Start Training</>}
             compact
             fullWidth={false}
+            buttonClassName="py-1"
           />
         </div>
       </StickyControlBar>

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import type {
   AppTab,
   LeStudioConfig,
@@ -126,6 +127,9 @@ const actions: LeStudioStoreActions = {
     setState((prev) => ({
       toasts: [...prev.toasts, { id: uid(), message, kind }],
     }));
+    if (kind === "error") toast.error(message);
+    else if (kind === "success") toast.success(message);
+    else toast.info(message);
   },
   removeToast: (id) => {
     setState((prev) => ({

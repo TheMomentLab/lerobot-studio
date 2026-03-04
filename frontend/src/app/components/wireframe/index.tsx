@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router";
-import { Play, Square, AlertTriangle, RefreshCw } from "lucide-react";
+import { Play, Square, AlertTriangle, RefreshCw, CheckCircle, AlertCircle, Circle, Loader2 } from "lucide-react";
 import { cn } from "../ui/utils";
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
@@ -14,41 +14,28 @@ export function StatusBadge({
   label?: string;
   pulse?: boolean;
 }) {
-  const map: Record<StatusType, string> = {
-    running: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-    ready: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
-    warning: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
-    error: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-    idle: "bg-zinc-500/15 text-zinc-400 border-zinc-600/30",
-    blocked: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
+  const colorMap: Record<StatusType, string> = {
+    running: "text-emerald-500",
+    ready: "text-emerald-500",
+    warning: "text-amber-500",
+    error: "text-red-500",
+    idle: "text-zinc-400",
+    blocked: "text-amber-500",
   };
-  const dotMap: Record<StatusType, string> = {
-    running: "bg-emerald-400",
-    ready: "bg-emerald-400",
-    warning: "bg-amber-400",
-    error: "bg-red-400",
-    idle: "bg-zinc-500",
-    blocked: "bg-amber-400",
+  const iconMap: Record<StatusType, React.ReactNode> = {
+    running: <Loader2 size={14} className={cn(pulse && "animate-spin")} />,
+    ready: <CheckCircle size={14} />,
+    warning: <AlertTriangle size={14} />,
+    error: <AlertCircle size={14} />,
+    idle: <Circle size={14} />,
+    blocked: <AlertTriangle size={14} />,
   };
   return (
     <span
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-sm font-mono",
-        map[status]
-      )}
+      className={cn("inline-flex items-center", colorMap[status])}
+      title={label ?? status.toUpperCase()}
     >
-      <span className="relative flex size-1.5">
-        <span className={cn("rounded-full size-1.5", dotMap[status])} />
-        {pulse && status === "running" && (
-          <span
-            className={cn(
-              "absolute inset-0 rounded-full animate-ping opacity-75",
-              dotMap[status]
-            )}
-          />
-        )}
-      </span>
-      {label ?? status.toUpperCase()}
+      {iconMap[status]}
     </span>
   );
 }
@@ -253,6 +240,7 @@ export function ProcessButtons({
   fullWidth = true,
   compact = false,
   className,
+  buttonClassName,
 }: {
   running: boolean;
   onStart?: () => void;
@@ -262,8 +250,9 @@ export function ProcessButtons({
   fullWidth?: boolean;
   compact?: boolean;
   className?: string;
+  buttonClassName?: string;
 }) {
-  const btnBase = compact ? "px-4 py-1.5 rounded-lg text-sm font-medium border flex items-center justify-center gap-1.5 leading-none transition-all" : "px-5 py-2 rounded-lg text-sm font-medium border flex items-center justify-center gap-1.5 transition-all shadow-sm";
+  const btnBase = compact ? `px-4 py-2 rounded border text-sm font-medium flex items-center justify-center gap-1.5 transition-all` : `px-5 py-2 rounded border text-sm font-medium flex items-center justify-center gap-1.5 transition-all shadow-sm`;
   return (
     <div className={cn("flex items-center gap-2", className)}>
       {!running ? (
@@ -277,7 +266,8 @@ export function ProcessButtons({
             fullWidth && "w-full",
             disabled
               ? "border-zinc-600 text-zinc-500 cursor-not-allowed"
-              : "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
+              : "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer",
+            buttonClassName
           )}
         >
           {startLabel ?? <><Play size={13} className="fill-current" /> Start</>}
@@ -290,7 +280,8 @@ export function ProcessButtons({
           className={cn(
             btnBase,
             "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 cursor-pointer",
-            fullWidth && "w-full"
+            fullWidth && "w-full",
+            buttonClassName
           )}
         >
           <Square size={11} className="fill-current" /> Stop
@@ -317,14 +308,14 @@ export function FieldRow({
 }
 
 // ─── WireSelect ───────────────────────────────────────────────────────────────
-export function WireSelect({ placeholder, value, options, onChange, disabled }: { placeholder?: string; value?: string; options?: string[]; onChange?: (v: string) => void; disabled?: boolean }) {
+export function WireSelect({ placeholder, value, options, onChange, disabled, className }: { placeholder?: string; value?: string; options?: string[]; onChange?: (v: string) => void; disabled?: boolean; className?: string }) {
   return (
     <select
       aria-label={placeholder ?? "Select option"}
       value={value ?? ""}
       onChange={onChange ? (e) => onChange(e.target.value) : () => {}}
       disabled={disabled}
-      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed")}
+      className={cn("w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all", disabled && "opacity-50 cursor-not-allowed", className)}
     >
       {placeholder && <option value="" disabled>{placeholder}</option>}
       {options?.map((o) => (

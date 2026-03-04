@@ -100,17 +100,20 @@ export function SetupTabPanel({
                 onChange={onSetSetupPort}
               />
             </FieldRow>
-            <div className="flex justify-end mt-2">
-              <button
-                onClick={onHandleSetupStart}
-                disabled={noPort || hasConflict || arms.length === 0}
-                className="px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                <Play size={12} className="inline mr-1.5 fill-current" />
-                Start Motor Setup
-              </button>
-            </div>
           </div>
+        </div>
+      )}
+
+      {!wizardRunning && !wizardAllDone && (
+        <div className="flex justify-end">
+          <button
+            onClick={onHandleSetupStart}
+            disabled={noPort || hasConflict || arms.length === 0}
+            className="px-4 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            <Play size={12} className="inline mr-1.5 fill-current" />
+            Start Motor Setup
+          </button>
         </div>
       )}
 

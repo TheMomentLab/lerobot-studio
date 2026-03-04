@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { ChevronUp, ChevronDown, Copy, Trash2, Square, Terminal } from "lucide-react";
+import { ChevronUp, ChevronDown, Copy, Eraser, Square, Terminal } from "lucide-react";
 import {
   apiPost,
   subscribeNonTrainChannel,
@@ -386,6 +386,12 @@ export function RuntimeConsoleDrawer() {
       return;
     }
 
+    if (input === "clear") {
+      clearLog(activeProcess);
+      setStdinValue("");
+      return;
+    }
+
     const response = await apiPost<{ ok: boolean; error?: string; command?: string }>(`/api/process/${activeProcess}/command`, {
       command: input,
     });
@@ -412,7 +418,7 @@ export function RuntimeConsoleDrawer() {
     >
       <div
         onMouseDown={onMouseDown}
-        className="h-1 bg-transparent hover:bg-zinc-300 dark:hover:bg-zinc-700 cursor-ns-resize flex-none transition-colors"
+        className="h-1 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-600 cursor-ns-resize flex-none transition-colors"
       />
 
       <div className="flex items-center gap-2 px-3 h-7 flex-none border-b border-zinc-200 dark:border-zinc-800">
@@ -455,7 +461,7 @@ export function RuntimeConsoleDrawer() {
             title="Clear"
             onClick={() => clearLog(activeProcess)}
           >
-            <Trash2 size={12} />
+            <Eraser size={12} />
           </button>
           <button
             className={cn(

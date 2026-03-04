@@ -80,6 +80,33 @@ export function CalibrationTabPanel({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card title="Existing Calibration Files" className="min-h-[300px]">
+          {calibFiles.length === 0 ? (
+            <div className="flex min-h-[220px] items-center justify-center">
+              <EmptyState icon={<Ruler size={28} />} message="No calibration files." />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {calibFiles.map((file) => (
+                <div key={`${file.id}-${file.guessed_type ?? "unknown"}`} className="group flex items-center gap-2 p-2 rounded border border-zinc-200 dark:border-zinc-700">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{file.id}</div>
+                    <div className="text-xs text-zinc-400 truncate">
+                      {(file.guessed_type ?? "unknown")} - {(file.modified ?? "-")}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onHandleCalibrationDelete(file); }}
+                    className="p-1 text-zinc-300 dark:text-zinc-600 hover:text-red-400 cursor-pointer"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
         <Card title={calibMode === "Single Arm" ? "Single Arm Setup" : "Bi-Arm Setup"}>
           <div className="flex flex-col gap-3">
             {calibMode === "Single Arm" ? (
@@ -140,55 +167,29 @@ export function CalibrationTabPanel({
                 </FieldRow>
               </>
             )}
-            <div className="flex justify-end">
-              {!calibrateRunning ? (
-                <button
-                  type="button"
-                  onClick={onHandleCalibrationStart}
-                  disabled={calibTypeMismatch || arms.length === 0}
-                  className={`px-4 py-2 rounded border text-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${calibTypeMismatch || arms.length === 0 ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
-                >
-                  <Play size={13} className="fill-current" /> Start Calibration
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onHandleCalibrationStop}
-                  className="px-4 py-2 rounded border border-red-500/30 text-sm text-red-500 hover:bg-red-500/10 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
-                >
-                  <Square size={11} className="fill-current" /> Stop
-                </button>
-              )}
-            </div>
           </div>
         </Card>
+      </div>
 
-        <Card title="Existing Calibration Files" className="min-h-[300px]">
-          {calibFiles.length === 0 ? (
-            <div className="flex min-h-[220px] items-center justify-center">
-              <EmptyState icon={<Ruler size={28} />} message="No calibration files." />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {calibFiles.map((file) => (
-                <div key={`${file.id}-${file.guessed_type ?? "unknown"}`} className="group flex items-center gap-2 p-2 rounded border border-zinc-200 dark:border-zinc-700">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{file.id}</div>
-                    <div className="text-xs text-zinc-400 truncate">
-                      {(file.guessed_type ?? "unknown")} - {(file.modified ?? "-")}
-                    </div>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onHandleCalibrationDelete(file); }}
-                    className="p-1 text-zinc-300 dark:text-zinc-600 hover:text-red-400 cursor-pointer"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+      <div className="flex justify-end">
+        {!calibrateRunning ? (
+          <button
+            type="button"
+            onClick={onHandleCalibrationStart}
+            disabled={calibTypeMismatch || arms.length === 0}
+            className={`px-4 py-1 rounded border text-sm cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${calibTypeMismatch || arms.length === 0 ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+          >
+            <Play size={13} className="fill-current" /> Start Calibration
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onHandleCalibrationStop}
+            className="px-4 py-1 rounded border border-red-500/30 text-sm text-red-500 hover:bg-red-500/10 cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+          >
+            <Square size={11} className="fill-current" /> Stop
+          </button>
+        )}
       </div>
     </div>
   );

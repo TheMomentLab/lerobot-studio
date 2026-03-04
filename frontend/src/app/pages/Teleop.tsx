@@ -563,11 +563,13 @@ export function Teleop() {
               label={running ? "TELEOP ACTIVE" : phase === "loading" ? "STARTING..." : "READY"}
               pulse={running}
             />
-            {running && (
-              <span className="text-sm text-zinc-400">
-                {mode} · Loop {loopMs}ms
-              </span>
-            )}
+            <span className="text-sm text-zinc-400">
+              {running
+                ? `${mode} · Loop ${loopMs}ms`
+                : phase === "loading"
+                  ? "Starting teleop…"
+                  : "Teleop ready"}
+            </span>
           </div>
 
           {(phase === "idle" || phase === "running") && (
@@ -577,6 +579,7 @@ export function Teleop() {
                 value={speed}
                 options={["0.1x", "0.25x", "0.5x", "0.75x", "1.0x"]}
                 onChange={setSpeed}
+                className="h-7 py-0"
               />
             </div>
           )}
@@ -590,6 +593,7 @@ export function Teleop() {
             startLabel={<><Play size={13} className="fill-current" /> Start Teleop</>}
             disabled={actionPending}
             compact
+            buttonClassName="py-1"
           />
         </div>
       </StickyControlBar>

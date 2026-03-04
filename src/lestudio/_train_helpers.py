@@ -309,7 +309,9 @@ def _normalize_console_command(python_exe: str, raw_command: str) -> tuple[list[
     _CONDA_SUBCOMMANDS = {"install", "update", "remove", "uninstall"}
     _CONDA_EXECUTABLES = {"conda", "mamba", "micromamba"}
 
-    if head in {"pip", "pip3"}:
+    if head == "echo":
+        return args, _format_cmd(args)
+    elif head in {"pip", "pip3"}:
         subcommand = args[1].lower() if len(args) > 1 else ""
         if subcommand not in _PIP_SUBCOMMANDS:
             raise ValueError(f"Command not allowed: 'pip {subcommand}'. Only pip {'/'.join(sorted(_PIP_SUBCOMMANDS))} are permitted.")

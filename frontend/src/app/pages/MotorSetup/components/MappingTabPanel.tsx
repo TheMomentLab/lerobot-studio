@@ -45,7 +45,7 @@ export function MappingTabPanel({
             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Arm Mapping ({arms.length})</span>
           </div>
           <div className="px-4 flex-1">
-            <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50">
+            <div className="flex flex-col divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
               {arms.map((arm) => (
                 <div key={arm.device} className="flex items-center gap-3 py-2.5">
                   <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
@@ -71,18 +71,18 @@ export function MappingTabPanel({
             </div>
           </div>
 
-          {identifyStep === "idle" && (
-            <div className="px-4 py-3 border-t border-zinc-100 dark:border-zinc-800/50 flex items-center gap-3">
-              <span className="text-sm text-zinc-500">Disconnect one arm from USB, then click Start.</span>
-              <button
-                onClick={() => onSetIdentifyStep("waiting")}
-                className="ml-auto px-4 py-2 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
-              >
-                <Zap size={12} className="inline mr-1.5" />
-                Identify Arm
-              </button>
-            </div>
-          )}
+        </div>
+      )}
+
+      {identifyStep === "idle" && arms.length > 0 && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => onSetIdentifyStep("waiting")}
+            className="px-4 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer whitespace-nowrap"
+          >
+            <Zap size={12} className="inline mr-1.5" />
+            Identify Arm
+          </button>
         </div>
       )}
 

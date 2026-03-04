@@ -457,6 +457,7 @@ export function Recording() {
             disabled={actionPending}
             compact
             fullWidth={false}
+            buttonClassName="py-1"
           />
         </div>
       </StickyControlBar>

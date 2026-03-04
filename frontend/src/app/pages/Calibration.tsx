@@ -516,7 +516,7 @@ export function Calibration() {
                 <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
                   <span className="text-sm text-zinc-500">Connected arms ({arms.length})</span>
                 </div>
-                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 border-b border-zinc-100 dark:border-zinc-800/50">
                   {arms.map((arm, i) => (
                     <div key={arm.device} className="flex items-center gap-3 px-3 py-2">
                       <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
@@ -563,11 +563,13 @@ export function Calibration() {
             label={running ? "CALIBRATING" : "READY"}
             pulse={running}
           />
-          {fileStatus === "found" && !running && (
-            <span className="text-sm text-zinc-400">
-              Calibration file found · <Link to="/teleop" className="text-emerald-500 hover:underline">Go to Teleop -&gt;</Link>
-            </span>
-          )}
+          <span className="text-sm text-zinc-400">
+            {running
+              ? "Calibrating motors…"
+              : fileStatus === "found"
+                ? <>Calibration file found · <Link to="/teleop" className="text-emerald-500 hover:underline">Go to Teleop -&gt;</Link></>
+                : "Calibration ready"}
+          </span>
         </div>
       </StickyControlBar>
     </div>

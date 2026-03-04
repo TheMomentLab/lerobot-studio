@@ -9,7 +9,7 @@ import {
   SkipForward,
   ThumbsDown,
   ThumbsUp,
-  Trash2,
+  Eraser,
 } from "lucide-react";
 
 import { WireToggle } from "../../../components/wireframe";
@@ -421,7 +421,7 @@ export function VideoPlayerPanel({
               </button>
               {currentTag !== "untagged" && (
                 <button onClick={() => { void tagEpisode("untagged"); }} className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors" title="Clear Tag">
-                  <Trash2 size={14} />
+                  <Eraser size={14} />
                 </button>
               )}
               <div className="h-4 w-px bg-zinc-200 dark:bg-zinc-700 mx-1" />
