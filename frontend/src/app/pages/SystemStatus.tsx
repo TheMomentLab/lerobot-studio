@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router";
-import { Camera, Bot, ChevronDown, ChevronUp, Trash2, AlertCircle, History } from "lucide-react";
+import { Camera, Bot, Cpu, Download, Trash2, AlertCircle, AlertTriangle, CheckCircle2, Link as LinkIcon, History, Shield } from "lucide-react";
 import {
-  PageHeader, StatusBadge, ResourceBar, EmptyState, RefreshButton,
+  PageHeader, ResourceBar, EmptyState, RefreshButton,
 } from "../components/wireframe";
 import { apiGet, apiPost } from "../services/apiClient";
 import {
@@ -12,6 +11,7 @@ import {
   type UiHistoryEntry,
   type UiResourcesData,
 } from "../services/contracts";
+import { useHfAuth } from "../hf-auth-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type CameraDevice = { device: string; symlink: string | null; path: string; kernels?: string; model?: string };
@@ -19,16 +19,44 @@ type ArmDevice = { device: string; symlink: string | null; path: string; serial?
 
 type GpuStatusResponse = { exists: boolean; utilization: number; memory_used: number; memory_total: number; memory_percent: number; };
 
+type RulesStatusResponse = {
+  rules_installed?: boolean;
+  install_needed?: boolean;
+  needs_root_for_install?: boolean;
+  sudo_noninteractive?: boolean;
+  gui_auth_available?: boolean;
+  manual_commands?: string[];
+};
+type RuleItem = { kernel?: string; symlink?: string; mode?: string; exists?: boolean; };
+type RulesCurrentResponse = { camera_rules?: RuleItem[]; };
+
 export function SystemStatus() {
   const [cameras, setCameras] = useState<CameraDevice[]>([]);
   const [arms, setArms] = useState<ArmDevice[]>([]);
   const [resources, setResources] = useState<UiResourcesData | null>(null);
   const [resourcesLoading, setResourcesLoading] = useState(true);
   const [historyItems, setHistoryItems] = useState<UiHistoryEntry[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(true);
   const [expandedHistory, setExpandedHistory] = useState<Set<number>>(new Set());
   const [gpuStatus, setGpuStatus] = useState<GpuStatusResponse | null>(null);
+  const [udevRules, setUdevRules] = useState<RuleItem[]>([]);
+  const [udevStatus, setUdevStatus] = useState<RulesStatusResponse | null>(null);
+  const [udevInstalling, setUdevInstalling] = useState(false);
+  const { hfAuth } = useHfAuth();
 
+  const canOneClickInstall = !!(
+    udevStatus
+    && !udevStatus.rules_installed
+    && (udevStatus.sudo_noninteractive || udevStatus.gui_auth_available)
+  );
+
+  const handleInstallUdev = async () => {
+    setUdevInstalling(true);
+    try {
+      await apiPost("/api/rules/apply", { assignments: {}, arm_assignments: {} });
+      refreshStatus();
+    } catch { /* ignore */ }
+    finally { setUdevInstalling(false); }
+  };
 
   const refreshStatus = () => {
     apiGet<{ cameras: CameraDevice[]; arms: ArmDevice[] }>("/api/devices").then((res) => {
@@ -42,14 +70,18 @@ export function SystemStatus() {
       .finally(() => setResourcesLoading(false));
     apiGet<unknown>("/api/history").then((res) => setHistoryItems(fromBackendHistory(res)));
     apiGet<GpuStatusResponse>("/api/gpu/status").then((res) => { if (res.exists) setGpuStatus(res); }).catch(() => {});
+    // udev rules
+    apiGet<RulesCurrentResponse>("/api/udev/rules")
+      .catch(() => apiGet<RulesCurrentResponse>("/api/rules/current"))
+      .then((res) => setUdevRules(Array.isArray(res.camera_rules) ? res.camera_rules : []))
+      .catch(() => {});
+    apiGet<RulesStatusResponse>("/api/rules/status").then(setUdevStatus).catch(() => {});
   };
 
   useEffect(() => {
     refreshStatus();
   }, []);
 
-  const linkedCams = cameras.filter((c) => c.symlink != null).length;
-  const linkedArms = arms.filter((a) => a.symlink != null).length;
 
   const handleClearHistory = () => {
     apiPost("/api/history/clear").then(() => setHistoryItems([]));
@@ -70,15 +102,69 @@ export function SystemStatus() {
             action={<RefreshButton onClick={handleRefresh} />}
           />
 
+          {/* Prerequisites — HF token + udev rules */}
+          <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-card overflow-hidden">
+            <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+              <Shield size={13} className="text-zinc-400" />
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Prerequisites</span>
+            </div>
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
+              {/* HF Token */}
+              <div className="flex items-center gap-3 px-3 py-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-zinc-700 dark:text-zinc-300">Hugging Face Token</div>
+                  <div className="text-xs text-zinc-400">
+                    {hfAuth === "ready" ? "Authenticated — push/pull enabled" : "Required for dataset upload and model download"}
+                  </div>
+                </div>
+                {hfAuth === "ready"
+                  ? <CheckCircle2 size={18} className="text-emerald-500 dark:text-emerald-400 flex-none" />
+                  : <AlertTriangle size={16} className="text-amber-500 dark:text-amber-400 flex-none" />
+                }
+              </div>
+              {/* udev Rules */}
+              <div className="flex flex-col gap-1.5 px-3 py-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-zinc-700 dark:text-zinc-300">udev Rules</div>
+                    <div className="text-xs text-zinc-400">
+                      {udevRules.length > 0
+                        ? `${udevRules.length} rule${udevRules.length !== 1 ? "s" : ""} — stable device symlinks`
+                        : "Ensures persistent camera/arm paths across reboots"
+                      }
+                    </div>
+                  </div>
+                  {udevRules.length > 0 ? (
+                    <CheckCircle2 size={18} className="text-emerald-500 dark:text-emerald-400 flex-none" />
+                  ) : canOneClickInstall ? (
+                    <button
+                      onClick={handleInstallUdev}
+                      disabled={udevInstalling}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded border border-amber-500/30 bg-amber-500/5 text-sm text-amber-500 dark:text-amber-400 hover:bg-amber-500/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex-none"
+                    >
+                      <Download size={12} />
+                      {udevInstalling ? "Installing..." : "Install"}
+                    </button>
+                  ) : (
+                    <AlertTriangle size={16} className="text-amber-500 dark:text-amber-400 flex-none" />
+                  )}
+                </div>
+                {udevRules.length === 0 && !canOneClickInstall && udevStatus?.needs_root_for_install && (
+                  <div className="text-xs text-zinc-400">
+                    Run: <code className="font-mono text-xs bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5">lestudio install-udev</code>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Cameras + Arms — 2-column list */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Cameras */}
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-card overflow-hidden">
-              <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                <span className="text-sm text-zinc-500">Cameras ({cameras.length})</span>
-                <span className="flex items-center gap-1 text-sm">
-                  <span className="text-zinc-400">{linkedCams} / {cameras.length} linked</span>
-                </span>
+              <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+                <Camera size={13} className="text-zinc-400" />
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Cameras ({cameras.length})</span>
               </div>
               {cameras.length === 0 ? (
                 <div className="p-3 flex flex-col gap-3 flex-1 justify-start">
@@ -90,16 +176,13 @@ export function SystemStatus() {
                 </div>
               ) : (
                 <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                  {cameras.map((cam) => (
+                  {[...cameras].sort((a, b) => (b.symlink ? 1 : 0) - (a.symlink ? 1 : 0)).map((cam) => (
                     <div key={cam.device} className="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:py-2">
-                      <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center hidden sm:flex">
-                        <Camera size={14} className="text-zinc-500" />
-                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{cam.symlink ?? cam.device}</div>
                         <div className="text-sm text-zinc-400 truncate">{cam.path}{cam.model ? ` · ${cam.model}` : ""}</div>
                       </div>
-                      <StatusBadge status={cam.symlink ? "ready" : "warning"} label={cam.symlink ? "linked" : "no link"} />
+                      {cam.symlink && <LinkIcon size={16} className="text-zinc-400 flex-none" />}
                     </div>
                   ))}
                 </div>
@@ -108,11 +191,9 @@ export function SystemStatus() {
 
             {/* Arms */}
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-card overflow-hidden">
-              <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                <span className="text-sm text-zinc-500">Arms ({arms.length})</span>
-                <span className="flex items-center gap-1 text-sm">
-                  <span className="text-zinc-400">{linkedArms} / {arms.length} linked</span>
-                </span>
+              <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+                <Bot size={13} className="text-zinc-400" />
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Arms ({arms.length})</span>
               </div>
               {arms.length === 0 ? (
                 <div className="p-3 flex flex-col gap-3 flex-1 justify-start">
@@ -124,16 +205,13 @@ export function SystemStatus() {
                 </div>
               ) : (
                 <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">
-                  {arms.map((arm) => (
+                  {[...arms].sort((a, b) => (b.symlink ? 1 : 0) - (a.symlink ? 1 : 0)).map((arm) => (
                     <div key={arm.device} className="flex items-center gap-2 sm:gap-3 px-3 py-1.5 sm:py-2">
-                      <div className="size-7 rounded bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center hidden sm:flex">
-                        <Bot size={14} className="text-zinc-500" />
-                      </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-zinc-700 dark:text-zinc-300 truncate">{arm.symlink ?? arm.device}</div>
                         <div className="text-sm text-zinc-400 truncate">{arm.path}{arm.serial ? ` · S/N: ${arm.serial}` : ""}</div>
                       </div>
-                      <StatusBadge status={arm.symlink ? "ready" : "warning"} label={arm.symlink ? "linked" : "no link"} />
+                      {arm.symlink && <LinkIcon size={16} className="text-zinc-400 flex-none" />}
                     </div>
                   ))}
                 </div>
@@ -145,8 +223,9 @@ export function SystemStatus() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* System Resources */}
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-card overflow-hidden flex flex-col">
-              <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
-                <span className="text-sm text-zinc-500">System Resources</span>
+              <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+                <Cpu size={13} className="text-zinc-400" />
+                <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">System Resources</span>
               </div>
               <div className="p-3 flex flex-col gap-3 flex-1 justify-start">
                 {resourcesLoading ? (
@@ -180,14 +259,11 @@ export function SystemStatus() {
 
             {/* Session History */}
             <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-card overflow-hidden flex flex-col">
-              <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                <button
-                  onClick={() => setHistoryOpen(!historyOpen)}
-                  className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-400 transition-colors cursor-pointer"
-                >
-                  {historyOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              <div className="px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
+                <span className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  <History size={13} className="text-zinc-400" />
                   Session History ({historyItems.length})
-                </button>
+                </span>
                 {historyItems.length > 0 && (
                   <button
                     onClick={handleClearHistory}
@@ -197,8 +273,7 @@ export function SystemStatus() {
                   </button>
                 )}
               </div>
-              {historyOpen && (
-                historyItems.length > 0 ? (
+              {historyItems.length > 0 ? (
                   <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50 overflow-y-auto max-h-[200px]">
                     {historyItems.map((h, i) => (
                       <HistoryRow
@@ -224,7 +299,7 @@ export function SystemStatus() {
                     />
                   </div>
                 )
-              )}
+              }
             </div>
           </div>
         </div>

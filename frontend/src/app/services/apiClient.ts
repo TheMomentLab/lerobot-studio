@@ -245,16 +245,19 @@ function connectTrainSocketIfNeeded(): void {
 
   wsSocket.onopen = () => {
     wsOpen = true;
+    setLeStudioState({ wsReady: true });
   };
 
   wsSocket.onclose = () => {
     wsOpen = false;
     wsSocket = null;
     wsTrainRunning = null;
+    setLeStudioState({ wsReady: false });
   };
 
   wsSocket.onerror = () => {
     wsOpen = false;
+    setLeStudioState({ wsReady: false });
   };
 
   wsSocket.onmessage = (ev) => {

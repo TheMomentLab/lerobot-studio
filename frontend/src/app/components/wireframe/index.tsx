@@ -590,8 +590,8 @@ export function RefreshButton({
 // ─── Stepper Nav ──────────────────────────────────────────────────────────────
 const PIPELINE_STEPS = [
   { path: "/", label: "System Status" },
-  { path: "/camera-setup", label: "Camera Setup" },
   { path: "/motor-setup", label: "Motor Setup" },
+  { path: "/camera-setup", label: "Camera Setup" },
   { path: "/teleop", label: "Teleop" },
   { path: "/recording", label: "Recording" },
   { path: "/dataset", label: "Dataset" },

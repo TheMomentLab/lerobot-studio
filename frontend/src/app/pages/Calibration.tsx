@@ -513,7 +513,7 @@ export function Calibration() {
             {/* Connected Arms */}
             {arms.length > 0 && (
               <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center">
+                <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
                   <span className="text-sm text-zinc-500">Connected arms ({arms.length})</span>
                 </div>
                 <div className="divide-y divide-zinc-100 dark:divide-zinc-800/50">

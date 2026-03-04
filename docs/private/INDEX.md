@@ -19,6 +19,7 @@ Last updated: 2026-03-04
 || `plan_mobile.md` | 모바일 앱 MVP 범위/API 계약/전략 | Mobile product strategy |
 || `release-checklist.md` | 퍼블릭 릴리스 전 코드 품질 게이트 | Release process |
 || `license-audit-lerobot-ws-2026-02-26.md` | lerobot_ws OSS 라이선스 스냅샷 (2026-02-26) | Compliance snapshot |
+|| `quality-analysis-2026-03-04.md` | UI/UX·코드품질·OSS·성장가능성 종합 분석 스냅샷 (2026-03-04) | Quality snapshot |
 
 ## Archive
 

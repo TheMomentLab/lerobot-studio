@@ -269,10 +269,10 @@ export function Teleop() {
               {/* Motor Setting Tab */}
               {teleopTab === "motor" && (
                 <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                  <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
-                    <span className="text-sm font-medium text-zinc-600 dark:text-zinc-300">Motor Configuration</span>
+                  <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                    <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Motor Configuration</span>
                   </div>
-                  <div className="p-4 flex flex-col gap-3">
+                  <div className="px-4 py-4 flex flex-col gap-3">
                   <p className="text-sm text-zinc-400">Select robot type and control method.</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
                     <FieldRow label="Robot Type">
@@ -363,11 +363,10 @@ export function Teleop() {
                 <div className="flex flex-col gap-4">
                   {/* Camera settings — full width */}
                   <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
-                    <div className="px-3 py-2 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
-                      <span className="text-sm text-zinc-500">Camera feed settings</span>
-                      <StatusBadge status="ready" label={`${camerasMapped.length} cameras`} />
+                    <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 dark:bg-zinc-800/30 border-b border-zinc-200 dark:border-zinc-800">
+                      <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Camera feed settings</span>
                     </div>
-                    <div className="p-4 flex flex-col gap-3">
+                    <div className="px-4 py-4 flex flex-col gap-3">
                       {camerasMapped.length === 0 ? (
                         <EmptyState
                           icon={<Camera size={28} />}
