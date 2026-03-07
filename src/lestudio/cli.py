@@ -164,7 +164,7 @@ def command_serve(args):
         print(f"    Token (Network auth): {token}")
     print("\n")
 
-    if not args.no_browser and not args.headless:
+    if args.browser and not args.headless:
         is_ssh = "SSH_CLIENT" in os.environ or "SSH_TTY" in os.environ
         has_display = "DISPLAY" in os.environ or os.name == "nt"
         if not is_ssh and has_display:
@@ -237,7 +237,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--lerobot-path", type=Path, default=None, help="Path to lerobot source (auto-detected if installed)")
     serve.add_argument("--config-dir", type=Path, default=None, help="Config directory (default: ~/.config/lestudio)")
     serve.add_argument("--rules-path", type=Path, default=DEFAULT_RULES_PATH, help="Path to udev rules file")
-    serve.add_argument("--no-browser", action="store_true", help="Do not open a browser automatically")
+    serve.add_argument("--browser", action="store_true", help="Open a browser automatically on startup")
+    serve.add_argument("--no-browser", action="store_true", help="(deprecated, no-op) Browser is no longer opened automatically")
     serve.add_argument("--headless", action="store_true", help="Alias for --no-browser")
     serve.set_defaults(handler=command_serve)
 
