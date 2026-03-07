@@ -48,6 +48,7 @@ type CalibFile = { id: string; guessed_type: string };
 const LOADING_STEPS = [
   { label: "Opening camera...", pattern: /OpenCVCamera.*connected\./i },
   { label: "Connecting arm...", pattern: /(?:SO\w*(?:Leader|Follower)|(?:Leader|Follower))\s+connected\./i },
+  { label: "Calibrating arm...", pattern: /Running calibration of/i, waitPattern: /press ENTER/i },
   { label: "Starting teleop loop...", pattern: /Teleop loop time:/i },
 ];
 
@@ -56,6 +57,7 @@ export function Teleop() {
   const [mode, setMode] = useState("Single Arm");
   const [phase, setPhase] = useState<TeleopPhase>("idle");
   const [loadingStep, setLoadingStep] = useState(0);
+  const [loadingWaitingInput, setLoadingWaitingInput] = useState(false);
   const [pausedFeeds, setPausedFeeds] = useState<Record<string, boolean>>({});
   const [speed, setSpeed] = useState("1.0x");
   const [advStreamOpen, setAdvStreamOpen] = useState(false);
@@ -165,17 +167,25 @@ export function Teleop() {
     const logs = teleopLogs ?? [];
     const logsToScan = logs.slice(loadingStartIdxRef.current);
     let step = loadingStepRef.current;
+    let waiting = false;
     for (const line of logsToScan) {
       if (step >= LOADING_STEPS.length) break;
       // Check current step and all later steps — skip ahead if a later one matches first
       for (let s = step; s < LOADING_STEPS.length; s++) {
         if (LOADING_STEPS[s].pattern.test(line.text)) {
           step = s + 1;
+          waiting = false;
           break;
         }
       }
+      // Detect "press ENTER" wait state on the current active step
+      const activeStep = LOADING_STEPS[step - 1];
+      if (activeStep?.waitPattern?.test(line.text)) {
+        waiting = true;
+      }
     }
 
+    setLoadingWaitingInput(waiting);
     if (step !== loadingStepRef.current) {
       loadingStepRef.current = step;
       setLoadingStep(step);
@@ -186,15 +196,16 @@ export function Teleop() {
   }, [phase, startAccepted, teleopLogs]);
 
   // Timeout fallback: if stuck on loading for 20s total, force running
+  // (disabled while waiting for user calibration input)
   useEffect(() => {
-    if (phase !== "loading" || !startAccepted) return;
+    if (phase !== "loading" || !startAccepted || loadingWaitingInput) return;
     const timer = setTimeout(() => {
       loadingStepRef.current = LOADING_STEPS.length;
       setLoadingStep(LOADING_STEPS.length);
       setPhase("running");
     }, 20_000);
     return () => clearTimeout(timer);
-  }, [phase, startAccepted]);
+  }, [phase, startAccepted, loadingWaitingInput]);
 
   // Watch for process end — detect "[teleop process ended]" in logs
   useEffect(() => {
@@ -505,23 +516,32 @@ export function Teleop() {
             <div className="flex-1 flex flex-col items-center justify-center py-16 gap-6">
               <Loader2 size={32} className="text-zinc-400 animate-spin" />
               <div className="flex flex-col gap-2">
-                {LOADING_STEPS.map((step, i) => (
-                  <div key={step.label} className="flex items-center gap-2.5">
-                    {i < loadingStep ? (
-                      <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
-                    ) : i === loadingStep ? (
-                      <Loader2 size={14} className="text-zinc-400 animate-spin flex-none" />
-                    ) : (
-                      <div className="size-3.5 rounded-full border border-zinc-600 flex-none" />
-                    )}
-                    <span className={cn("text-sm",
-                      i < loadingStep ? "text-zinc-400" :
-                      i === loadingStep ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-600"
-                    )}>
-                      {step.label}
-                    </span>
-                  </div>
-                ))}
+                {LOADING_STEPS.map((step, i) => {
+                  const isActive = i === loadingStep - 1;
+                  const isWaiting = isActive && loadingWaitingInput && !!step.waitPattern;
+                  return (
+                    <div key={step.label} className="flex items-center gap-2.5">
+                      {i < loadingStep ? (
+                        isWaiting ? (
+                          <div className="size-3.5 rounded-full bg-amber-500 flex-none animate-pulse" />
+                        ) : (
+                          <CheckCircle2 size={14} className="text-emerald-600 dark:text-emerald-400 flex-none" />
+                        )
+                      ) : i === loadingStep ? (
+                        <Loader2 size={14} className="text-zinc-400 animate-spin flex-none" />
+                      ) : (
+                        <div className="size-3.5 rounded-full border border-zinc-600 flex-none" />
+                      )}
+                      <span className={cn("text-sm",
+                        isWaiting ? "text-amber-600 dark:text-amber-400 font-medium" :
+                        i < loadingStep ? "text-zinc-400" :
+                        i === loadingStep ? "text-zinc-800 dark:text-zinc-200" : "text-zinc-600"
+                      )}>
+                        {isWaiting ? "Waiting for calibration — press ENTER in console ↓" : step.label}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
