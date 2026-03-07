@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router";
-import { Play, Square, AlertTriangle, RefreshCw, CheckCircle, AlertCircle, Circle, Loader2 } from "lucide-react";
+import { Play, Square, AlertTriangle, RefreshCw, CheckCircle, AlertCircle, Circle } from "lucide-react";
 import { cn } from "../ui/utils";
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
@@ -23,7 +23,7 @@ export function StatusBadge({
     blocked: "text-amber-500",
   };
   const iconMap: Record<StatusType, React.ReactNode> = {
-    running: <Loader2 size={14} className="animate-spin" />,
+    running: <span className="relative flex size-3.5 items-center justify-center"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" /><span className="relative inline-flex size-2 rounded-full bg-emerald-500" /></span>,
     ready: <CheckCircle size={14} />,
     warning: <AlertTriangle size={14} />,
     error: <AlertCircle size={14} />,
