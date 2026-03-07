@@ -513,14 +513,9 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
     const unsubscribeMetric = subscribeTrainChannel("metric", (event: TrainMetricEvent) => {
       const { step, loss, totalSteps: streamTotal } = event.payload;
       // First metric confirms training is actually running
-      setTrainStatus((prev) => {
-        if (prev === "starting") {
-          startingStepRef.current = STARTING_STEPS.length;
-          setStartingStep(STARTING_STEPS.length);
-          return "running";
-        }
-        return prev;
-      });
+      startingStepRef.current = STARTING_STEPS.length;
+      setStartingStep(STARTING_STEPS.length);
+      setTrainStatus((prev) => (prev === "starting" ? "running" : prev));
       setCurrentStep(step);
       setLossData((prev) => {
         const last = prev[prev.length - 1];
