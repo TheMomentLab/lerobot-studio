@@ -40,7 +40,7 @@ DEFAULT_CONFIG = {
     "train_dataset_source": "local",
     "train_output_repo": "",
     "process_view_url": "",
-    "eval_policy_path": "outputs/train/checkpoints/last/pretrained_model",
+    "eval_policy_path": "",
     "eval_repo_id": "",
     "eval_env_type": "",
     "eval_episodes": 10,
