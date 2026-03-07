@@ -79,6 +79,7 @@ export function Training() {
   const [device, setDevice] = useState("CUDA (GPU)");
   const [advOpen, setAdvOpen] = useState(false);
   const [lrValue, setLrValue] = useState("1e-4");
+  const [batchSize, setBatchSize] = useState(0);
   const [modelOutputRepo, setModelOutputRepo] = useState("");
   const [selectedLocalDataset, setSelectedLocalDataset] = useState<string>(LOCAL_DATASETS[0]);
   const [hfDatasetRepoId, setHfDatasetRepoId] = useState("");
@@ -271,6 +272,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
         steps: customSteps,
         deviceLabel: device,
         lr: lrValue,
+        batchSize,
         outputRepo: modelOutputRepo,
         config,
       });
@@ -619,6 +621,8 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
                 setAdvOpen={setAdvOpen}
                 lrValue={lrValue}
                 setLrValue={setLrValue}
+                batchSize={batchSize}
+                setBatchSize={setBatchSize}
                 modelOutputRepo={modelOutputRepo}
                 setModelOutputRepo={setModelOutputRepo}
               />

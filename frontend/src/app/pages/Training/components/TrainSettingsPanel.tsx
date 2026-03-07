@@ -27,6 +27,8 @@ interface TrainSettingsPanelProps {
   setAdvOpen: (value: boolean) => void;
   lrValue: string;
   setLrValue: (value: string) => void;
+  batchSize: number;
+  setBatchSize: (value: number) => void;
   modelOutputRepo: string;
   setModelOutputRepo: (value: string) => void;
 }
@@ -54,6 +56,8 @@ export function TrainSettingsPanel({
   setAdvOpen,
   lrValue,
   setLrValue,
+  batchSize,
+  setBatchSize,
   modelOutputRepo,
   setModelOutputRepo,
 }: TrainSettingsPanelProps) {
@@ -167,12 +171,22 @@ export function TrainSettingsPanel({
           </button>
           {advOpen && (
             <div className="grid grid-cols-1 md:grid-cols-[1fr_1px_1fr] md:gap-0 gap-3 mt-3">
-              <div className="md:pr-4">
+              <div className="md:pr-4 flex flex-col gap-3">
                 <FieldRow label="Learning Rate">
                   <input
                     type="text"
                     value={lrValue}
                     onChange={(e) => setLrValue(e.target.value)}
+                    className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm font-mono outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
+                  />
+                </FieldRow>
+                <FieldRow label="Batch Size">
+                  <input
+                    type="number"
+                    min={1}
+                    value={batchSize || ""}
+                    onChange={(e) => setBatchSize(Number(e.target.value))}
+                    placeholder="default (8)"
                     className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm font-mono outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
                   />
                 </FieldRow>

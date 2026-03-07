@@ -229,6 +229,7 @@ export function toBackendTrainPayload(input: {
   deviceLabel: string;
   lr: string;
   outputRepo: string;
+  batchSize: number;
   config: LeStudioConfig;
 }): RecordLike {
   const cfg = asRecord(input.config) ?? {};
@@ -247,7 +248,7 @@ export function toBackendTrainPayload(input: {
   if (input.lr.trim()) payload.train_lr = input.lr.trim();
   if (input.outputRepo.trim()) payload.train_output_repo = input.outputRepo.trim();
 
-  const batchSize = getNumber(cfg, "train_batch_size", 0);
+  const batchSize = input.batchSize > 0 ? input.batchSize : getNumber(cfg, "train_batch_size", 0);
   if (batchSize > 0) payload.train_batch_size = batchSize;
 
   return payload;
