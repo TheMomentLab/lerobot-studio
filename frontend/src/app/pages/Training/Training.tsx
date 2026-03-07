@@ -653,7 +653,7 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           <StatusBadge
             status={
               trainStatus === "running" ? "running" :
-              trainStatus === "starting" ? "warning" :
+              trainStatus === "starting" ? "loading" :
               trainStatus === "blocked" ? "blocked" :
               "ready"
             }

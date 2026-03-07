@@ -622,7 +622,7 @@ export function Teleop() {
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-2">
             <StatusBadge
-              status={running ? "running" : phase === "loading" ? "warning" : "ready"}
+              status={running ? "running" : phase === "loading" ? "loading" : "ready"}
               label={running ? "TELEOP ACTIVE" : phase === "loading" ? "STARTING..." : "READY"}
               pulse={running}
             />

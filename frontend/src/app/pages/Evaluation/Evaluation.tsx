@@ -499,7 +499,7 @@ export function Evaluation() {
         <div className="flex items-center gap-3 min-w-0">
           <StatusBadge
             status={
-              showStarting ? "warning" :
+              showStarting ? "loading" :
               isRunning ? "running" :
               progressStatus === "completed" ? "ready" :
               progressStatus === "error" ? "blocked" :

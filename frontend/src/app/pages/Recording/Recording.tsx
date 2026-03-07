@@ -474,7 +474,7 @@ export function Recording() {
       <StickyControlBar>
         <div className="flex items-center gap-3 min-w-0">
           <StatusBadge
-            status={running ? "running" : phase === "loading" ? "warning" : "ready"}
+            status={running ? "running" : phase === "loading" ? "loading" : "ready"}
             label={running ? "RECORDING" : phase === "loading" ? "STARTING..." : "READY"}
             pulse={running}
           />

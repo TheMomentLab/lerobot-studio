@@ -1,10 +1,10 @@
 import React from "react";
 import { Link } from "react-router";
-import { Play, Square, AlertTriangle, RefreshCw, CheckCircle, AlertCircle, Circle } from "lucide-react";
+import { Play, Square, AlertTriangle, RefreshCw, CheckCircle, AlertCircle, Circle, Loader2 } from "lucide-react";
 import { cn } from "../ui/utils";
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
-type StatusType = "running" | "ready" | "warning" | "error" | "idle" | "blocked";
+type StatusType = "running" | "ready" | "loading" | "warning" | "error" | "idle" | "blocked";
 export function StatusBadge({
   status,
   label,
@@ -17,6 +17,7 @@ export function StatusBadge({
   const colorMap: Record<StatusType, string> = {
     running: "text-emerald-500",
     ready: "text-emerald-500",
+    loading: "text-blue-500",
     warning: "text-amber-500",
     error: "text-red-500",
     idle: "text-zinc-400",
@@ -25,6 +26,7 @@ export function StatusBadge({
   const iconMap: Record<StatusType, React.ReactNode> = {
     running: <span className="relative flex size-3.5 items-center justify-center"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" /><span className="relative inline-flex size-2 rounded-full bg-emerald-500" /></span>,
     ready: <CheckCircle size={14} />,
+    loading: <Loader2 size={14} className="animate-spin" />,
     warning: <AlertTriangle size={14} />,
     error: <AlertCircle size={14} />,
     idle: <Circle size={14} />,
