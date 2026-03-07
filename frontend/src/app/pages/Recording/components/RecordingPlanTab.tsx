@@ -8,7 +8,6 @@ type RecordingPlanTabProps = {
   recordRepoId: string;
   recordTask: string;
   resumeEnabled: boolean;
-  pushToHub: boolean;
   hfAuth: string;
   availableDatasets: string[];
   datasetStorageMode: "local" | "hf";
@@ -17,7 +16,6 @@ type RecordingPlanTabProps = {
   setRecordRepoId: (value: string) => void;
   setRecordTask: (value: string) => void;
   setResumeEnabled: (value: boolean) => void;
-  setPushToHub: (value: boolean) => void;
   setDatasetStorageMode: (value: "local" | "hf") => void;
   setLocalDatasetRoot: (value: string) => void;
 };
@@ -27,7 +25,6 @@ export function RecordingPlanTab({
   recordRepoId,
   recordTask,
   resumeEnabled,
-  pushToHub,
   hfAuth,
   availableDatasets,
   datasetStorageMode,
@@ -36,7 +33,6 @@ export function RecordingPlanTab({
   setRecordRepoId,
   setRecordTask,
   setResumeEnabled,
-  setPushToHub,
   setDatasetStorageMode,
   setLocalDatasetRoot,
 }: RecordingPlanTabProps) {
@@ -166,25 +162,11 @@ export function RecordingPlanTab({
           <div className="text-sm text-zinc-500 mb-1.5">Task Description</div>
           <WireInput value={recordTask} onChange={setRecordTask} placeholder="Pick the red cube and place it..." />
         </div>
-        <div className={cn(
-          "grid gap-x-8 gap-y-3 pt-1",
-          isLocal ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2",
-        )}>
-          <div className="flex items-center gap-2">
-            <WireToggle label="Resume — continue recording to existing dataset" checked={resumeEnabled} onChange={setResumeEnabled} />
-          </div>
-          {!isLocal && (
-            <div className="flex items-center gap-2">
-              <WireToggle
-                label="Push to Hub — auto-upload after completion"
-                checked={pushToHub}
-                onChange={setPushToHub}
-              />
-              {hfAuth !== "ready" && (
-                <span className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  HF login required
-                </span>
-              )}
+        <div className="pt-1">
+          <WireToggle label="Resume — continue recording to existing dataset" checked={resumeEnabled} onChange={setResumeEnabled} />
+          {!isLocal && hfAuth !== "ready" && (
+            <div className="mt-2 text-sm text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              HF login required to push to Hub
             </div>
           )}
         </div>

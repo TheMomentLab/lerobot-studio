@@ -90,7 +90,6 @@ export function Recording() {
     }).catch(() => {});
   }, []);
   const [resumeEnabled, setResumeEnabled] = useState(() => getConfigBool(config, "record_resume", false));
-  const [pushToHub, setPushToHub] = useState(() => hfAuth === "ready" && getConfigBool(config, "record_push_to_hub", true));
   const [camerasMapped, setCamerasMapped] = useState<{ role: string; path: string }[]>([]);
   const [armPortOptions, setArmPortOptions] = useState<PortOption[]>([]);
   const [followerIdOptions, setFollowerIdOptions] = useState<string[]>([]);
@@ -127,7 +126,7 @@ export function Recording() {
         repoId: recordRepoId.trim(),
         task: recordTask.trim(),
         resume: resumeEnabled,
-        pushToHub: datasetStorageMode === "hf" && hfAuth === "ready" && pushToHub,
+        pushToHub: datasetStorageMode === "hf" && hfAuth === "ready",
         datasetRoot: datasetStorageMode === "local" ? localDatasetRoot.trim() : undefined,
         cameras: camerasMapped,
         config,
@@ -303,9 +302,6 @@ export function Recording() {
     lastErrorAtRef.current = Date.now();
   }, [flowError]);
 
-  useEffect(() => {
-    if (hfAuth !== "ready") setPushToHub(false);
-  }, [hfAuth]);
   const loadDevicesAndCalibration = async () => {
     const result = await apiGet<DevicesResponse>("/api/devices");
     const mapped = (result.cameras ?? [])
@@ -410,7 +406,6 @@ export function Recording() {
                   recordRepoId={recordRepoId}
                   recordTask={recordTask}
                   resumeEnabled={resumeEnabled}
-                  pushToHub={pushToHub}
                   hfAuth={hfAuth}
                   availableDatasets={availableDatasets}
                   datasetStorageMode={datasetStorageMode}
@@ -419,7 +414,6 @@ export function Recording() {
                   setRecordRepoId={setRecordRepoId}
                   setRecordTask={setRecordTask}
                   setResumeEnabled={setResumeEnabled}
-                  setPushToHub={setPushToHub}
                   setDatasetStorageMode={setDatasetStorageMode}
                   setLocalDatasetRoot={setLocalDatasetRoot}
                 />
