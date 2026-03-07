@@ -535,12 +535,15 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
         setOomDetected(true);
       }
       // Log-based starting step advancement
+      // Last step stays active (= STARTING_STEPS.length - 1) until first metric arrives
       const cur = startingStepRef.current;
       if (cur < STARTING_STEPS.length) {
         for (let s = cur; s < STARTING_STEPS.length; s++) {
           if (STARTING_STEPS[s].pattern.test(line)) {
-            startingStepRef.current = s + 1;
-            setStartingStep(s + 1);
+            // Advance to s+1, but cap at length-1 so last step shows as active
+            const next = Math.min(s + 1, STARTING_STEPS.length - 1);
+            startingStepRef.current = next;
+            setStartingStep(next);
             break;
           }
         }
