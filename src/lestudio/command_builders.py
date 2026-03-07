@@ -341,8 +341,6 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
         f"--env.task={env_task}",
     ]
 
-    if repo_id:
-        args.append(f"--dataset.repo_id={repo_id}")
 
     # gym_manipulator (real robot) requires robot and teleop config
     if env_type == "gym_manipulator":
