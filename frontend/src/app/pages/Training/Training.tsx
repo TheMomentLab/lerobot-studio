@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Play,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import {
   PageHeader, StatusBadge,
@@ -527,6 +529,9 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
       if (event.payload.level === "error" || /\berror\b|traceback|exception|failed/i.test(line)) {
         lastErrorAtRef.current = Date.now();
       }
+      if (/cuda out of memory|outofmemoryerror|cublas_status_alloc_failed/i.test(line)) {
+        setOomDetected(true);
+      }
       // Log-based starting step advancement
       const cur = startingStepRef.current;
       if (cur < STARTING_STEPS.length) {
@@ -560,6 +565,22 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
           />
 
           {flowError && cudaState === "ok" && <BlockerCard title="Execution Blocked" severity="error" reasons={[flowError]} />}
+
+          {oomDetected && trainStatus === "idle" && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3.5 flex items-start gap-2.5">
+              <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-red-600 dark:text-red-400 mb-1">GPU Out of Memory (OOM)</p>
+                <p className="text-sm text-zinc-400">VRAM insufficient for current config. Try reducing Training Steps or switching device to CPU/MPS.</p>
+              </div>
+              <button
+                onClick={() => { setOomDetected(false); void startTraining(); }}
+                className="flex items-center gap-1 px-3 py-1.5 rounded border border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 text-sm cursor-pointer hover:bg-red-500/20"
+              >
+                <RotateCcw size={12} /> Retry
+              </button>
+            </div>
+          )}
 
           {/* ─── IDLE: Settings ─────────────────────────────────────── */}
           {trainStatus === "idle" && !completed && (

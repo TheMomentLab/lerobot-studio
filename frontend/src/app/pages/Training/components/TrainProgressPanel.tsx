@@ -137,7 +137,7 @@ export function TrainProgressPanel({
           <AlertTriangle size={14} className="text-red-600 dark:text-red-400 flex-none mt-0.5" />
           <div className="flex-1">
             <p className="text-sm text-red-600 dark:text-red-400 mb-1">GPU Out of Memory (OOM)</p>
-            <p className="text-sm text-zinc-400">Current batch size: 32. Reduce to 16 and retry?</p>
+            <p className="text-sm text-zinc-400">VRAM insufficient. Try reducing Training Steps or switching to CPU/MPS. Retry?</p>
           </div>
           <button
             onClick={onRetryAfterOom}
