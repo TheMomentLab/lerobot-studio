@@ -52,6 +52,7 @@ export function RuntimeConsoleDrawer() {
   const startH = useRef(0);
   const dragOpenedRef = useRef(false);
   const logRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const prevRunningByProcessRef = useRef<Record<string, boolean>>({});
   const startTimesRef = useRef<Record<string, number>>({});
   const trainProgressRef = useRef<{ firstTs: number | null; firstStep: number | null; lastTs: number | null; lastStep: number | null }>({
@@ -401,6 +402,22 @@ export function RuntimeConsoleDrawer() {
     void sendStdin();
   }, [running, sendInterrupt, sendStdin]);
 
+  // Handle Enter / Ctrl+C even when focus is on the log output area
+  const onConsoleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Skip if already in the input field
+    if ((e.target as HTMLElement).tagName === "INPUT") return;
+    if (e.key === "c" && (e.ctrlKey || e.metaKey) && running) {
+      e.preventDefault();
+      void sendInterrupt();
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      inputRef.current?.focus();
+      void sendStdin();
+    }
+  }, [running, sendInterrupt, sendStdin]);
+
   return (
     <div
       className="flex-none border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex flex-col"
@@ -463,7 +480,7 @@ export function RuntimeConsoleDrawer() {
       </div>
 
       {!collapsed && (
-        <div ref={logRef} className="flex-1 overflow-y-auto p-2 font-mono" style={{ fontSize: "11px" }}>
+        <div ref={logRef} tabIndex={-1} onKeyDown={onConsoleKeyDown} className="flex-1 overflow-y-auto p-2 font-mono outline-none" style={{ fontSize: "11px" }}>
           {lines.map((line) => (
             <div key={line.id} className={`${logLineClass(line.kind)}${line.replace ? " whitespace-pre-wrap" : ""}`}>
               {line.text}
@@ -479,6 +496,7 @@ export function RuntimeConsoleDrawer() {
         <div className="flex items-center gap-2 px-4 py-2 border-t border-zinc-200 dark:border-zinc-800 flex-none">
           <span className="text-zinc-400 font-mono text-sm">›</span>
           <input
+            ref={inputRef}
             type="text"
             value={stdinValue}
             onChange={(e) => setStdinValue(e.target.value)}
