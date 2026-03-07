@@ -97,6 +97,7 @@ export function Training() {
   // Panels
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [startingStep, setStartingStep] = useState(0);
+  const startingStepRef = useRef(0);
   const [checkpointList, setCheckpointList] = useState<CheckpointItem[]>(CHECKPOINTS_MOCK);
   const [flowError, setFlowError] = useState<string | null>(null);
   const [, setLastOutputLine] = useState("ready");
@@ -287,17 +288,8 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
       setCurrentStep(0);
       setOomDetected(false);
       setShowCheckpoints(false);
+      startingStepRef.current = 0;
       setStartingStep(0);
-
-      let step = 0;
-      const advanceStep = () => {
-        step++;
-        setStartingStep(step);
-        if (step < STARTING_STEPS.length) {
-          setTimeout(advanceStep, STARTING_STEPS[step].delay);
-        }
-      };
-      setTimeout(advanceStep, STARTING_STEPS[0].delay);
     } catch (error) {
       const reason = parseBackendError(error, "failed to start training");
       setTrainStatus("idle");
@@ -503,6 +495,8 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
 
       if (event.payload.state === "running") {
         setTrainStatus("running");
+        startingStepRef.current = STARTING_STEPS.length;
+        setStartingStep(STARTING_STEPS.length);
         return;
       }
 
@@ -528,9 +522,21 @@ print("LeStudio config loaded:", cfg.get("dataset_repo"), cfg.get("policy"), cfg
     });
 
     const unsubscribeOutput = subscribeTrainChannel("output", (event: TrainOutputEvent) => {
-      setLastOutputLine(event.payload.line);
-      if (event.payload.level === "error" || /\berror\b|traceback|exception|failed/i.test(event.payload.line)) {
+      const line = event.payload.line;
+      setLastOutputLine(line);
+      if (event.payload.level === "error" || /\berror\b|traceback|exception|failed/i.test(line)) {
         lastErrorAtRef.current = Date.now();
+      }
+      // Log-based starting step advancement
+      const cur = startingStepRef.current;
+      if (cur < STARTING_STEPS.length) {
+        for (let s = cur; s < STARTING_STEPS.length; s++) {
+          if (STARTING_STEPS[s].pattern.test(line)) {
+            startingStepRef.current = s + 1;
+            setStartingStep(s + 1);
+            break;
+          }
+        }
       }
     });
 

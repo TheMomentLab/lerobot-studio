@@ -8,6 +8,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LogLine } from "../store/types";
 
+export const EVAL_STARTING_STEPS = [
+  { label: "Detecting Device",    pattern: /cuda backend detected|no accelerated backend|using cuda|using cpu/i },
+  { label: "Loading Environment", pattern: /Making environment\./i },
+  { label: "Loading Policy",      pattern: /Making policy\./i },
+];
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type EvalProgressStatus =
@@ -108,6 +114,10 @@ export function useEvalProgress({
 
   // ── Per-episode results (for chart) ──────────────────────────────────────
   const [episodeResults, setEpisodeResults] = useState<EpisodeResult[]>([]);
+
+  // ── Starting step (log-based) ─────────────────────────────────────────────
+  const [startingStep, setStartingStep] = useState(0);
+  const startingStepRef = useRef(0);
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   // When remounting while process is running, skip existing logs to avoid
@@ -211,6 +221,8 @@ export function useEvalProgress({
     processedLogsRef.current = 0;
     perEpisodeRewardRef.current = {};
     perEpisodeDataRef.current = {};
+    startingStepRef.current = 0;
+    setStartingStep(0);
   }, []);
 
   const beginEval = useCallback(
@@ -257,6 +269,18 @@ export function useEvalProgress({
 
       setLastMetricUpdateMs(lineItem.ts ?? Date.now());
 
+      // ── Starting step advancement ──
+      const curStep = startingStepRef.current;
+      if (curStep < EVAL_STARTING_STEPS.length) {
+        for (let s = curStep; s < EVAL_STARTING_STEPS.length; s++) {
+          if (EVAL_STARTING_STEPS[s].pattern.test(line)) {
+            startingStepRef.current = s + 1;
+            setStartingStep(s + 1);
+            break;
+          }
+        }
+      }
+
       // ── tqdm progress bar ──
       const tqdmMatch = line.match(
         /Stepping through eval batches:\s*(\d+)%\|.*\|\s*(\d+)\/(\d+)/,
@@ -267,7 +291,11 @@ export function useEvalProgress({
         const total = parseInt(tqdmMatch[3], 10);
         if (Number.isFinite(done)) updateDoneEpisodes(done);
         if (Number.isFinite(total) && total > 0) updateTargetEpisodes(total);
-        if (!hadErrorRef.current && pct > 0) setProgressStatus("running");
+        if (!hadErrorRef.current && pct > 0) {
+          setProgressStatus("running");
+          startingStepRef.current = EVAL_STARTING_STEPS.length;
+          setStartingStep(EVAL_STARTING_STEPS.length);
+        }
       }
 
       // ── Episode total ──
@@ -513,6 +541,7 @@ export function useEvalProgress({
   return {
     progressStatus,
     setProgressStatus,
+    startingStep,
     doneEpisodes,
     targetEpisodes,
     meanReward,
