@@ -287,7 +287,10 @@ def _sanitize_env_value(raw: object) -> str:
 def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
     policy_path = str(cfg.get("eval_policy_path", "")).strip()
     if not policy_path:
-        policy_path = "outputs/train/checkpoints/last/pretrained_model"
+        # Find the most recently modified pretrained_model directory under outputs/train
+        outputs_dir = Path("outputs/train")
+        candidates = sorted(outputs_dir.glob("*/*/checkpoints/last/pretrained_model"), key=lambda p: p.stat().st_mtime, reverse=True) if outputs_dir.exists() else []
+        policy_path = str(candidates[0]) if candidates else "outputs/train/checkpoints/last/pretrained_model"
 
     repo_id = str(cfg.get("eval_repo_id", "")).strip()
     episodes = int(cfg.get("eval_episodes", 10) or 10)
