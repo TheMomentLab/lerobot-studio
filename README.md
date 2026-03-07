@@ -38,7 +38,7 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 - **Hub Search**: Search and download datasets directly from Hugging Face Hub.
 
 ### ML
-- **Train**: LeRobot training orchestration with CUDA preflight (auto-detects incompatible builds + one-click PyTorch reinstall), real-time loss/LR chart, ETA tracking, and hyperparameter presets (Quick Test / Standard / Full).
+- **Train**: LeRobot training orchestration with CUDA preflight (auto-detects incompatible builds + one-click PyTorch reinstall), real-time loss/LR chart, ETA tracking, and hyperparameter presets (Quick / Standard / Full).
 - **Checkpoint Browser**: Scan local checkpoints and auto-link to Eval.
 - **Eval**: Policy evaluation with live process output and per-episode result tracking.
 
@@ -47,7 +47,6 @@ A web-based GUI workbench for [Hugging Face LeRobot](https://github.com/huggingf
 - **Error Translation**: CLI stderr patterns → user-friendly guidance messages.
 - **Session History**: Timeline of recording, training, and evaluation events.
 - **Desktop Notifications**: Browser notifications on process completion or error.
-- **Guided/Advanced Modes**: Guided mode for step-by-step setup; Advanced mode unlocks all tabs.
 - **Dark/Light Theme**: CSS variable-based theme toggle.
 - **Responsive Layout**: Desktop sidebar, tablet icon rail, mobile drawer.
 
@@ -83,7 +82,9 @@ The [custom lerobot fork](https://github.com/TheMomentLab/lerobot) is tracked as
 lestudio
 ```
 
-The server starts at `http://localhost:7860` and opens a browser tab automatically (skipped on SSH sessions or headless environments).
+The server starts at `http://localhost:7860`.
+
+To open a browser automatically on desktop sessions, pass `--browser` (`lestudio --browser` or `lestudio serve --browser`). SSH or headless environments still skip browser opening.
 
 ### Command Line Options
 
@@ -100,7 +101,8 @@ lestudio serve:
   --lerobot-path PATH   Path to lerobot source (auto-detected if installed)
   --config-dir DIR      Config directory (default: ~/.config/lestudio)
   --rules-path PATH     udev rules file (default: /etc/udev/rules.d/99-lerobot.rules)
-  --no-browser          Do not open browser automatically
+  --browser             Open a browser automatically on startup
+  --no-browser          Deprecated no-op; browser is not opened unless --browser is passed
   --headless            Alias for --no-browser
 ```
 
@@ -142,9 +144,11 @@ Frontend checks:
 ```bash
 cd frontend
 npm ci
-npm run lint
+npx tsc --noEmit
 npm run build
 ```
+
+`npm run build` emits the frontend bundle to `src/lestudio/static/`, which FastAPI serves directly.
 
 CI runs these checks automatically on every push: `.github/workflows/ci.yml`.
 

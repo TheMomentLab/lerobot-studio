@@ -26,7 +26,7 @@ lestudio serve --port 8000
 ```bash
 # Terminal A (Backend)
 conda activate lerobot
-lestudio serve --port 8000 --no-browser
+lestudio serve --port 8000
 
 # Terminal B (Frontend) — 백엔드와 연동 (passthrough 모드)
 cd frontend
@@ -83,7 +83,7 @@ cd frontend && npm run dev
 
 # Backend
 conda activate lerobot
-lestudio serve --port 8000 --no-browser
+lestudio serve --port 8000
 ```
 
 ### 서버 종료
@@ -122,7 +122,7 @@ npm run dev -- --mode mock  # mock 모드 (백엔드 없이)
 # Backend만 재시작
 Ctrl+C
 conda activate lerobot
-lestudio serve --port 8000 --no-browser
+lestudio serve --port 8000
 ```
 
 ### 프론트 빌드 후 Production 반영

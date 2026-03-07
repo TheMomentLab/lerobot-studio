@@ -15,14 +15,17 @@ make install
 
 ```
 LeStudio/
-├── frontend/               # React 19 + TypeScript + Vite 7
+├── frontend/               # React + TypeScript + Vite frontend
 │   └── src/
-│       ├── App.tsx         # Root component (tab routing, theme, shortcuts)
-│       ├── store/index.ts  # Zustand global store
-│       ├── tabs/           # One file per tab
-│       ├── components/     # Shared UI components
-│       └── hooks/          # Custom hooks (useConfig, useProcess, useWebSocket…)
+│       ├── main.tsx        # Frontend entrypoint
+│       ├── app/
+│       │   ├── App.tsx     # Root app assembly
+│       │   ├── routes.ts   # React Router route definitions
+│       │   ├── store/      # Zustand global store
+│       │   ├── components/ # Shared UI and layout components
+│       │   └── hooks/      # Custom hooks
 ├── src/lestudio/           # Python FastAPI backend
+│   ├── cli.py              # CLI entrypoint
 │   ├── server.py           # App factory + router assembly
 │   ├── routes/             # API route modules
 │   ├── process_manager.py  # subprocess lifecycle management
@@ -51,9 +54,9 @@ Do **not** add `from lerobot.*` anywhere else. These five files are the adapter 
 
 ### Frontend Rules
 
-- **State management**: Zustand single store (`store/index.ts`) — no local state sprawl
-- **Styling**: Plain CSS with `var(--color-name)` variables — no Tailwind, Sass, or CSS-in-JS
-- **Types**: Minimize `any`; define proper interfaces in `lib/types.ts`
+- **State management**: Zustand single store (`frontend/src/app/store/index.ts`) — no local state sprawl
+- **Styling**: Match the existing utility-class and shared-component patterns in `frontend/src/app/components/`
+- **Types**: Minimize `any`; define proper interfaces/types close to the feature or in shared contracts
 - **Build output**: `frontend/` → `src/lestudio/static/` via `npm run build`
 
 ## Running Tests
@@ -62,7 +65,7 @@ Do **not** add `from lerobot.*` anywhere else. These five files are the adapter 
 
 ```bash
 conda activate lerobot
-python -m pytest -q --ignore=tests/smoke_hw tests/
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "not smoke_hw" tests
 ```
 
 **Frontend:**
@@ -70,14 +73,14 @@ python -m pytest -q --ignore=tests/smoke_hw tests/
 ```bash
 cd frontend
 npm ci
-npm run lint
+npx tsc --noEmit
 npm run build
 ```
 
 **Hardware smoke tests** (requires physical devices):
 
 ```bash
-LESTUDIO_RUN_HW_SMOKE=1 python -m pytest -q -m "smoke_hw" tests/smoke_hw
+LESTUDIO_RUN_HW_SMOKE=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "smoke_hw" tests/smoke_hw
 ```
 
 ## Adding a Feature
@@ -85,9 +88,9 @@ LESTUDIO_RUN_HW_SMOKE=1 python -m pytest -q -m "smoke_hw" tests/smoke_hw
 When wrapping a new `lerobot` capability:
 
 1. Update or add a command builder in `command_builders.py`
-2. Add a `POST` endpoint in `server.py` that spawns the process via `ProcessManager`
-3. Create or update the tab component in `tabs/XxxTab.tsx`
-4. Add custom hooks in `hooks/` if needed
+2. Add or extend a route module under `src/lestudio/routes/`, then include it from `server.py`
+3. Create or update the page component under `frontend/src/app/pages/`
+4. Add custom hooks in `frontend/src/app/hooks/` if needed
 5. Verify WebSocket log streaming works end-to-end
 
 ## Code Quality

@@ -9,7 +9,8 @@ conda activate lerobot
 lestudio
 ```
 
-The server starts at `http://localhost:7860` and opens a browser tab automatically.
+The server starts at `http://localhost:7860`.
+If you want LeStudio to open a browser automatically on desktop sessions, run `lestudio --browser`.
 On SSH/headless environments the browser is not opened — navigate there manually.
 
 ## 2. Check Hardware Status

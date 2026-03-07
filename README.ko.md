@@ -40,17 +40,15 @@
 - **Hub Search**: Hugging Face Hub에서 데이터셋 검색 및 다운로드.
 
 ### ML
-- **Train**: LeRobot 학습 오케스트레이션 — CUDA preflight(호환 불가 빌드 자동 감지 + PyTorch 원클릭 재설치), 실시간 loss/LR 차트, ETA 추적, 하이퍼파라미터 프리셋(Quick Test / Standard / Full).
+- **Train**: LeRobot 학습 오케스트레이션 — CUDA preflight(호환 불가 빌드 자동 감지 + PyTorch 원클릭 재설치), 실시간 loss/LR 차트, ETA 추적, 하이퍼파라미터 프리셋(Quick / Standard / Full).
 - **Checkpoint Browser**: 로컬 체크포인트 스캔 및 Eval 자동 연결.
 - **Eval**: 정책 평가 실행, 실시간 프로세스 출력, 에피소드별 결과 추적.
 
 ### 일반
 - **Global Console Drawer**: 프로세스별 stdout/stderr 통합 스트림 및 stdin 라우팅.
 - **Error Translation**: CLI stderr 패턴 → 사용자 친화적 안내 메시지.
-- **Profiles**: 전체 설정 프로필 저장/불러오기/가져오기/내보내기/삭제.
 - **Session History**: 녹화, 학습, 평가 이벤트 타임라인.
 - **Desktop Notifications**: 프로세스 완료 또는 오류 시 브라우저 알림.
-- **Guided/Advanced 모드**: Guided 모드는 단계별 설정을 안내하며, Advanced 모드는 모든 탭을 활성화.
 - **다크/라이트 테마**: CSS 변수 기반 테마 전환.
 - **반응형 레이아웃**: 데스크톱 사이드바, 태블릿 아이콘 레일, 모바일 서랍.
 
@@ -86,7 +84,9 @@ make install
 lestudio
 ```
 
-서버는 `http://localhost:7860`에서 시작되며 브라우저 탭을 자동으로 엽니다 (SSH 또는 헤드리스 환경에서는 열리지 않음).
+서버는 `http://localhost:7860`에서 시작됩니다.
+
+데스크톱 세션에서 브라우저를 자동으로 열려면 `--browser`를 사용하세요 (`lestudio --browser` 또는 `lestudio serve --browser`). SSH 또는 헤드리스 환경에서는 브라우저를 열지 않습니다.
 
 ### 커맨드라인 옵션
 
@@ -103,7 +103,8 @@ lestudio serve:
   --lerobot-path PATH   lerobot 소스 경로 (설치되어 있으면 자동 감지)
   --config-dir DIR      설정 디렉토리 (기본값: ~/.config/lestudio)
   --rules-path PATH     udev 규칙 파일 (기본값: /etc/udev/rules.d/99-lerobot.rules)
-  --no-browser          브라우저 자동 열기 비활성화
+  --browser             시작 시 브라우저 자동 열기
+  --no-browser          호환성 유지용 옵션(no-op); --browser를 주지 않으면 기본적으로 브라우저를 열지 않음
   --headless            --no-browser의 별칭
 ```
 
@@ -145,9 +146,11 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -m "not smoke_hw" tests
 ```bash
 cd frontend
 npm ci
-npm run lint
+npx tsc --noEmit
 npm run build
 ```
+
+`npm run build`는 프론트엔드 번들을 `src/lestudio/static/`에 출력하며, FastAPI가 이 결과물을 직접 서빙합니다.
 
 CI는 모든 push 시 이 검사를 자동으로 실행합니다: `.github/workflows/ci.yml`.
 

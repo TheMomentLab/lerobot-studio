@@ -114,7 +114,7 @@ Inspect, curate, and push your dataset to Hugging Face Hub.
 Launch a LeRobot training run and monitor it in real time.
 
 1. Select a policy and dataset
-2. Choose a hyperparameter preset (Quick Test / Standard / Full) or set manually
+2. Choose a hyperparameter preset (Quick / Standard / Full) or set manually
 3. Run **CUDA Preflight** to verify your GPU setup
 4. Click **Start Training**
 5. Watch the live loss/LR chart and ETA tracker

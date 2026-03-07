@@ -53,7 +53,8 @@ lestudio serve:
   --lerobot-path PATH   Path to lerobot source (auto-detected if installed)
   --config-dir DIR      Config directory (default: ~/.config/lestudio)
   --rules-path PATH     udev rules file (default: /etc/udev/rules.d/99-lerobot.rules)
-  --no-browser          Do not open browser automatically
+  --browser             Open a browser automatically on startup
+  --no-browser          Deprecated no-op; browser is not opened unless --browser is passed
   --headless            Alias for --no-browser
 ```
 
