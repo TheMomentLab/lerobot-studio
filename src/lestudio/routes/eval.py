@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import importlib
 import importlib.util
 import json
 from pathlib import Path
@@ -10,17 +11,18 @@ from typing import Any
 
 from fastapi import APIRouter
 
-from lestudio._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
-from lestudio.command_builders import build_eval_args
-from lestudio._streaming import stop_all_streamers_for_process, unlock_cameras
-from lestudio._train_helpers import (
+from .._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
+from ..command_builders import build_eval_args
+from .._streaming import stop_all_streamers_for_process, unlock_cameras
+from .._train_helpers import (
     _check_cuda_runtime_compat,
     _check_torchcodec_compat,
     _check_train_python_deps,
 )
-from lestudio.routes._state import AppState
-from lestudio.routes.process import _guard_process_start
-from lestudio.routes.training import _ensure_train_installer
+from ._state import AppState
+from ..services.process_service import _guard_process_start
+
+training_service = importlib.import_module("lestudio.services.training_service")
 
 # Known lerobot gym environment types
 KNOWN_ENV_TYPES = [
@@ -243,7 +245,7 @@ def create_router(state: AppState) -> APIRouter:
         if not deps.get("ok"):
             command = str(deps.get("command", "")).strip()
             reason = str(deps.get("reason", "Missing required Python package for evaluation.")).strip()
-            ok_install, already_running = _ensure_train_installer(state, command)
+            ok_install, already_running = training_service._ensure_train_installer(state, command)
             if ok_install:
                 status = "already running" if already_running else "started"
                 return {
@@ -260,7 +262,7 @@ def create_router(state: AppState) -> APIRouter:
         if not tc.get("ok"):
             command = str(tc.get("command", "")).strip()
             reason = str(tc.get("reason", "torchcodec check failed.")).strip()
-            ok_install, already_running = _ensure_train_installer(state, command)
+            ok_install, already_running = training_service._ensure_train_installer(state, command)
             if ok_install:
                 status = "already running" if already_running else "started"
                 return {

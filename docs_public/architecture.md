@@ -8,7 +8,7 @@ Use this page when you want the shortest accurate picture of how the product is 
 
 - `frontend/` contains the React + TypeScript UI.
 - `src/lestudio/server.py` assembles the FastAPI app and serves the built frontend from `src/lestudio/static/`.
-- `src/lestudio/routes/` contains route modules for devices, config, process control, training, eval, dataset workflows, streaming, and motor monitoring.
+- `src/lestudio/routes/` contains route modules for devices, config, udev, process control, training, eval, dataset workflows (listing, curation, hub), streaming, and motor monitoring.
 - `src/lestudio/process_manager.py` owns subprocess lifecycle, output parsing, orphan recovery, and hardware conflict checks.
 - LeRobot-specific imports stay isolated to the adapter boundary: `teleop_bridge.py`, `record_bridge.py`, `camera_patch.py`, `device_registry.py`, and `motor_monitor_bridge.py`.
 

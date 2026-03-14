@@ -15,12 +15,12 @@ LeStudio works with any hardware supported by [Hugging Face LeRobot](https://git
 
 1. Plug in your USB cameras.
 2. Run `ls /dev/video*` to confirm they appear.
-3. Open the **Mapping** tab in LeStudio to bind them to stable symlinks.
+3. Open the **Motor Setup** page → **Mapping** tab in LeStudio to bind them to stable symlinks.
 
 ### Arms
 
 1. Connect the leader and follower arms via USB.
-2. The **Arm Identify Wizard** in the Mapping tab detects arms by a disconnect/reconnect diff.
+2. The **Arm Identify Wizard** in the Motor Setup page's Mapping tab detects arms by a disconnect/reconnect diff.
 
 ## udev Rules
 
@@ -28,7 +28,7 @@ LeStudio uses udev rules to assign stable symlinks like `top_cam_1` and `followe
 
 ### Creating Rules
 
-1. Go to **Mapping** tab → **Add Camera Rule** or **Add Arm Rule**.
+1. Go to **Motor Setup** page → **Mapping** tab → **Add Camera Rule** or **Add Arm Rule**.
 2. Fill in a friendly name (e.g., `top_cam_1`).
 3. Click **Apply Rules**.
 
@@ -44,7 +44,7 @@ After applying, re-plug your USB devices (or reboot) to activate symlinks.
 
 ### Verifying Rules
 
-The Mapping tab shows ✅/❌ status for each symlink. You can also check:
+The Motor Setup page's Mapping tab shows ✅/❌ status for each symlink. You can also check:
 
 ```bash
 ls -la /dev/top_cam_1 /dev/follower_arm_1
@@ -60,7 +60,7 @@ USB cameras compete for bandwidth on shared USB controllers. LeStudio shows a re
 
 ## Motor Setup
 
-Use the **Motor Setup** tab to:
+Use the **Motor Setup** page → **Setup** tab to:
 
 - Run `lerobot_setup_motors` for your arm
 - Verify motor IDs and connectivity

@@ -15,17 +15,17 @@ On SSH/headless environments the browser is not opened — navigate there manual
 
 ## 2. Check Hardware Status
 
-Open the **Status** tab. You should see:
+Open the **Status** page. You should see:
 
 - **Cameras** listed with their `/dev/` paths or symlinks
 - **Arms** (if connected) shown under robot devices
 - System resources (CPU, RAM, Disk, GPU if available)
 
-If devices are missing, go to the **Mapping** tab to create udev rules.
+If devices are missing, go to the **Motor Setup** page → **Mapping** tab to create udev rules.
 
 ## 3. Map Devices (First Time Only)
 
-The **Mapping** tab lets you assign stable symlinks to your USB devices:
+The **Motor Setup** page → **Mapping** tab lets you assign stable symlinks to your USB devices:
 
 1. Click **Add Camera Rule** or **Add Arm Rule**
 2. Plug in your device and follow the Arm Identify Wizard (for arms) or select the video device (for cameras)
@@ -37,12 +37,12 @@ The **Mapping** tab lets you assign stable symlinks to your USB devices:
 
 ## 4. Calibrate
 
-Go to the **Calibration** tab and run calibration for your follower and leader arms.
+Go to the **Motor Setup** page → **Calibration** tab and run calibration for your follower and leader arms.
 Calibration files are saved to `~/.config/lestudio/` by default.
 
 ## 5. Teleop
 
-Open the **Teleop** tab:
+Open the **Teleop** page:
 
 1. Select your robot and teleoperator from the dropdowns
 2. Click **Preflight** to verify cameras and arms are ready
@@ -51,7 +51,7 @@ Open the **Teleop** tab:
 
 ## 6. Record Episodes
 
-Switch to the **Record** tab:
+Switch to the **Record** page:
 
 1. Set your dataset name, task name, and episode count
 2. Click **Start Recording**
@@ -60,7 +60,7 @@ Switch to the **Record** tab:
 
 ## 7. Inspect & Push
 
-Use the **Dataset** tab to review episodes, curate data, and push to Hugging Face Hub.
+Use the **Dataset** page to review episodes, curate data, and push to Hugging Face Hub.
 
 ## Next Steps
 

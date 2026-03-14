@@ -1,20 +1,20 @@
 # Full Workflow
 
-LeStudio is designed around a nine-step pipeline. Each step corresponds to a tab in the UI.
+LeStudio is designed around an eight-step pipeline. Each step corresponds to a page in the UI sidebar.
 
 Use this page as the end-to-end reference once installation and initial hardware setup are complete.
 
 ## Overview
 
 ```
-Status → Mapping → Motor Setup → Calibration → Teleop → Record → Dataset → Train → Eval
+Status → Motor Setup → Camera Setup → Teleop → Record → Dataset → Train → Eval
 ```
 
 ---
 
 ## Step 1: Status
 
-**Tab**: Status
+**Page**: Status
 
 Confirm your environment is healthy before doing anything else:
 
@@ -24,24 +24,24 @@ Confirm your environment is healthy before doing anything else:
 
 ---
 
-## Step 2: Mapping
+## Step 2: Motor Setup
 
-**Tab**: Mapping
+**Page**: Motor Setup
+
+Set up device mapping, motor configuration, and calibration. This page contains several tabs:
+
+### Mapping tab
 
 Bind USB devices to stable symlinks so the rest of the pipeline can reference them reliably.
 
 1. Add camera and arm rules
 2. Apply rules (or run `lestudio install-udev` manually)
 3. Re-plug USB devices to activate symlinks
-4. Verify symlinks appear in the Status tab
+4. Verify symlinks appear in the Status page
 
 See the [Hardware Guide](hardware.md) for details.
 
----
-
-## Step 3: Motor Setup
-
-**Tab**: Motor Setup
+### Setup tab
 
 Run only when setting up new hardware or replacing servos.
 
@@ -49,11 +49,7 @@ Run only when setting up new hardware or replacing servos.
 2. Run `lerobot_setup_motors` via the UI
 3. Confirm motor IDs are detected correctly
 
----
-
-## Step 4: Calibration
-
-**Tab**: Calibration
+### Calibration tab
 
 Calibrate follower and leader arms to establish accurate joint positions.
 
@@ -64,9 +60,21 @@ Calibrate follower and leader arms to establish accurate joint positions.
 
 ---
 
-## Step 5: Teleop
+## Step 3: Camera Setup
 
-**Tab**: Teleop
+**Page**: Camera Setup
+
+Verify camera streams and USB bandwidth before recording.
+
+- Preview camera feeds to confirm visibility and framing
+- Check the **USB bandwidth bar** per camera (fps, MB/s, bus utilization)
+- If bandwidth is saturated, spread cameras across different physical USB ports
+
+---
+
+## Step 4: Teleop
+
+**Page**: Teleop
 
 Validate motion and camera feeds before recording real data.
 
@@ -77,13 +85,13 @@ Validate motion and camera feeds before recording real data.
 5. Click **Stop**
 
 !!! tip
-    Camera feeds remain visible in the Teleop tab via shared memory (SHM) while the teleop process runs — no need for a separate viewer.
+    Camera feeds remain visible in the Teleop page via shared memory (SHM) while the teleop process runs — no need for a separate viewer.
 
 ---
 
-## Step 6: Record
+## Step 5: Record
 
-**Tab**: Record
+**Page**: Record
 
 Capture episodes for your target task.
 
@@ -96,9 +104,9 @@ Capture episodes for your target task.
 
 ---
 
-## Step 7: Dataset
+## Step 6: Dataset
 
-**Tab**: Dataset
+**Page**: Dataset
 
 Inspect, curate, and push your dataset to Hugging Face Hub.
 
@@ -109,9 +117,9 @@ Inspect, curate, and push your dataset to Hugging Face Hub.
 
 ---
 
-## Step 8: Train
+## Step 7: Train
 
-**Tab**: Train
+**Page**: Train
 
 Launch a LeRobot training run and monitor it in real time.
 
@@ -126,9 +134,9 @@ Launch a LeRobot training run and monitor it in real time.
 
 ---
 
-## Step 9: Eval
+## Step 8: Eval
 
-**Tab**: Eval
+**Page**: Eval
 
 Run policy evaluation to close the loop.
 

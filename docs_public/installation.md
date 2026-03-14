@@ -8,6 +8,43 @@ This guide covers the minimum environment and commands needed to get LeStudio ru
 - Linux (for `udev` rules and `/dev/video*` access)
 - [Hugging Face LeRobot](https://github.com/huggingface/lerobot) installed in your environment
 
+### System Packages (Ubuntu / Debian)
+
+LeStudio and LeRobot depend on system libraries that are not installed by `pip`. On a fresh Ubuntu 22.04+ machine, install these first:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    ffmpeg \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6
+```
+
+| Package | Why |
+|---|---|
+| `build-essential`, `cmake` | Compile native Python extensions during `pip install` |
+| `git` | Clone the repository and manage the lerobot submodule |
+| `ffmpeg` | Video encoding/decoding for dataset recording and playback |
+| `libgl1-mesa-glx`, `libglib2.0-0`, `libsm6`, `libxext6` | Runtime libraries required by OpenCV |
+
+#### User Groups for Hardware Access
+
+If you plan to use cameras or motor arms, your user must be in the right groups:
+
+```bash
+sudo usermod -a -G video,dialout $USER
+```
+
+Log out and back in (or reboot) for changes to take effect.
+
+- `video` — camera access (`/dev/video*`)
+- `dialout` — serial motor access (`/dev/ttyUSB*`, `/dev/ttyACM*`)
+
 ### Optional
 
 | Capability | Requirement |

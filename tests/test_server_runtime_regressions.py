@@ -7,6 +7,7 @@ import types
 from pathlib import Path
 
 import lestudio.routes.training as training_routes
+import lestudio.services.training_service as training_service
 from lestudio.routes.models import HfTokenRequest
 from lestudio.server import create_app
 
@@ -75,13 +76,15 @@ def test_api_record_start_stops_streamers_and_injects_camera_settings(monkeypatc
         return [python_exe, "-m", "fake_record"]
 
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", fake_start)
-    monkeypatch.setattr("lestudio.routes.process.stop_all_streamers_for_process", fake_stop_streamers)
-    monkeypatch.setattr("lestudio.routes.process.resolve_record_resume", lambda cfg: (False, False))
+    monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", fake_stop_streamers)
     monkeypatch.setattr(
-        "lestudio.routes.process._get_cam_settings",
+        "lestudio.services.process_service.command_builders.resolve_record_resume", lambda cfg: (False, False)
+    )
+    monkeypatch.setattr(
+        "lestudio.services.process_service._get_cam_settings",
         lambda config_path: {"width": 960, "height": 540, "fps": 25},
     )
-    monkeypatch.setattr("lestudio.routes.process.build_record_args", fake_build_args)
+    monkeypatch.setattr("lestudio.services.process_service.command_builders.build_record_args", fake_build_args)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/record/start", "POST")
@@ -105,7 +108,7 @@ def test_api_teleop_start_auto_copies_bimanual_calibration_from_single_arm_files
 
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
-    monkeypatch.setattr("lestudio.routes.process.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", lambda: None)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     def fake_start(self, name: str, args: list[str]) -> bool:
@@ -162,7 +165,7 @@ def test_api_teleop_start_auto_normalizes_bimanual_ids_without_suffixes(monkeypa
 
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
-    monkeypatch.setattr("lestudio.routes.process.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", lambda: None)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
     def fake_start(self, name: str, args: list[str]) -> bool:
@@ -216,7 +219,7 @@ def test_api_teleop_start_auto_normalizes_bimanual_ids_without_suffixes(monkeypa
 def test_api_preflight_uses_bimanual_defaults_for_non_single_mode(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(
-        "lestudio.routes.process.validate_calibration_file",
+        "lestudio.services.process_service.validate_calibration_file",
         lambda path: types.SimpleNamespace(errors=[], warnings=[]),
     )
 
@@ -412,7 +415,7 @@ def test_api_eval_start_auto_copies_missing_bimanual_calibration(monkeypatch, tm
 def test_api_teleop_start_rejects_invalid_bimanual_profile_id(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.conflicting_processes", lambda self, name: [])
-    monkeypatch.setattr("lestudio.routes.process.stop_all_streamers_for_process", lambda: None)
+    monkeypatch.setattr("lestudio.services.process_service.stop_all_streamers_for_process", lambda: None)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/teleop/start", "POST")
@@ -442,7 +445,7 @@ def test_api_teleop_start_rejects_invalid_bimanual_profile_id(monkeypatch, tmp_p
 def test_api_calibrate_file_supports_bimanual_shared_profile_id(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     monkeypatch.setattr(
-        "lestudio.routes.process.validate_calibration_file",
+        "lestudio.services.process_service.validate_calibration_file",
         lambda path: types.SimpleNamespace(errors=[], warnings=[]),
     )
 
@@ -524,23 +527,23 @@ def test_snapshot_camera_returns_503_when_frame_unavailable(monkeypatch, tmp_pat
 
 
 def test_train_preflight_cache_is_used_and_invalidated(monkeypatch, tmp_path: Path):
-    training_routes._preflight_cache.clear()
+    training_service._preflight_cache.clear()
     calls = {"cuda": 0}
 
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.is_running", lambda self, name: False)
     monkeypatch.setattr("lestudio.process_manager.ProcessManager.start", lambda self, name, args: True)
-    monkeypatch.setattr("lestudio.routes.training._check_train_python_deps", lambda python_exe: {"ok": True})
+    monkeypatch.setattr("lestudio.services.training_service._check_train_python_deps", lambda python_exe: {"ok": True})
 
     def fake_cuda_compat(_python_exe: str):
         calls["cuda"] += 1
         return False, "cuda mismatch"
 
-    monkeypatch.setattr("lestudio.routes.training._check_cuda_runtime_compat", fake_cuda_compat)
+    monkeypatch.setattr("lestudio.services.training_service._check_cuda_runtime_compat", fake_cuda_compat)
     monkeypatch.setattr(
-        "lestudio.routes.training._build_torch_install_args",
+        "lestudio.services.training_service._build_torch_install_args",
         lambda python_exe, cuda_tag, nightly: ["pip", "install", "torch"],
     )
-    monkeypatch.setattr("lestudio.routes.training._format_cmd", lambda args: "pip install torch")
+    monkeypatch.setattr("lestudio.services.training_service._format_cmd", lambda args: "pip install torch")
 
     app = _make_app(tmp_path)
     preflight = _find_endpoint(app, "/api/train/preflight", "GET")
@@ -551,12 +554,12 @@ def test_train_preflight_cache_is_used_and_invalidated(monkeypatch, tmp_path: Pa
     assert first["ok"] is False
     assert second["ok"] is False
     assert calls["cuda"] == 1
-    assert training_routes._preflight_cache
+    assert training_service._preflight_cache
 
     payload = asyncio.run(install({"nightly": True, "cuda_tag": "cu128"}))
     assert payload["ok"] is True
-    assert training_routes._preflight_cache == {}
-    training_routes._preflight_cache.clear()
+    assert training_service._preflight_cache == {}
+    training_service._preflight_cache.clear()
 
 
 def test_hf_whoami_cache_is_token_scoped(monkeypatch, tmp_path: Path):
@@ -648,8 +651,8 @@ def test_train_colab_config_uploads_json_and_returns_link(monkeypatch, tmp_path:
         captured["cfg"] = json.loads(cfg_path.read_text())
         return types.SimpleNamespace(returncode=0, stdout="uploaded", stderr="")
 
-    monkeypatch.setattr(training_routes.shutil, "which", fake_which)
-    monkeypatch.setattr(training_routes.subprocess, "run", fake_run)
+    monkeypatch.setattr(training_service.shutil, "which", fake_which)
+    monkeypatch.setattr(training_service.subprocess, "run", fake_run)
 
     app = _make_app(tmp_path)
     endpoint = _find_endpoint(app, "/api/train/colab/config", "POST")
