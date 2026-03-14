@@ -800,7 +800,10 @@ export function MotorSetup() {
     void applyArmMapping(cleared);
   }, [applyArmMapping, armRoleMap]);
 
-  const calibPortOptions = portOptions;
+  const ARM_SYMLINK_RE = /^(follower|leader)_arm_\d+$/i;
+  const mappedArms = useMemo(() => arms.filter((a) => a.symlink && ARM_SYMLINK_RE.test(a.symlink)), [arms]);
+  const hasMappedArms = mappedArms.length > 0;
+  const calibPortOptions = useMemo(() => buildPortOptions(mappedArms), [mappedArms]);
   const autoSingleCalibId = useMemo(() => {
     const selectedArm = arms.find((arm) => arm.path === calibPort) ?? arms[0];
     const raw = selectedArm?.symlink?.trim()
@@ -1034,6 +1037,7 @@ export function MotorSetup() {
             {motorTab === "calibration" && (
               <CalibrationTabPanel
                 arms={arms}
+                hasMappedArms={hasMappedArms}
                 calibrateRunning={calibrateRunning}
                 calibMode={calibMode}
                 calibTypeMismatch={calibTypeMismatch}

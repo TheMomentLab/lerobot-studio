@@ -1,4 +1,4 @@
-import { AlertTriangle, CircleAlert, Play, Ruler, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, CircleAlert, Play, Ruler, Square, Trash2, Unplug } from "lucide-react";
 import {
   Card,
   EmptyState,
@@ -11,6 +11,7 @@ import type { ArmDevice, CalibrationFileItem, CalibrationValidation } from "../t
 
 interface CalibrationTabPanelProps {
   arms: ArmDevice[];
+  hasMappedArms: boolean;
   calibrateRunning: boolean;
   calibMode: string;
   calibTypeMismatch: boolean;
@@ -56,6 +57,7 @@ interface CalibrationTabPanelProps {
 
 export function CalibrationTabPanel({
   arms,
+  hasMappedArms,
   calibrateRunning,
   calibMode,
   calibTypeMismatch,
@@ -89,14 +91,26 @@ export function CalibrationTabPanel({
   onHandleCalibrationStop,
   onHandleCalibrationDelete,
 }: CalibrationTabPanelProps) {
+  if (!hasMappedArms) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-12 text-center">
+        <div className="size-12 rounded-full bg-amber-500/10 flex items-center justify-center">
+          <Unplug size={24} className="text-amber-500" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <h3 className="text-base font-semibold text-zinc-800 dark:text-zinc-200">Arm Mapping Required</h3>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            {arms.length === 0
+              ? "No arms detected. Connect USB devices and refresh."
+              : "Go to the Mapping tab to assign follower/leader roles before calibrating."}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      {arms.length === 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-amber-500/30 bg-amber-500/5">
-          <AlertTriangle size={13} className="text-amber-600 dark:text-amber-400 flex-none" />
-          <span className="text-sm text-amber-600 dark:text-amber-400 flex-1">No connected devices. Connect USB and refresh.</span>
-        </div>
-      )}
 
       <div className="flex items-center justify-between">
         <ModeToggle options={["Single Arm", "Bi-Arm"]} value={calibMode} onChange={onSetCalibMode} />
