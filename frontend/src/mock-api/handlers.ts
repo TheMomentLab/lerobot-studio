@@ -148,6 +148,19 @@ let recordTimer: ReturnType<typeof setInterval> | null = null;
 let calibrateTimer: ReturnType<typeof setInterval> | null = null;
 let motorSetupTimer: ReturnType<typeof setInterval> | null = null;
 let evalTimer: ReturnType<typeof setInterval> | null = null;
+
+// ── Motor Setup mock state ──────────────────────────────────────────────────
+const MOCK_SETUP_MOTORS = [
+  { name: "gripper", id: 6 },
+  { name: "wrist_roll", id: 5 },
+  { name: "wrist_flex", id: 4 },
+  { name: "elbow_flex", id: 3 },
+  { name: "shoulder_lift", id: 2 },
+  { name: "shoulder_pan", id: 1 },
+];
+let motorSetupStep = 0;
+let motorSetupErrorInjected = false;  // set via DEV panel to inject error on next motor
+
 let trainEventSeq = 0;
 let hfToken = "";
 let mockCameraRules: Array<{ kernel: string; symlink: string; mode: string; exists: boolean }> = [
@@ -159,9 +172,13 @@ let mockArmRules: Array<{ serial: string; symlink: string; mode: string; exists:
   { serial: "AX12-0048", symlink: "leader_arm_1", mode: "0666", exists: true },
 ];
 const mockDownloadJobs: Record<string, MockDownloadJob> = {};
-let mockCalibrationFiles: Array<{ id: string; guessed_type: string; modified: string; size: number }> = [
-  { id: "follower_arm_1", guessed_type: "so101_follower", modified: "2026-03-01 13:45:00", size: 2140 },
-  { id: "leader_arm_1", guessed_type: "so101_leader", modified: "2026-03-01 13:50:00", size: 2080 },
+let mockCalibrationFiles: Array<{ id: string; guessed_type: string; modified: string; size: number; rel_path: string }> = [
+  { id: "follower_arm_1", guessed_type: "so101_follower", modified: "2026-03-01 13:45:00", size: 2140, rel_path: "robots/so_follower/follower_arm_1.json" },
+  { id: "leader_arm_1", guessed_type: "so101_leader", modified: "2026-03-01 13:50:00", size: 2080, rel_path: "teleoperators/so_leader/leader_arm_1.json" },
+  { id: "bimanual_follower_left", guessed_type: "bi_so_follower", modified: "2026-03-02 09:15:00", size: 1560, rel_path: "robots/bi_so_follower/bimanual_follower_left.json" },
+  { id: "bimanual_follower_right", guessed_type: "bi_so_follower", modified: "2026-03-02 09:15:00", size: 1560, rel_path: "robots/bi_so_follower/bimanual_follower_right.json" },
+  { id: "bimanual_leader_left", guessed_type: "bi_so_leader", modified: "2026-03-02 09:16:00", size: 1528, rel_path: "teleoperators/bi_so_leader/bimanual_leader_left.json" },
+  { id: "bimanual_leader_right", guessed_type: "bi_so_leader", modified: "2026-03-02 09:16:00", size: 1528, rel_path: "teleoperators/bi_so_leader/bimanual_leader_right.json" },
 ];
 
 function nextMockJobId(): string {
@@ -391,7 +408,7 @@ export async function handleMockGet(path: string): Promise<unknown> {
   if (pathname.startsWith("/api/process/") && pathname.endsWith("/status")) {
     const parts = pathname.split("/");
     const name = parts[3] as ProcessName;
-    return { running: Boolean(state.processes[name]) };
+    return { running: Boolean(state.processes[name]), reconnected: false };
   }
 
 
@@ -451,6 +468,14 @@ export async function handleMockGet(path: string): Promise<unknown> {
     return state.config;
   }
 
+  if (pathname === "/api/deps/status") {
+    return {
+      ok: true,
+      huggingface_cli: true,
+      teleop_antijitter_plugin: true,
+    };
+  }
+
   if (pathname === "/api/robots") {
     return {
       types: ["so101_follower", "so100_follower", "aloha"],
@@ -475,9 +500,22 @@ export async function handleMockGet(path: string): Promise<unknown> {
   }
 
   if (pathname === "/api/calibrate/file") {
+    const robotType = query.get("robot_type") ?? "";
     const robotId = query.get("robot_id") ?? "";
     const found = mockCalibrationFiles.find((file) => file.id === robotId);
+    const isBiType = robotType.startsWith("bi_");
+    const biMatches = isBiType
+      ? mockCalibrationFiles.filter((file) => file.id === `${robotId}_left` || file.id === `${robotId}_right`)
+      : [];
     if (!found) {
+      if (biMatches.length === 2) {
+        return {
+          exists: true,
+          path: `/mock/calibration/${robotId}_{left,right}.json`,
+          modified: biMatches[0]?.modified,
+          size: biMatches.reduce((total, file) => total + file.size, 0),
+        };
+      }
       return {
         exists: false,
         path: `/mock/calibration/${robotId || "unknown"}.json`,
@@ -616,7 +654,7 @@ export async function handleMockGet(path: string): Promise<unknown> {
       return {
         ok: false,
         reason: "CUDA preflight failed: CUDA PyTorch is not installed",
-        action: "install_pytorch",
+        action: "install_torch_cuda",
       };
     }
     return {
@@ -647,7 +685,7 @@ export async function handleMockGet(path: string): Promise<unknown> {
   }
 
   if (pathname === "/api/deps/status") {
-    return { huggingface_cli: true };
+    return { huggingface_cli: true, teleop_antijitter_plugin: true };
   }
 
   if (pathname === "/api/hf/whoami") {
@@ -843,12 +881,86 @@ export async function handleMockPost(path: string, body?: unknown): Promise<unkn
     const conflicting = conflictProcess("motor_setup");
     if (conflicting) return { ok: false, error: `${conflicting} is running` };
     state.processes.motor_setup = true;
+    motorSetupStep = 0;
+    motorSetupErrorInjected = false;
     stopNonTrainTimers("motor_setup");
     emitNonTrainOutput("motor_setup", "motor setup started", "info");
-    motorSetupTimer = setInterval(() => {
+    // Emit first motor prompt after short delay
+    setTimeout(() => {
       if (!state.processes.motor_setup) return;
-      emitNonTrainOutput("motor_setup", "waiting for next motor connection...", "info");
-    }, 2400);
+      const motor = MOCK_SETUP_MOTORS[0];
+      emitNonTrainOutput("motor_setup", `Setting bus baud rate to 1000000`, "info");
+      emitNonTrainOutput("motor_setup",
+        `[MOTOR_SETUP_EVENT] ${JSON.stringify({ event: "prompt", motor: motor.name, target_id: motor.id, message: `Connect only '${motor.name}' and press ENTER.` })}`,
+        "info",
+      );
+    }, 600);
+    return { ok: true };
+  }
+
+  // Motor setup: advance to next motor on ENTER
+  if (pathname === "/api/process/motor_setup/input") {
+    if (!state.processes.motor_setup) return { ok: false, error: "motor_setup not running" };
+    const motor = MOCK_SETUP_MOTORS[motorSetupStep];
+    if (!motor) return { ok: false, error: "No more motors" };
+
+    // Simulate EEPROM write delay
+    setTimeout(() => {
+      if (!state.processes.motor_setup) return;
+
+      // Inject error if flag is set
+      if (motorSetupErrorInjected) {
+        motorSetupErrorInjected = false;
+        emitNonTrainOutput("motor_setup",
+          `[MOTOR_SETUP_EVENT] ${JSON.stringify({ event: "error", motor: motor.name, message: `Failed to write EEPROM for '${motor.name}'. ConnectionError: could not reach motor.` })}`,
+          "error",
+        );
+        return;
+      }
+
+      // Emit detected event
+      emitNonTrainOutput("motor_setup",
+        `[MOTOR_SETUP_EVENT] ${JSON.stringify({ event: "detected", motor: motor.name, detected_id: 1, baud_rate: 1000000 })}`,
+        "info",
+      );
+
+      // Emit configured event after brief delay
+      setTimeout(() => {
+        if (!state.processes.motor_setup) return;
+        emitNonTrainOutput("motor_setup",
+          `[MOTOR_SETUP_EVENT] ${JSON.stringify({ event: "configured", motor: motor.name, target_id: motor.id })}`,
+          "info",
+        );
+        emitNonTrainOutput("motor_setup", `'${motor.name}' motor id set to ${motor.id}`, "info");
+
+        motorSetupStep += 1;
+
+        // If more motors, emit next prompt
+        if (motorSetupStep < MOCK_SETUP_MOTORS.length) {
+          setTimeout(() => {
+            if (!state.processes.motor_setup) return;
+            const next = MOCK_SETUP_MOTORS[motorSetupStep];
+            emitNonTrainOutput("motor_setup",
+              `[MOTOR_SETUP_EVENT] ${JSON.stringify({ event: "prompt", motor: next.name, target_id: next.id, message: `Connect only '${next.name}' and press ENTER.` })}`,
+              "info",
+            );
+          }, 400);
+        } else {
+          // All done — stop process
+          setTimeout(() => {
+            state.processes.motor_setup = false;
+            emitNonTrainOutput("motor_setup", "Motor setup completed successfully.", "info");
+          }, 300);
+        }
+      }, 800);
+    }, 500);
+
+    return { ok: true };
+  }
+
+  // Motor setup: inject error on next motor (DEV helper)
+  if (pathname === "/api/motor_setup/inject_error") {
+    motorSetupErrorInjected = true;
     return { ok: true };
   }
 
@@ -975,9 +1087,16 @@ export async function handleMockDelete(path: string): Promise<unknown> {
 
 
   if (pathname === "/api/calibrate/file") {
+    const robotType = query.get("robot_type") ?? "";
     const robotId = query.get("robot_id") ?? "";
     const before = mockCalibrationFiles.length;
-    mockCalibrationFiles = mockCalibrationFiles.filter((file) => file.id !== robotId);
+    if (robotType.startsWith("bi_")) {
+      mockCalibrationFiles = mockCalibrationFiles.filter(
+        (file) => file.id !== robotId && file.id !== `${robotId}_left` && file.id !== `${robotId}_right`,
+      );
+    } else {
+      mockCalibrationFiles = mockCalibrationFiles.filter((file) => file.id !== robotId);
+    }
     if (before === mockCalibrationFiles.length) return { ok: false, error: "File not found" };
     return { ok: true };
   }

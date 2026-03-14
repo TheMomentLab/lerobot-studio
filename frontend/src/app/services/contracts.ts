@@ -87,6 +87,22 @@ function normalizeMode(modeLabel: string): "single" | "bi" {
   return /bi/i.test(modeLabel) ? "bi" : "single";
 }
 
+function normalizeRobotTypeForMode(cfg: RecordLike, mode: "single" | "bi"): string {
+  const fallback = mode === "bi" ? "bi_so_follower" : "so101_follower";
+  const value = getString(cfg, "robot_type", fallback).trim();
+  if (!value) return fallback;
+  if (mode === "bi") return value.startsWith("bi_") ? value : fallback;
+  return value.startsWith("bi_") ? fallback : value;
+}
+
+function normalizeTeleopTypeForMode(cfg: RecordLike, mode: "single" | "bi"): string {
+  const fallback = mode === "bi" ? "bi_so_leader" : "so101_leader";
+  const value = getString(cfg, "teleop_type", fallback).trim();
+  if (!value) return fallback;
+  if (mode === "bi") return value.startsWith("bi_") ? value : fallback;
+  return value.startsWith("bi_") ? fallback : value;
+}
+
 function normalizeSpeed(speedLabel: string): string {
   const cleaned = speedLabel.replace(/x$/i, "").trim();
   return cleaned || "0.5";
@@ -162,10 +178,11 @@ type BaseProcessPayload = {
 
 function buildBaseProcessPayload(config: LeStudioConfig, modeLabel: string, cameras: CameraMapping[]): BaseProcessPayload {
   const cfg = asRecord(config) ?? {};
+  const mode = normalizeMode(modeLabel);
   return {
-    robot_mode: normalizeMode(modeLabel),
-    robot_type: getString(cfg, "robot_type", "so101_follower"),
-    teleop_type: getString(cfg, "teleop_type", "so101_leader"),
+    robot_mode: mode,
+    robot_type: normalizeRobotTypeForMode(cfg, mode),
+    teleop_type: normalizeTeleopTypeForMode(cfg, mode),
     follower_port: getString(cfg, "follower_port", "/dev/follower_arm_1"),
     leader_port: getString(cfg, "leader_port", "/dev/leader_arm_1"),
     robot_id: getString(cfg, "robot_id", "follower_arm_1"),
@@ -174,10 +191,10 @@ function buildBaseProcessPayload(config: LeStudioConfig, modeLabel: string, came
     right_follower_port: getString(cfg, "right_follower_port", "/dev/follower_arm_2"),
     left_leader_port: getString(cfg, "left_leader_port", "/dev/leader_arm_1"),
     right_leader_port: getString(cfg, "right_leader_port", "/dev/leader_arm_2"),
-    left_robot_id: getString(cfg, "left_robot_id", "follower_arm_1"),
-    right_robot_id: getString(cfg, "right_robot_id", "follower_arm_2"),
-    left_teleop_id: getString(cfg, "left_teleop_id", "leader_arm_1"),
-    right_teleop_id: getString(cfg, "right_teleop_id", "leader_arm_2"),
+    left_robot_id: getString(cfg, "left_robot_id", "follower_left"),
+    right_robot_id: getString(cfg, "right_robot_id", "follower_right"),
+    left_teleop_id: getString(cfg, "left_teleop_id", "leader_left"),
+    right_teleop_id: getString(cfg, "right_teleop_id", "leader_right"),
     teleop_antijitter_enabled: getBoolean(cfg, "teleop_antijitter_enabled", false),
     teleop_antijitter_alpha: getNumber(cfg, "teleop_antijitter_alpha", 0.35),
     teleop_antijitter_deadband: getNumber(cfg, "teleop_antijitter_deadband", 0.75),
