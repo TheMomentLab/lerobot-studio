@@ -9,6 +9,18 @@ export const SETUP_MOTORS = [
 
 export const ARM_TYPES = ["so101_follower", "so100_follower", "so101_leader", "so100_leader"];
 
+export const MOTOR_SETUP_TYPES = [
+  "so101_follower",
+  "so100_follower",
+  "so101_leader",
+  "so100_leader",
+  "koch_follower",
+  "koch_leader",
+  "omx_follower",
+  "omx_leader",
+  "lekiwi",
+];
+
 export function toArmSymlink(roleLabel: string): string {
   if (roleLabel === "Follower Arm 1") return "follower_arm_1";
   if (roleLabel === "Follower Arm 2") return "follower_arm_2";

@@ -1,4 +1,4 @@
-import { AlertTriangle, Play, Ruler, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, CircleAlert, Play, Ruler, Square, Trash2 } from "lucide-react";
 import {
   Card,
   EmptyState,
@@ -7,7 +7,7 @@ import {
   WireInput,
   WireSelect,
 } from "../../../components/wireframe";
-import type { ArmDevice, CalibrationFileItem } from "../types";
+import type { ArmDevice, CalibrationFileItem, CalibrationValidation } from "../types";
 
 interface CalibrationTabPanelProps {
   arms: ArmDevice[];
@@ -28,6 +28,13 @@ interface CalibrationTabPanelProps {
   calibBiId: string;
   calibBiIdAuto: boolean;
   calibFiles: CalibrationFileItem[];
+  calibFileScope: string;
+  calibFileScopeOptions: string[];
+  selectedCalibrationExists: boolean;
+  selectedCalibrationPath: string;
+  validation?: CalibrationValidation;
+  calibrationAssistantStage?: string;
+  calibrateReconnected?: boolean;
   onSetCalibMode: (value: string) => void;
   onSetCalibArmType: (value: string) => void;
   onSetCalibPort: (value: string) => void;
@@ -36,9 +43,15 @@ interface CalibrationTabPanelProps {
   onSetCalibBiLeftPort: (value: string) => void;
   onSetCalibBiRightPort: (value: string) => void;
   onSetCalibBiId: (value: string) => void;
+  onSetCalibFileScope: (value: string) => void;
   onHandleCalibrationStart: () => void;
   onHandleCalibrationStop: () => void;
   onHandleCalibrationDelete: (file: CalibrationFileItem) => void;
+  onUseSavedCalibration?: () => void;
+  onRunNewCalibration?: () => void;
+  onCalibrationArmCentered?: () => void;
+  onCalibrationFinishRange?: () => void;
+  onCalibrationSendEnter?: () => void;
 }
 
 export function CalibrationTabPanel({
@@ -60,6 +73,9 @@ export function CalibrationTabPanel({
   calibBiId,
   calibBiIdAuto,
   calibFiles,
+  calibFileScope,
+  calibFileScopeOptions,
+  validation,
   onSetCalibMode,
   onSetCalibArmType,
   onSetCalibPort,
@@ -68,6 +84,7 @@ export function CalibrationTabPanel({
   onSetCalibBiLeftPort,
   onSetCalibBiRightPort,
   onSetCalibBiId,
+  onSetCalibFileScope,
   onHandleCalibrationStart,
   onHandleCalibrationStop,
   onHandleCalibrationDelete,
@@ -86,7 +103,11 @@ export function CalibrationTabPanel({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6">
-        <Card title="Existing Calibration Files" className="min-h-[300px]">
+        <Card
+          title="Calibration Files"
+          className="min-h-[300px]"
+          action={<ModeToggle options={calibFileScopeOptions} value={calibFileScope} onChange={onSetCalibFileScope} />}
+        >
           {calibFiles.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center">
               <EmptyState icon={<Ruler size={28} />} message="No calibration files." />
@@ -95,12 +116,14 @@ export function CalibrationTabPanel({
             <div className="flex flex-col gap-2">
               {calibFiles.map((file) => (
                 <div key={`${file.id}-${file.guessed_type ?? "unknown"}`} className="group flex items-center gap-2 p-2 rounded border border-zinc-200 dark:border-zinc-700">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{file.id}</div>
-                    <div className="text-xs text-zinc-400 truncate">
-                      {(file.guessed_type ?? "unknown")} - {(file.modified ?? "-")}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-zinc-700 dark:text-zinc-300 font-mono truncate">{file.id}</div>
+                      <div className="text-xs text-zinc-400 truncate">
+                        {file.shared_profile
+                          ? `${(file.guessed_type ?? "unknown")} - shared left/right pair - ${(file.modified ?? "-")}`
+                          : `${(file.guessed_type ?? "unknown")} - ${(file.modified ?? "-")}`}
+                      </div>
                     </div>
-                  </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); onHandleCalibrationDelete(file); }}
                     className="p-1 text-zinc-300 dark:text-zinc-600 hover:text-red-400 cursor-pointer"
@@ -174,10 +197,10 @@ export function CalibrationTabPanel({
                   />
                 </FieldRow>
                 <div className="pt-1 border-t border-zinc-200 dark:border-zinc-700/60" />
-                <FieldRow label="Calibration File Name" align="start">
+                <FieldRow label="Shared Profile ID" align="start">
                   <div className="flex flex-col gap-1">
                     <WireInput value={calibBiId} onChange={calibBiIdAuto ? undefined : onSetCalibBiId} disabled={arms.length === 0} />
-                    <p className="text-xs text-zinc-400">Auto-generated from selected left/right arms. Re-running updates the same file.</p>
+                    <p className="text-xs text-zinc-400">Creates {calibBiId}_left.json and {calibBiId}_right.json.</p>
                   </div>
                 </FieldRow>
               </>
@@ -185,6 +208,45 @@ export function CalibrationTabPanel({
           </div>
         </Card>
       </div>
+
+      {validation && !validation.ok && (
+        <div className="flex flex-col gap-2">
+          {validation.errors.length > 0 && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <CircleAlert size={13} className="text-red-400 flex-none" />
+                <span className="text-sm font-medium text-red-400">
+                  {validation.errors.length} calibration error{validation.errors.length > 1 ? "s" : ""}
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1 pl-5">
+                {validation.errors.map((issue, i) => (
+                  <li key={`err-${issue.code}-${issue.joint}-${i}`} className="text-xs text-red-400/90 list-disc">
+                    <span className="font-mono">{issue.joint}</span> — {issue.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {validation.warnings.length > 0 && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <AlertTriangle size={13} className="text-amber-400 flex-none" />
+                <span className="text-sm font-medium text-amber-400">
+                  {validation.warnings.length} calibration warning{validation.warnings.length > 1 ? "s" : ""}
+                </span>
+              </div>
+              <ul className="flex flex-col gap-1 pl-5">
+                {validation.warnings.map((issue, i) => (
+                  <li key={`warn-${issue.code}-${issue.joint}-${i}`} className="text-xs text-amber-400/90 list-disc">
+                    <span className="font-mono">{issue.joint}</span> — {issue.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end">
         {!calibrateRunning ? (

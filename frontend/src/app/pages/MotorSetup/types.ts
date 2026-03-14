@@ -51,11 +51,28 @@ export type ActionResponse = {
   error?: string;
 };
 
+export type CalibrationIssue = {
+  severity: "error" | "warning";
+  joint: string;
+  code: string;
+  message: string;
+};
+
+export type CalibrationValidation = {
+  ok: boolean;
+  path: string;
+  errors: CalibrationIssue[];
+  warnings: CalibrationIssue[];
+};
+
 export type CalibrationFileItem = {
   id: string;
   guessed_type?: string;
+  rel_path?: string;
   modified?: string;
   size?: number;
+  raw_ids?: string[];
+  shared_profile?: boolean;
 };
 
 export type CalibrationListResponse = {
@@ -67,4 +84,5 @@ export type CalibrationFileStatusResponse = {
   path?: string;
   modified?: string;
   size?: number;
+  validation?: CalibrationValidation;
 };

@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Save } from "lucide-react";
 import {
   PageHeader,
   RefreshButton,
   SubTabs,
 } from "../../components/wireframe";
 import { apiDelete, apiGet, apiPost } from "../../services/apiClient";
+import { buildCalibrationListEntries } from "../../services/calibrationProfiles";
 import { symToDisplayLabel, buildPortOptions } from "../../services/portLabels";
 import { useLeStudioStore } from "../../store";
 import type { LogLine } from "../../store/types";
 import { SETUP_MOTORS, ARM_TYPES, MOTOR_SETUP_TYPES, toArmSymlink } from "./constants";
 import { MotorCard } from "./components/MotorCard";
 import { MappingTabPanel } from "./components/MappingTabPanel";
+import { IdentifyArmModal } from "./components/IdentifyArmModal";
 import { SetupTabPanel } from "./components/SetupTabPanel";
 import { MonitorTabPanel } from "./components/MonitorTabPanel";
 import { CalibrationTabPanel } from "./components/CalibrationTabPanel";
@@ -29,6 +30,7 @@ import type {
 } from "./types";
 
 const ARM_ROLE_OPTIONS = ["Follower Arm 1", "Follower Arm 2", "Leader Arm 1", "Leader Arm 2"];
+const CALIBRATION_FILE_SCOPE_OPTIONS = ["Single", "Bi"] as const;
 type WizardMotorState = "pending" | "waiting" | "writing" | "done" | "error";
 
 const MOTOR_PROMPT_RE = /Connect the controller board to the '([^']+)' motor only and press enter\./i;
@@ -178,6 +180,8 @@ export function MotorSetup() {
   const clearLog = useLeStudioStore((s) => s.clearLog);
   const addToast = useLeStudioStore((s) => s.addToast);
   const motorSetupLogLines = useLeStudioStore((s) => s.logLines.motor_setup);
+  const globalDevices = useLeStudioStore((s) => s.devices);
+  const prevDeviceCountRef = useRef({ cameras: -1, arms: -1 });
 
   // ── Device data ──────────────────────────────────────────────────────────
   const [arms, setArms] = useState<ArmDevice[]>([]);
@@ -200,9 +204,6 @@ export function MotorSetup() {
   const [freewheel, setFreewheel] = useState(false);
   const [monError, setMonError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const identifyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const identifyBaselineSerialsRef = useRef<string[]>([]);
-  const identifyMissingSerialRef = useRef("");
 
   // ── Calibration (mock UI only — real API in Calibration page) ────────────
   const [calibMode, setCalibMode] = useState("Single Arm");
@@ -214,6 +215,7 @@ export function MotorSetup() {
   const [calibBiLeftPort, setCalibBiLeftPort] = useState("");
   const [calibBiRightPort, setCalibBiRightPort] = useState("");
   const [calibFiles, setCalibFiles] = useState<CalibrationFileItem[]>([]);
+  const [calibFileScope, setCalibFileScope] = useState<(typeof CALIBRATION_FILE_SCOPE_OPTIONS)[number]>("Single");
   const [calibSelectedFileStatus, setCalibSelectedFileStatus] = useState<CalibrationFileStatusResponse | null>(null);
   const [calibrationAssistantStage, setCalibrationAssistantStage] = useState<"idle" | "choose_file" | "center_arm" | "record_range" | "finishing">("idle");
 
@@ -227,16 +229,14 @@ export function MotorSetup() {
 
   // ── Mapping tab ───────────────────────────────────────────────────────────
   const [armRoleMap, setArmRoleMap] = useState<Record<string, string>>({});
-  const [persistedArmRoleMap, setPersistedArmRoleMap] = useState<Record<string, string>>({});
-  const [mappingSaving, setMappingSaving] = useState(false);
+  const [autoApplying, setAutoApplying] = useState(false);
+  const autoApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Snapshot of the last successfully applied arm mapping (tracks udev state). */
+  const lastAppliedArmMapRef = useRef<Record<string, string>>({});
 
   // ── UI state ──────────────────────────────────────────────────────────────
   const [motorTab, setMotorTab] = useState("mapping");
-  const [identifyStep, setIdentifyStep] = useState<"idle" | "waiting" | "found" | "conflict">("idle");
-  const [identifyRole, setIdentifyRole] = useState("(none)");
-  const [identifySerial, setIdentifySerial] = useState("");
-  const [identifyMissingSerial, setIdentifyMissingSerial] = useState("");
-  const [_conflictTarget] = useState("");
+  const [identifyModalOpen, setIdentifyModalOpen] = useState(false);
   const [noPort, setNoPort] = useState(false);
   const [hasConflict, setHasConflict] = useState(false);
 
@@ -269,103 +269,20 @@ export function MotorSetup() {
       for (const arm of nextArms) {
         initialMap[arm.device] = arm.symlink && symToLabel[arm.symlink] ? symToLabel[arm.symlink] : "(none)";
       }
-      setPersistedArmRoleMap(initialMap);
-      setArmRoleMap((prev) => ({ ...prev, ...initialMap }));
+      setArmRoleMap((prev) => {
+        const next = { ...prev };
+        for (const [device, role] of Object.entries(initialMap)) {
+          if (!(device in next)) {
+            next[device] = role;
+          }
+        }
+        return next;
+      });
+      lastAppliedArmMapRef.current = initialMap;
     } catch {
       // ignore
     }
   }, []);
-
-  const resetIdentifyState = useCallback(() => {
-    if (identifyPollRef.current) {
-      clearInterval(identifyPollRef.current);
-      identifyPollRef.current = null;
-    }
-    identifyBaselineSerialsRef.current = [];
-    identifyMissingSerialRef.current = "";
-    setIdentifyStep("idle");
-    setIdentifyRole("(none)");
-    setIdentifySerial("");
-    setIdentifyMissingSerial("");
-  }, []);
-
-  const handleStartIdentify = useCallback(() => {
-    const baselineSerials = arms
-      .map((arm) => arm.serial?.trim() ?? "")
-      .filter(Boolean);
-
-    if (baselineSerials.length === 0) {
-      addToast("No arm serial numbers detected. Refresh devices and try again.", "error");
-      return;
-    }
-
-    identifyBaselineSerialsRef.current = baselineSerials;
-    identifyMissingSerialRef.current = "";
-    setIdentifyRole("(none)");
-    setIdentifySerial("");
-    setIdentifyMissingSerial("");
-    setIdentifyStep("waiting");
-  }, [addToast, arms]);
-
-  const handleAssignIdentifiedArm = useCallback(async () => {
-    if (!identifySerial) {
-      addToast("No identified arm serial is available yet.", "error");
-      return;
-    }
-
-    const symlink = toArmSymlink(identifyRole);
-    if (symlink === "(none)") {
-      addToast("Choose a role before assigning the identified arm.", "error");
-      return;
-    }
-
-    const currentRules = await apiGet<RulesResponse>("/api/udev/rules")
-      .catch(() => apiGet<RulesResponse>("/api/rules/current"));
-    const cameraAssignments: Record<string, string> = {};
-    for (const rule of Array.isArray(currentRules.camera_rules) ? currentRules.camera_rules : []) {
-      const kernels = (rule.kernel ?? "").trim();
-      const role = (rule.symlink ?? "").trim();
-      if (kernels && role && role !== "(none)") {
-        cameraAssignments[kernels] = role;
-      }
-    }
-
-    const result = await apiPost<ActionResponse>("/api/rules/apply", {
-      assignments: cameraAssignments,
-      arm_assignments: {
-        [identifySerial]: symlink,
-      },
-    });
-
-    if (!result.ok) {
-      addToast(result.error ?? "Failed to apply identified arm mapping.", "error");
-      return;
-    }
-
-    setArmRoleMap((prev) => {
-      const next = { ...prev };
-      for (const arm of arms) {
-        if (arm.serial === identifySerial) {
-          next[arm.device] = identifyRole;
-        }
-      }
-      return next;
-    });
-
-    addToast(`Mapped identified arm (${identifySerial}) to ${identifyRole}.`, "success");
-    resetIdentifyState();
-    await loadDevices();
-  }, [addToast, arms, identifyRole, identifySerial, loadDevices, resetIdentifyState]);
-
-  const handleSimulateIdentify = useCallback(() => {
-    const simulatedSerial = arms.find((arm) => arm.serial?.trim())?.serial?.trim() ?? "";
-    if (!simulatedSerial) {
-      addToast("No arm serial is available to simulate identification.", "error");
-      return;
-    }
-    setIdentifySerial(simulatedSerial);
-    setIdentifyStep("found");
-  }, [addToast, arms]);
 
   const loadArmTypes = useCallback(async () => {
     try {
@@ -388,63 +305,17 @@ export function MotorSetup() {
   }, [loadDevices, loadArmTypes]);
 
   useEffect(() => {
-    if (identifyStep !== "waiting") {
-      if (identifyPollRef.current) {
-        clearInterval(identifyPollRef.current);
-        identifyPollRef.current = null;
+    if (identifyModalOpen) return;
+    const prev = prevDeviceCountRef.current;
+    const camCount = globalDevices.cameras.length;
+    const armCount = globalDevices.arms.length;
+    if (prev.cameras !== camCount || prev.arms !== armCount) {
+      prevDeviceCountRef.current = { cameras: camCount, arms: armCount };
+      if (prev.cameras >= 0) {
+        void loadDevices();
       }
-      return;
     }
-
-    const pollIdentifyDevices = async () => {
-      try {
-        const res = await apiGet<DeviceResponse>("/api/devices");
-        const nextArms = Array.isArray(res.arms) ? res.arms : [];
-        setArms(nextArms);
-
-        const baselineSerials = identifyBaselineSerialsRef.current;
-        const missingSerial = identifyMissingSerialRef.current;
-        const currentSerials = nextArms
-          .map((arm) => arm.serial?.trim() ?? "")
-          .filter(Boolean);
-        const currentSerialSet = new Set(currentSerials);
-        const removedSerials = baselineSerials.filter((serial) => !currentSerialSet.has(serial));
-        const addedSerials = currentSerials.filter((serial) => !baselineSerials.includes(serial));
-
-        if (!missingSerial && removedSerials.length === 1 && addedSerials.length === 0) {
-          identifyMissingSerialRef.current = removedSerials[0];
-          setIdentifyMissingSerial(removedSerials[0]);
-          return;
-        }
-
-        if (missingSerial && currentSerialSet.has(missingSerial)) {
-          setIdentifySerial(missingSerial);
-          setIdentifyMissingSerial("");
-          setIdentifyStep("found");
-          return;
-        }
-
-        if (removedSerials.length > 1 || addedSerials.length > 1 || (removedSerials.length > 0 && addedSerials.length > 0)) {
-          setIdentifyStep("conflict");
-          identifyMissingSerialRef.current = "";
-          setIdentifyMissingSerial("");
-        }
-      } catch {
-      }
-    };
-
-    void pollIdentifyDevices();
-    identifyPollRef.current = setInterval(() => {
-      void pollIdentifyDevices();
-    }, 1500);
-
-    return () => {
-      if (identifyPollRef.current) {
-        clearInterval(identifyPollRef.current);
-        identifyPollRef.current = null;
-      }
-    };
-  }, [addToast, identifyStep]);
+  }, [globalDevices, identifyModalOpen, loadDevices]);
 
   // Auto-select port matching arm type keyword (follower/leader)
   const findPortByKeyword = useCallback(
@@ -628,6 +499,10 @@ export function MotorSetup() {
     }
   }, []);
 
+  const filteredCalibFiles = useMemo(() => {
+    return buildCalibrationListEntries(calibFiles, calibFileScope);
+  }, [calibFileScope, calibFiles]);
+
   const refreshCalibrationFileStatus = useCallback(async () => {
     const selectedType = calibMode === "Bi-Arm" ? calibBiType : calibArmType;
     const selectedId = (calibMode === "Bi-Arm" ? calibBiId : calibArmId).trim();
@@ -652,6 +527,10 @@ export function MotorSetup() {
   useEffect(() => {
     void refreshCalibrationFileStatus();
   }, [refreshCalibrationFileStatus]);
+
+  useEffect(() => {
+    setCalibFileScope(calibMode === "Bi-Arm" ? "Bi" : "Single");
+  }, [calibMode]);
 
   // Auto-refresh calibration file list when calibrate process finishes
   const prevCalibrateRunning = useRef(false);
@@ -721,7 +600,8 @@ export function MotorSetup() {
   };
 
   const handleCalibrationDelete = async (file: CalibrationFileItem) => {
-    if (!window.confirm(`Delete calibration file?\n\n${file.id}\n\nThis cannot be undone.`)) return;
+    const noun = file.shared_profile ? "calibration profile" : "calibration file";
+    if (!window.confirm(`Delete ${noun}?\n\n${file.id}\n\nThis cannot be undone.`)) return;
     const guessedType = typeof file.guessed_type === "string" && file.guessed_type ? file.guessed_type : calibArmType;
     const body = await apiDelete<ActionResponse>(
       `/api/calibrate/file?robot_type=${encodeURIComponent(guessedType)}&robot_id=${encodeURIComponent(file.id)}`,
@@ -746,27 +626,50 @@ export function MotorSetup() {
     }
   }, [addToast]);
 
-  const applyArmMapping = async (roleMap: Record<string, string>) => {
-    setMappingSaving(true);
-    const armAssignments: Record<string, string> = {};
-    for (const arm of arms) {
-      if (!arm.serial) continue;
-      const roleLabel = roleMap[arm.device] ?? "(none)";
-      armAssignments[arm.serial] = toArmSymlink(roleLabel);
-    }
-
-    const currentRules = await apiGet<RulesResponse>("/api/udev/rules")
-      .catch(() => apiGet<RulesResponse>("/api/rules/current"));
-    const cameraAssignments: Record<string, string> = {};
-    for (const rule of Array.isArray(currentRules.camera_rules) ? currentRules.camera_rules : []) {
-      const kernels = (rule.kernel ?? "").trim();
-      const role = (rule.symlink ?? "").trim();
-      if (kernels && role && role !== "(none)") {
-        cameraAssignments[kernels] = role;
-      }
-    }
+  const applyArmMapping = useCallback(async (roleMap: Record<string, string>) => {
+    setAutoApplying(true);
 
     try {
+      const currentRules = await apiGet<RulesResponse>("/api/udev/rules")
+        .catch(() => apiGet<RulesResponse>("/api/rules/current"));
+
+      // Preserve existing arm rules (includes disconnected arms)
+      const armAssignments: Record<string, string> = {};
+      for (const rule of Array.isArray(currentRules.arm_rules) ? currentRules.arm_rules : []) {
+        const serial = String(rule.serial ?? "").trim();
+        const role = String(rule.symlink ?? "").trim();
+        if (serial && role && role !== "(none)") {
+          armAssignments[serial] = role;
+        }
+      }
+
+      for (const arm of arms) {
+        if (!arm.serial) continue;
+        const roleLabel = roleMap[arm.device] ?? "(none)";
+        armAssignments[arm.serial] = toArmSymlink(roleLabel);
+      }
+
+      // Clear the target role from any other arm to prevent duplicate SYMLINK
+      for (const arm of arms) {
+        if (!arm.serial) continue;
+        const symlink = toArmSymlink(roleMap[arm.device] ?? "(none)");
+        if (symlink === "(none)") continue;
+        for (const [serial, role] of Object.entries(armAssignments)) {
+          if (role === symlink && serial !== arm.serial) {
+            armAssignments[serial] = "(none)";
+          }
+        }
+      }
+
+      const cameraAssignments: Record<string, string> = {};
+      for (const rule of Array.isArray(currentRules.camera_rules) ? currentRules.camera_rules : []) {
+        const kernels = (rule.kernel ?? "").trim();
+        const role = (rule.symlink ?? "").trim();
+        if (kernels && role && role !== "(none)") {
+          cameraAssignments[kernels] = role;
+        }
+      }
+
       const result = await apiPost<ActionResponse>("/api/rules/apply", {
         assignments: cameraAssignments,
         arm_assignments: armAssignments,
@@ -774,17 +677,42 @@ export function MotorSetup() {
 
       if (!result.ok) {
         addToast(result.error ?? "Failed to apply arm mapping.", "error");
+        setArmRoleMap({ ...lastAppliedArmMapRef.current });
         return;
       }
 
-      addToast("Arm mapping rules applied.", "success");
-
-      // Refresh devices so other tabs pick up new symlinks and auto-select ports
+      lastAppliedArmMapRef.current = { ...roleMap };
       await loadDevices();
+
+      setArmRoleMap((prev) => {
+        const merged = { ...prev };
+        for (const [device, role] of Object.entries(roleMap)) {
+          if (role !== "(none)" && (merged[device] === "(none)" || !merged[device])) {
+            merged[device] = role;
+          }
+        }
+        return merged;
+      });
+    } catch {
+      addToast("Failed to apply arm mapping.", "error");
+      setArmRoleMap({ ...lastAppliedArmMapRef.current });
     } finally {
-      setMappingSaving(false);
+      setAutoApplying(false);
     }
-  };
+  }, [addToast, arms, loadDevices]);
+
+  const scheduleAutoApply = useCallback((nextMap: Record<string, string>) => {
+    if (autoApplyTimerRef.current) clearTimeout(autoApplyTimerRef.current);
+    autoApplyTimerRef.current = setTimeout(() => {
+      void applyArmMapping(nextMap);
+    }, 400);
+  }, [applyArmMapping]);
+
+  useEffect(() => {
+    return () => {
+      if (autoApplyTimerRef.current) clearTimeout(autoApplyTimerRef.current);
+    };
+  }, []);
 
   // ─── Setup Wizard helpers ──────────────────────────────────────────────────
 
@@ -844,8 +772,6 @@ export function MotorSetup() {
   const wizardAllDone = wizardMotorState.every((s) => s === "done");
   const setupProcessActive = setupRunning || setupReconnected;
 
-  const ARM_ROLES = ["(none)", ...ARM_ROLE_OPTIONS];
-
   const monPortArm = arms.find((a) => a.path === monPort);
   const monPortLabel = monPortArm?.symlink ? symToDisplayLabel(monPortArm.symlink) : monPort;
   const selectedCalibArm = arms.find((arm) => arm.path === calibPort);
@@ -858,10 +784,20 @@ export function MotorSetup() {
 
   /** Port options with symlink labels for all port dropdowns */
   const portOptions = useMemo(() => buildPortOptions(arms), [arms]);
-  const hasPendingArmMappingChanges = useMemo(
-    () => arms.some((arm) => (armRoleMap[arm.device] ?? "(none)") !== (persistedArmRoleMap[arm.device] ?? "(none)")),
-    [armRoleMap, arms, persistedArmRoleMap],
+  const hasAnyArmMapping = useMemo(
+    () => Object.values(armRoleMap).some((role) => role !== "(none)"),
+    [armRoleMap],
   );
+
+  const handleClearAllArmMappings = useCallback(() => {
+    if (autoApplyTimerRef.current) clearTimeout(autoApplyTimerRef.current);
+    const cleared: Record<string, string> = {};
+    for (const key of Object.keys(armRoleMap)) {
+      cleared[key] = "(none)";
+    }
+    setArmRoleMap(cleared);
+    void applyArmMapping(cleared);
+  }, [applyArmMapping, armRoleMap]);
 
   const calibPortOptions = portOptions;
   const autoSingleCalibId = useMemo(() => {
@@ -876,19 +812,17 @@ export function MotorSetup() {
   }, [arms, calibArmType, calibPort]);
   const autoBiCalibId = useMemo(() => {
     const leftArm = arms.find((arm) => arm.path === calibBiLeftPort);
-    const rightArm = arms.find((arm) => arm.path === calibBiRightPort);
     const leftRaw = leftArm?.symlink?.trim()
       || leftArm?.serial?.trim().toLowerCase()
-      || "left";
-    const rightRaw = rightArm?.symlink?.trim()
-      || rightArm?.serial?.trim().toLowerCase()
-      || "right";
-    const raw = `${leftRaw}_${rightRaw}`;
-    return raw
+      || "arm";
+    // Strip trailing _N to get shared base (e.g. "follower_arm_1" → "follower_arm")
+    // This matches teleop/record's derive_bi_calibration_profile_id() convention
+    const base = leftRaw.replace(/_\d+$/, "");
+    return base
       .replace(/[^A-Za-z0-9._-]+/g, "_")
       .replace(/^_+|_+$/g, "")
-      .slice(0, 64);
-  }, [arms, calibBiLeftPort, calibBiRightPort, calibBiType]);
+      .slice(0, 64) || leftRaw;
+  }, [arms, calibBiLeftPort, calibBiType]);
   const calibArmIdTrimmed = calibArmId.trim();
   const calibFileNameError = useMemo(() => {
     if (!calibArmIdTrimmed) return "Enter Calibration File Name.";
@@ -995,7 +929,6 @@ export function MotorSetup() {
             subtitle="Arm mapping, motor ID setup and verification"
             action={
               <div className="flex items-center gap-2">
-                {motorTab === "mapping" && arms.length > 0 && <button onClick={() => { void applyArmMapping(armRoleMap); }} disabled={mappingSaving || !hasPendingArmMappingChanges} className={`flex items-center gap-1.5 px-3 py-1 rounded border text-sm transition-colors ${mappingSaving || !hasPendingArmMappingChanges ? "border-zinc-600 text-zinc-500 cursor-not-allowed" : "border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"}`}><Save size={12} />{mappingSaving ? "Applying..." : "Apply Mapping"}</button>}
                 {import.meta.env.DEV && <div className="flex items-center gap-2 text-sm text-zinc-400">
                   <span className="hidden sm:inline">Demo:</span>
                   <button onClick={() => setNoPort((v) => !v)} className={`px-2 py-0.5 rounded border cursor-pointer text-sm ${noPort ? "border-amber-500/50 text-amber-400 bg-amber-500/10" : "border-zinc-200 dark:border-zinc-700 text-zinc-500"}`}>
@@ -1035,16 +968,11 @@ export function MotorSetup() {
                 arms={arms}
                 armRoleMap={armRoleMap}
                 onSetArmRoleMap={setArmRoleMap}
-                identifyStep={identifyStep}
-                identifyRole={identifyRole}
-                identifySerial={identifySerial}
-                identifyMissingSerial={identifyMissingSerial}
-                armRoles={ARM_ROLES}
-                onStartIdentify={handleStartIdentify}
-                onCancelIdentify={resetIdentifyState}
-                onAssignIdentify={() => { void handleAssignIdentifiedArm(); }}
-                onSimulateIdentify={handleSimulateIdentify}
-                onSetIdentifyRole={setIdentifyRole}
+                hasAnyMapping={hasAnyArmMapping}
+                onClearAllMappings={handleClearAllArmMappings}
+                autoApplying={autoApplying}
+                onRoleChange={scheduleAutoApply}
+                onOpenIdentify={() => setIdentifyModalOpen(true)}
               />
             )}
 
@@ -1120,9 +1048,12 @@ export function MotorSetup() {
                 calibBiRightPort={calibBiRightPort}
                 calibBiId={calibBiId}
                 calibBiIdAuto={calibMode === "Bi-Arm"}
-                calibFiles={calibFiles}
+                calibFiles={filteredCalibFiles}
+                calibFileScope={calibFileScope}
+                calibFileScopeOptions={[...CALIBRATION_FILE_SCOPE_OPTIONS]}
                 selectedCalibrationExists={Boolean(calibSelectedFileStatus?.exists)}
                 selectedCalibrationPath={calibSelectedFileStatus?.path ?? ""}
+                validation={calibSelectedFileStatus?.validation}
                 calibrationAssistantStage={calibrationAssistantStage}
                 calibrateReconnected={calibrateReconnected}
                 onSetCalibMode={setCalibMode}
@@ -1133,6 +1064,7 @@ export function MotorSetup() {
                 onSetCalibBiLeftPort={setCalibBiLeftPort}
                 onSetCalibBiRightPort={setCalibBiRightPort}
                 onSetCalibBiId={setCalibBiId}
+                onSetCalibFileScope={setCalibFileScope}
                 onHandleCalibrationStart={() => { void handleCalibrationStart(); }}
                 onHandleCalibrationStop={() => { void handleCalibrationStop(); }}
                 onHandleCalibrationDelete={(file) => { void handleCalibrationDelete(file); }}
@@ -1147,6 +1079,15 @@ export function MotorSetup() {
         </div>
       </div>
 
+      <IdentifyArmModal
+        open={identifyModalOpen}
+        arms={arms}
+        onClose={() => setIdentifyModalOpen(false)}
+        onComplete={() => {
+          setIdentifyModalOpen(false);
+          void loadDevices();
+        }}
+      />
     </div>
   );
 }
