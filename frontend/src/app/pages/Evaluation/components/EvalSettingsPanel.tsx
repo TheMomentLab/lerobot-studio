@@ -1,10 +1,17 @@
 import type { Dispatch, SetStateAction } from "react";
 import { ChevronDown, ChevronUp, Video } from "lucide-react";
 import { cn } from "../../../components/ui/utils";
+import { ArmPairSelector } from "../../../components/wireframe/ArmPairSelector";
 import type {
   CheckpointItem,
   EnvTypeItem,
 } from "../../../hooks/useEvalCheckpoint";
+import type {
+  ArmSelection,
+  MappedArmLists,
+  ResolvedArmConfig,
+} from "../../../services/armSets";
+import type { CalibrationListFile } from "../../../services/calibrationProfiles";
 import type { EvalCalibrationProfile } from "../types";
 
 export interface EvalSettingsPanelProps {
@@ -40,6 +47,12 @@ export interface EvalSettingsPanelProps {
   mappedCamEntries: [string, string][];
   calibrationProfiles: EvalCalibrationProfile[];
   onCalibrationIdChange: (configKey: string, value: string) => void;
+  armLists: MappedArmLists;
+  armSelection: ArmSelection;
+  onArmSelectionChange: (selection: ArmSelection) => void;
+  onArmConfigResolved: (config: ResolvedArmConfig) => void;
+  evalCalibFiles: CalibrationListFile[];
+  robotMode: "single" | "bi";
   computeDeviceOptions: Array<string | { value: string; label: string; disabled?: boolean }>;
 }
 
@@ -76,8 +89,17 @@ export function EvalSettingsPanel({
   mappedCamEntries,
   calibrationProfiles,
   onCalibrationIdChange,
+  armLists,
+  armSelection,
+  onArmSelectionChange,
+  onArmConfigResolved,
+  evalCalibFiles,
+  robotMode,
   computeDeviceOptions,
 }: EvalSettingsPanelProps) {
+  void calibrationProfiles;
+  void onCalibrationIdChange;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 overflow-hidden">
@@ -261,77 +283,17 @@ export function EvalSettingsPanel({
             </div>
           )}
 
-          {isRealRobot && calibrationProfiles.length > 0 && (
+          {isRealRobot && (
             <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                  Calibration Profiles
-                </div>
-                <p className="text-sm text-zinc-400">
-                  These IDs decide which calibration JSON files Eval loads for the follower and leader arms.
-                </p>
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Note: File Found only means the JSON exists. Runtime can still fail if motor calibration values differ.
-                </p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  For bi-arm setups, use the shared profile id like `bimanual_follower`. LeStudio derives the left and right arm ids automatically.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {calibrationProfiles.map((profile) => {
-                  const hasId = profile.deviceId.trim().length > 0;
-                  const statusLabel = !hasId
-                    ? "ID Required"
-                    : profile.exists === true
-                      ? "File Found"
-                      : profile.exists === false
-                        ? "Missing"
-                        : "Checking";
-                  const statusClass = !hasId
-                    ? "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30"
-                    : profile.exists === true
-                      ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
-                      : profile.exists === false
-                        ? "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/30"
-                        : "text-zinc-500 dark:text-zinc-400 bg-zinc-500/10 border-zinc-500/20";
-
-                  return (
-                    <div
-                      key={profile.configKey}
-                      className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/60 p-3 flex flex-col gap-2"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
-                          {profile.label}
-                        </div>
-                        <span className={cn("px-2 py-0.5 rounded-full border text-xs font-medium", statusClass)}>
-                          {statusLabel}
-                        </span>
-                      </div>
-                      <input
-                        type="text"
-                        value={profile.deviceId}
-                        onChange={(e) => onCalibrationIdChange(profile.configKey, e.target.value)}
-                        placeholder="e.g. follower_arm_1"
-                        className="w-full h-9 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
-                      />
-                      <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        JSON filename: {profile.deviceId.trim() || "profile-id"}.json
-                      </p>
-                      {profile.path ? (
-                        <code className="text-[11px] break-all font-mono text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 px-1.5 py-1 rounded">
-                          {profile.path}
-                        </code>
-                      ) : null}
-                      {profile.exists && profile.modified ? (
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          Updated {profile.modified}
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
+              <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">Robot Configuration</div>
+              <ArmPairSelector
+                mode={robotMode === "bi" ? "Bi-Arm" : "Single Arm"}
+                armLists={armLists}
+                calibFiles={evalCalibFiles}
+                selection={armSelection}
+                onSelectionChange={onArmSelectionChange}
+                onConfigResolved={onArmConfigResolved}
+              />
             </div>
           )}
 

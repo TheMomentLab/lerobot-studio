@@ -23,6 +23,15 @@ import {
   extractPreflightReason,
   type PreflightResult,
 } from "../../services/contracts";
+import {
+  buildMappedArmLists,
+  defaultArmSelection,
+  resolveArmConfig,
+  type MappedArmLists,
+  type ArmSelection,
+  type ResolvedArmConfig,
+} from "../../services/armSets";
+import type { CalibrationListFile } from "../../services/calibrationProfiles";
 import { deriveBiSharedSelection } from "../../services/calibrationProfiles";
 import {
   useEvalProgress,
@@ -75,6 +84,9 @@ export function Evaluation() {
   const [showBlockers, setShowBlockers] = useState(false);
   const [cameraMapping, setCameraMapping] = useState<Record<string, string>>({});
   const [calibrationStatus, setCalibrationStatus] = useState<Record<string, CalibrationFileStatusResponse>>({});
+  const [armLists, setArmLists] = useState<MappedArmLists>({ followers: [], leaders: [] });
+  const [armSelection, setArmSelection] = useState<ArmSelection>({ follower: "", leader: "" });
+  const [evalCalibFiles, setEvalCalibFiles] = useState<CalibrationListFile[]>([]);
 
   // ── Preflight ────────────────────────────────────────────────────────────
   const [preflightOk, setPreflightOk] = useState(true);
@@ -234,6 +246,27 @@ export function Evaluation() {
     supportsMps ? "MPS" : { value: "MPS", label: "MPS (Apple Silicon) (macOS only)", disabled: true },
   ];
 
+  const handleEvalArmConfigResolved = useCallback((resolved: ResolvedArmConfig) => {
+    updateConfig({
+      eval_robot_type: resolved.robotType,
+      eval_teleop_type: resolved.teleopType,
+      robot_type: resolved.robotType,
+      teleop_type: resolved.teleopType,
+      follower_port: resolved.followerPort,
+      leader_port: resolved.leaderPort,
+      robot_id: resolved.followerId,
+      teleop_id: resolved.leaderId,
+      left_follower_port: resolved.leftFollowerPort,
+      right_follower_port: resolved.rightFollowerPort,
+      left_leader_port: resolved.leftLeaderPort,
+      right_leader_port: resolved.rightLeaderPort,
+      left_robot_id: resolved.leftRobotId,
+      right_robot_id: resolved.rightRobotId,
+      left_teleop_id: resolved.leftTeleopId,
+      right_teleop_id: resolved.rightTeleopId,
+    });
+  }, [updateConfig]);
+
   // ── Preflight logic ──────────────────────────────────────────────────────
   const refreshPreflight = useCallback(async (): Promise<EvalPreflightResponse> => {
     const device = normalizeDeviceKey(deviceLabel);
@@ -271,6 +304,36 @@ export function Evaluation() {
       setDeviceLabel("CPU");
     }
   }, [deviceLabel, gpuAvailable, supportsMps]);
+
+  useEffect(() => {
+    const loadDevices = async () => {
+      try {
+        const [devResult, calibResult] = await Promise.all([
+          apiGet<{ cameras?: any[]; arms?: any[] }>("/api/devices"),
+          apiGet<{ files?: any[] }>("/api/calibrate/list"),
+        ]);
+        const files = Array.isArray(calibResult.files) ? calibResult.files : [];
+        setEvalCalibFiles(files);
+        const lists = buildMappedArmLists(devResult.arms ?? [], files);
+        setArmLists(lists);
+        const mode = robotMode === "bi" ? "Bi-Arm" : "Single Arm";
+        const sel = defaultArmSelection(lists, mode as "Single Arm" | "Bi-Arm");
+        setArmSelection(sel);
+        const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files);
+        handleEvalArmConfigResolved(resolved);
+      } catch {}
+    };
+    void loadDevices();
+  }, []);
+
+  useEffect(() => {
+    if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
+    const mode = robotMode === "bi" ? "Bi-Arm" : "Single Arm";
+    const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
+    setArmSelection(sel);
+    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, evalCalibFiles);
+    handleEvalArmConfigResolved(resolved);
+  }, [robotMode]);
 
   const refreshCalibrationProfiles = useCallback(async (): Promise<string[]> => {
     if (!isRealRobot || calibrationTargets.length === 0) {
@@ -585,6 +648,10 @@ export function Evaluation() {
             />
           ))}
 
+          {isRealRobot && armLists.followers.length === 0 && armLists.leaders.length === 0 && !isRunning && (
+            <BlockerCard title="Arm mapping required" reasons={[{ text: "Go to Motor Setup", to: "/motor-setup" }]} />
+          )}
+
 
           {/* Gym plugin install card */}
           {gymInstallCommand && !isRunning && (
@@ -632,6 +699,12 @@ export function Evaluation() {
               mappedCamEntries={mappedCamEntries}
               calibrationProfiles={calibrationProfiles}
               onCalibrationIdChange={handleCalibrationIdChange}
+              armLists={armLists}
+              armSelection={armSelection}
+              onArmSelectionChange={setArmSelection}
+              onArmConfigResolved={handleEvalArmConfigResolved}
+              evalCalibFiles={evalCalibFiles}
+              robotMode={robotMode}
               computeDeviceOptions={computeDeviceOptions}
             />
           )}
@@ -760,7 +833,7 @@ export function Evaluation() {
             running={isRunning}
             onStart={() => { void startEval(); }}
             onStop={stopEval}
-            disabled={!!conflictProcess}
+            disabled={!!conflictProcess || (isRealRobot && armLists.followers.length === 0 && armLists.leaders.length === 0)}
             startLabel={<><Play size={13} className="fill-current" /> Start Eval</>}
             compact
             buttonClassName="py-1"
