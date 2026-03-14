@@ -168,6 +168,14 @@ export type DatasetEpisode = {
   video_files?: Record<string, DatasetVideoRef>;
 };
 
+export type CameraDetail = {
+  name: string;
+  width?: number | null;
+  height?: number | null;
+  fps?: number | null;
+  codec?: string | null;
+};
+
 export type DatasetDetail = {
   dataset_id: string;
   total_episodes: number;
@@ -175,6 +183,9 @@ export type DatasetDetail = {
   fps: number;
   cameras: string[];
   episodes: DatasetEpisode[];
+  robot_type?: string;
+  camera_details?: CameraDetail[];
+  joint_names?: string[];
 };
 
 export type HfGateBannerProps = {

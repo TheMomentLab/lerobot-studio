@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Download,
   Filter,
   Loader2,
@@ -52,6 +54,7 @@ export function DatasetManagement() {
   const [pushStatus, setPushStatus] = useState<DatasetPushStatusResponse | null>(null);
   const [detailTab, setDetailTab] = useState<"player" | "quality" | "curation">("player");
   const [jumpEpisode, setJumpEpisode] = useState<number | undefined>(undefined);
+  const [envMetaOpen, setEnvMetaOpen] = useState(false);
 
   const fetchDetail = async (datasetId: string) => {
     const parsed = parseDatasetId(datasetId);
@@ -389,6 +392,52 @@ export function DatasetManagement() {
                     ))}
                   </div>
                 </div>
+
+                {/* Recording environment metadata */}
+                {detailData && (detailData.robot_type || detailData.camera_details?.length || detailData.joint_names?.length) && (
+                  <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800">
+                    <button
+                      onClick={() => setEnvMetaOpen(!envMetaOpen)}
+                      className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                    >
+                      Recording Environment
+                      {envMetaOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                    </button>
+                    {envMetaOpen && (
+                      <div className="mt-2 pl-2 border-l-2 border-zinc-100 dark:border-zinc-800 flex flex-col gap-2 text-xs text-zinc-500 dark:text-zinc-400">
+                        {detailData.robot_type && (
+                          <div>
+                            <span className="text-zinc-400">Robot Type:</span>{" "}
+                            <span className="font-mono text-zinc-600 dark:text-zinc-300">{detailData.robot_type}</span>
+                          </div>
+                        )}
+                        {detailData.camera_details && detailData.camera_details.length > 0 && (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-zinc-400">Cameras:</span>
+                            {detailData.camera_details.map((cam) => (
+                              <div key={cam.name} className="ml-2 font-mono text-zinc-600 dark:text-zinc-300">
+                                {cam.name}
+                                <span className="text-zinc-400 ml-1">
+                                  {cam.width && cam.height ? `${cam.width}×${cam.height}` : ""}
+                                  {cam.fps ? ` ${cam.fps}fps` : ""}
+                                  {cam.codec ? ` ${cam.codec}` : ""}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {detailData.joint_names && detailData.joint_names.length > 0 && (
+                          <div className="flex flex-col gap-1">
+                            <span className="text-zinc-400">Joints ({detailData.joint_names.length}):</span>
+                            <div className="ml-2 font-mono text-zinc-600 dark:text-zinc-300">
+                              {detailData.joint_names.join(", ")}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Hub Push Status */}
                 {pushStatus && (

@@ -164,6 +164,25 @@ def register_routes(router: APIRouter, state: AppState):
                         }
                     )
 
+            features = info.get("features", {})
+            camera_details = []
+            joint_names = []
+            for key, feat in features.items():
+                if feat.get("dtype") == "video" and key.startswith("observation.images."):
+                    cam_name = key.replace("observation.images.", "")
+                    cam_info = feat.get("info", {})
+                    camera_details.append(
+                        {
+                            "name": cam_name,
+                            "width": cam_info.get("video.width"),
+                            "height": cam_info.get("video.height"),
+                            "fps": cam_info.get("video.fps"),
+                            "codec": cam_info.get("video.codec"),
+                        }
+                    )
+                if key == "action" and isinstance(feat.get("names"), list):
+                    joint_names = feat["names"]
+
             return {
                 "dataset_id": repo_id,
                 "total_episodes": info.get("total_episodes", 0),
@@ -171,6 +190,9 @@ def register_routes(router: APIRouter, state: AppState):
                 "fps": info.get("fps", 30),
                 "cameras": cameras,
                 "episodes": episodes,
+                "robot_type": info.get("robot_type", ""),
+                "camera_details": camera_details,
+                "joint_names": joint_names,
             }
         except Exception as e:
             return JSONResponse(status_code=500, content={"detail": f"Failed to load dataset: {str(e)}"})
