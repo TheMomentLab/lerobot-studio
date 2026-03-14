@@ -10,8 +10,8 @@ import subprocess
 import threading
 import time
 import uuid
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from .. import path_policy
@@ -691,7 +691,7 @@ def hf_whoami(token_file: Path | None = None, config_dir: Path | None = None) ->
 
     try:
         hub_mod = __import__("huggingface_hub")
-        whoami = getattr(hub_mod, "whoami")
+        whoami = hub_mod.whoami
         info = whoami(token=token)
         username = info.get("name", None) if isinstance(info, dict) else None
         if not username:
@@ -746,8 +746,8 @@ def hf_my_datasets(token_file: Path | None = None, limit: int = 50, config_dir: 
 
     try:
         hub_mod = __import__("huggingface_hub")
-        whoami = getattr(hub_mod, "whoami")
-        list_datasets = getattr(hub_mod, "list_datasets")
+        whoami = hub_mod.whoami
+        list_datasets = hub_mod.list_datasets
     except ImportError:
         return {"ok": False, "error": "huggingface_hub is not installed", "datasets": []}
 
@@ -799,7 +799,7 @@ def hf_my_datasets(token_file: Path | None = None, limit: int = 50, config_dir: 
 def hub_search_datasets(query: str = "", limit: int = 20, tag: str = "lerobot") -> dict[str, Any]:
     try:
         hub_mod = __import__("huggingface_hub")
-        list_datasets = getattr(hub_mod, "list_datasets")
+        list_datasets = hub_mod.list_datasets
     except ImportError:
         return {"ok": False, "error": "huggingface_hub is not installed", "datasets": []}
 
@@ -855,7 +855,7 @@ def start_hub_download_job(jobs_state: DatasetJobState, repo_id: str) -> dict[st
         rc = -1
         try:
             hub_mod = __import__("huggingface_hub")
-            snapshot_download = getattr(hub_mod, "snapshot_download")
+            snapshot_download = hub_mod.snapshot_download
             local_dir = path_policy.dataset_local_dir(repo_id)
             cli = shutil.which("huggingface-cli")
             if cli:
@@ -1195,13 +1195,13 @@ def build_episode_delete_plan(user: str, repo: str, episode_indices_raw: Any) ->
 def compute_stats_signature(source_path: Path, info_path: Path, pq_files: list[Path]) -> str:
     h = hashlib.sha256()
     info_stat = info_path.stat()
-    h.update(f"info:{info_stat.st_mtime_ns}:{info_stat.st_size}".encode("utf-8"))
-    h.update(f"pq_count:{len(pq_files)}".encode("utf-8"))
+    h.update(f"info:{info_stat.st_mtime_ns}:{info_stat.st_size}".encode())
+    h.update(f"pq_count:{len(pq_files)}".encode())
     for p in pq_files:
         try:
             ps = p.stat()
             rel = p.relative_to(source_path)
-            h.update(f"{rel}:{ps.st_mtime_ns}:{ps.st_size}".encode("utf-8"))
+            h.update(f"{rel}:{ps.st_mtime_ns}:{ps.st_size}".encode())
         except Exception:
             h.update(str(p).encode("utf-8"))
     return h.hexdigest()

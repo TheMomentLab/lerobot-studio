@@ -33,9 +33,9 @@ _TeleoperatorConfig: type[_RegistryConfig] | None = None
 _CameraConfig: type[_RegistryConfig] | None = None
 
 try:
+    from lerobot.cameras.configs import CameraConfig as _CameraConfig  # type: ignore
     from lerobot.robots.config import RobotConfig as _RobotConfig  # type: ignore
     from lerobot.teleoperators.config import TeleoperatorConfig as _TeleoperatorConfig  # type: ignore
-    from lerobot.cameras.configs import CameraConfig as _CameraConfig  # type: ignore
     from lerobot.utils.import_utils import register_third_party_plugins  # type: ignore
 
     register_third_party_plugins()

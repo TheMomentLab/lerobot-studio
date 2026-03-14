@@ -4,7 +4,6 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from .._state import AppState
-
 from .curation import register_routes as register_curation
 from .hub import register_routes as register_hub
 from .listing import register_routes as register_listing

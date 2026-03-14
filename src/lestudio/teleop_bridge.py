@@ -10,8 +10,9 @@ import math
 import os
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, cast
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +155,7 @@ def antijitter_plugin_available() -> bool:
 
 def _load_antijitter_step_class() -> type[Any]:
     module = importlib.import_module("lerobot_teleoperator_antijitter")
-    step_class = getattr(module, "AntiJitterProcessorStep")
+    step_class = module.AntiJitterProcessorStep
     return step_class
 
 
@@ -167,7 +168,7 @@ def _patch_default_processors(
         return
 
     step_class = _load_antijitter_step_class() if antijitter_settings.enabled else None
-    original_factory = getattr(teleop_mod, "make_default_processors")
+    original_factory = teleop_mod.make_default_processors
 
     def patched_make_default_processors():
         processors = original_factory()
@@ -180,7 +181,7 @@ def _patch_default_processors(
             teleop_action_processor = _prepend_joint_inversion_step(teleop_action_processor, invert_settings)
         return teleop_action_processor, robot_action_processor, robot_observation_processor
 
-    setattr(teleop_mod, "make_default_processors", patched_make_default_processors)
+    teleop_mod.make_default_processors = patched_make_default_processors
     if antijitter_settings.enabled:
         logger.info(
             "LeStudio anti-jitter enabled (alpha=%s, deadband=%s, max_step=%s)",
@@ -298,10 +299,10 @@ def _patch_teleop_loop(
     if not debug_settings.enabled:
         return
 
-    original_loop = getattr(teleop_mod, "teleop_loop")
-    move_cursor_up = getattr(teleop_mod, "move_cursor_up")
-    precise_sleep = getattr(teleop_mod, "precise_sleep")
-    log_rerun_data = getattr(teleop_mod, "log_rerun_data")
+    original_loop = teleop_mod.teleop_loop
+    move_cursor_up = teleop_mod.move_cursor_up
+    precise_sleep = teleop_mod.precise_sleep
+    log_rerun_data = teleop_mod.log_rerun_data
 
     def debug_teleop_loop(
         teleop: object,
@@ -412,7 +413,7 @@ def _patch_teleop_loop(
             if duration is not None and time.perf_counter() - start_time >= duration:
                 return
 
-    setattr(teleop_mod, "teleop_loop", debug_teleop_loop)
+    teleop_mod.teleop_loop = debug_teleop_loop
     logger.info("LeStudio teleop debug enabled (interval=%ss)", debug_settings.sample_interval_s)
 
 

@@ -8,7 +8,6 @@ import shutil
 import sys
 from pathlib import Path
 
-import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,13 +16,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from starlette.types import Scope
 
-from lestudio._logging import configure_logging
+from lestudio import device_registry
 from lestudio._auth import TokenAuthMiddleware, generate_token
 from lestudio._cors import _resolve_cors_settings
-from lestudio._streaming import unlock_cameras
 from lestudio._device_watcher import DeviceWatcher
+from lestudio._logging import configure_logging
+from lestudio._streaming import unlock_cameras
 from lestudio.process_manager import ProcessManager
-from lestudio import device_registry
 
 logger = logging.getLogger(__name__)
 configure_logging()
@@ -130,18 +129,20 @@ def create_app(
     rules_path: Path,
     session_token: str | None = None,
 ) -> FastAPI:
-    from lestudio.routes._state import AppState
     from lestudio.routes import (
-        devices,
         config,
-        udev,
-        process,
-        training,
-        eval as eval_routes,
         dataset,
-        streaming,
+        devices,
         motor,
+        process,
+        streaming,
+        training,
+        udev,
     )
+    from lestudio.routes import (
+        eval as eval_routes,
+    )
+    from lestudio.routes._state import AppState
 
     STATIC_DIR = Path(__file__).parent / "static"
     CONFIG_PATH = config_dir / "config.json"

@@ -8,8 +8,6 @@ from .._streaming import unlock_cameras
 from .._train_helpers import _normalize_console_command
 from ..capabilities import Capability, register
 from ..process_manager import PROCESS_NAMES
-from ._state import AppState
-from .models import ProcessCommandRequest, ProcessInputRequest
 from ..services.process_service import (
     calibrate_delete,
     calibrate_file_status,
@@ -22,6 +20,8 @@ from ..services.process_service import (
     start_record,
     start_teleop,
 )
+from ._state import AppState
+from .models import ProcessCommandRequest, ProcessInputRequest
 
 logger = logging.getLogger(__name__)
 

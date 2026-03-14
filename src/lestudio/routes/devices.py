@@ -7,11 +7,10 @@ import os
 
 from fastapi import APIRouter
 
-from ..capabilities import Capability, register
 from .. import device_registry
-from .._config_helpers import DEFAULT_CONFIG
 from .._device_helpers import CAMERA_ROLES, get_arms, get_cameras
 from .._streaming import _DEFAULT_CAM_SETTINGS, _get_cam_settings, restart_all_streamers
+from ..capabilities import Capability, register
 from ._state import AppState
 from .models import CameraPathsRequest, CameraSettingsRequest, DevicesResponse
 

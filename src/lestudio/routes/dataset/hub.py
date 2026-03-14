@@ -3,10 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from ...capabilities import Capability, register
-from ..models import HfTokenRequest, HfWhoamiResponse
 from ...services import dataset_service
-
 from .._state import AppState
+from ..models import HfTokenRequest, HfWhoamiResponse
 
 register("/api/datasets/{user}/{repo}/push", Capability.DATASET_MUTATION)
 register("/api/hf/token", Capability.HUB_CREDENTIALS)

@@ -1,4 +1,5 @@
 """MJPEG camera streaming helpers."""
+
 from __future__ import annotations
 
 import logging
@@ -7,7 +8,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 import cv2
 
@@ -16,10 +17,18 @@ from lestudio._config_helpers import _load_config
 logger = logging.getLogger(__name__)
 
 _DEFAULT_CAM_SETTINGS = {
-    "codec": "MJPG", "width": 640, "height": 480, "fps": 30, "jpeg_quality": 70,
+    "codec": "MJPG",
+    "width": 640,
+    "height": 480,
+    "fps": 30,
+    "jpeg_quality": 70,
 }
 _PREVIEW_SETTINGS = {
-    "codec": "MJPG", "width": 192, "height": 144, "fps": 5, "jpeg_quality": 50,
+    "codec": "MJPG",
+    "width": 192,
+    "height": 144,
+    "fps": 5,
+    "jpeg_quality": 50,
 }
 
 _cam_open_lock = threading.Lock()
@@ -44,7 +53,7 @@ class CameraStreamer:
     def _capture_loop(self):
         s = self.settings
         cap = None
-        for attempt in range(5):
+        for _attempt in range(5):
             opened = False
             with _cam_open_lock:
                 cap = cv2.VideoCapture(self.real_path)
@@ -99,11 +108,11 @@ class CameraStreamer:
                 self._stat_bytes += len(self.latest_frame) if self.latest_frame else 0
                 elapsed = now - self._stat_ts
                 if elapsed >= 1.0:
-                    self._fps  = self._stat_frames / elapsed
+                    self._fps = self._stat_frames / elapsed
                     self._mbps = self._stat_bytes / elapsed / (1024 * 1024)
                     self._stat_frames = 0
-                    self._stat_bytes  = 0
-                    self._stat_ts     = now
+                    self._stat_bytes = 0
+                    self._stat_ts = now
             else:
                 time.sleep(0.1)
         cap.release()
@@ -116,6 +125,7 @@ class CameraStreamer:
 
 
 # ─── StreamerManager: encapsulates all mutable streamer state ──────────────
+
 
 class StreamerManager:
     """Manages camera streamer lifecycle, preview streamers, and rerun server.
@@ -132,7 +142,7 @@ class StreamerManager:
         self._preview_streamers: dict[str, CameraStreamer] = {}
         self._cameras_locked = False
         self._preview_lock = threading.Lock()
-        self._rerun_server_proc: Optional[subprocess.Popen] = None
+        self._rerun_server_proc: subprocess.Popen | None = None
         self._rerun_server_lock = threading.Lock()
         self._snapshot_pool: dict[str, float] = {}
 

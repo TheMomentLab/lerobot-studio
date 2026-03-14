@@ -7,7 +7,6 @@ from fastapi.responses import JSONResponse
 
 from ...capabilities import Capability, register
 from ...services import dataset_service
-
 from .._state import AppState
 
 register("/api/datasets/{user}/{repo}/tags", Capability.DATASET_MUTATION)

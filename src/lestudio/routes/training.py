@@ -5,10 +5,9 @@ import importlib
 from fastapi import APIRouter
 
 from ..capabilities import Capability, register
-
+from ..services.process_service import _guard_process_start
 from ._state import AppState
 from .models import DepsStatusResponse, TrainPreflightResponse
-from ..services.process_service import _guard_process_start
 
 training_service = importlib.import_module("lestudio.services.training_service")
 

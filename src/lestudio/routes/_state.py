@@ -10,8 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from lestudio.process_manager import ProcessManager
 from lestudio._config_helpers import _load_config, _save_config
+from lestudio.process_manager import ProcessManager
 
 logger = logging.getLogger(__name__)
 

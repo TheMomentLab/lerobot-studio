@@ -68,6 +68,7 @@ def install_camera_patch():
 
     def jpeg_writer():
         import json as _json
+
         import cv2
         write_count = 0
         # Per-camera FPS tracking

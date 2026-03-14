@@ -141,9 +141,10 @@ def command_serve(args):
     lerobot_src = resolve_lerobot_src(args.lerobot_path)
     config_dir = resolve_config_dir(args.config_dir)
 
-    from lestudio.server import create_app
-    from lestudio._auth import generate_token
     import uvicorn
+
+    from lestudio._auth import generate_token
+    from lestudio.server import create_app
 
     token = generate_token()
     app = create_app(

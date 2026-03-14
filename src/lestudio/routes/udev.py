@@ -11,13 +11,13 @@ from typing import cast
 
 from fastapi import APIRouter
 
-from ..capabilities import Capability, register
 from .._udev_helpers import (
     _apply_rules_with_fallback,
     _build_rules,
     _manual_udev_install_commands,
     _parse_udev_rules,
 )
+from ..capabilities import Capability, register
 from ._state import AppState
 
 logger = logging.getLogger(__name__)

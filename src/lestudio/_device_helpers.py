@@ -9,8 +9,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from lestudio import device_registry
-from lestudio import path_policy
+from lestudio import device_registry, path_policy
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 import builtins
 import importlib
 import sys
-from typing import Callable
+from collections.abc import Callable
 
 
 def _install_input_prompt_passthrough() -> Callable[[], None]:

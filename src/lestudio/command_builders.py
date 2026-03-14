@@ -568,7 +568,7 @@ def build_eval_args(python_exe: str, cfg: dict) -> list[str]:
         if cam_dict:
             cam_str = json.dumps(cam_dict)
             if is_bi:
-                args.append(f"--env.robot.cameras={{}}")
+                args.append("--env.robot.cameras={}")
                 args.append(f"--env.robot.left_arm_config.cameras={cam_str}")
             else:
                 args.append(f"--env.robot.cameras={cam_str}")

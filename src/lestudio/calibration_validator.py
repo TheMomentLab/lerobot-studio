@@ -165,7 +165,7 @@ def _validate_joint(
     range_min = joint_data.get("range_min")
     range_max = joint_data.get("range_max")
     drive_mode = joint_data.get("drive_mode")
-    homing_offset = joint_data.get("homing_offset")
+    _ = joint_data.get("homing_offset")  # read but validated via field loop below
 
     # ── Required fields ──────────────────────────────────────────────────
     for field_name in ("id", "drive_mode", "homing_offset", "range_min", "range_max"):

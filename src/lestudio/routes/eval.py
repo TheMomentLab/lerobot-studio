@@ -12,16 +12,16 @@ from typing import Any
 from fastapi import APIRouter
 
 from .._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
-from ..command_builders import build_eval_args
-from ..capabilities import Capability, register
 from .._streaming import stop_all_streamers_for_process, unlock_cameras
 from .._train_helpers import (
     _check_cuda_runtime_compat,
     _check_torchcodec_compat,
     _check_train_python_deps,
 )
-from ._state import AppState
+from ..capabilities import Capability, register
+from ..command_builders import build_eval_args
 from ..services.process_service import _guard_process_start
+from ._state import AppState
 
 training_service = importlib.import_module("lestudio.services.training_service")
 

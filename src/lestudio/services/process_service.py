@@ -7,9 +7,7 @@ from pathlib import Path
 
 import cv2
 
-from lestudio import command_builders
-from lestudio import device_registry
-from lestudio import path_policy
+from lestudio import command_builders, device_registry, path_policy
 from lestudio._device_helpers import ensure_bimanual_calibration_files, get_calibration_file_path
 from lestudio._streaming import (
     _get_cam_settings,

@@ -38,4 +38,4 @@ def _matches_pattern(pattern: str, path: str) -> bool:
     path_parts = path.split("/")
     if len(pattern_parts) != len(path_parts):
         return False
-    return all(pp.startswith("{") or pp == actual for pp, actual in zip(pattern_parts, path_parts))
+    return all(pp.startswith("{") or pp == actual for pp, actual in zip(pattern_parts, path_parts, strict=False))

@@ -10,11 +10,9 @@ import subprocess
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from fastapi import Request
-from fastapi.responses import Response, StreamingResponse
-
 import psutil
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response, StreamingResponse
 
 from .. import _streaming as _str
 from .. import path_policy
