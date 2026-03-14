@@ -1,9 +1,12 @@
 import { apiGet } from "./apiClient";
 import {
   DEFAULT_SIDEBAR_SIGNALS,
+  type DepsStatusResponse,
   type DevicesResponse,
+  type HfWhoamiResponse,
   type LeStudioConfig,
   type SidebarSignals,
+  type TrainPreflightResponse,
 } from "../store/types";
 
 type BootstrapErrorKey =
@@ -12,26 +15,6 @@ type BootstrapErrorKey =
   | "depsStatus"
   | "hfWhoami"
   | "trainPreflight";
-
-type DepsStatusResponse = {
-  ok?: boolean;
-  huggingface_cli?: boolean;
-  rules_needs_root?: boolean;
-  rules_needs_install?: boolean;
-  teleop_antijitter_plugin?: boolean;
-  [key: string]: unknown;
-};
-
-type HfWhoamiResponse = {
-  ok?: boolean;
-  username?: string | null;
-  [key: string]: unknown;
-};
-
-type TrainPreflightResponse = {
-  ok?: boolean;
-  [key: string]: unknown;
-};
 
 export type BootstrapResult = {
   config: LeStudioConfig;
@@ -70,71 +53,31 @@ function parseBoolean(value: unknown): boolean | null {
 
 function normalizeConfig(payload: unknown): LeStudioConfig {
   if (!isRecord(payload)) return {};
-
-  const direct = payload.config;
-  if (isRecord(direct)) {
-    return direct;
-  }
-
-  const dataNode = payload.data;
-  if (isRecord(dataNode)) {
-    const nested = dataNode.config;
-    if (isRecord(nested)) {
-      return nested;
-    }
-    return dataNode;
-  }
-
   return payload;
 }
 
 function normalizeCameras(value: unknown): DevicesResponse["cameras"] {
   if (!Array.isArray(value)) return [];
 
-  return value.map((camera, idx) => {
-    if (typeof camera === "string") {
-      return { device: camera };
-    }
-
-    if (!isRecord(camera)) {
-      return { device: `camera-${idx + 1}` };
-    }
-
-    const device =
-      (typeof camera.device === "string" && camera.device) ||
-      (typeof camera.path === "string" && camera.path) ||
-      `camera-${idx + 1}`;
-
-    return {
-      device,
-      symlink: typeof camera.symlink === "string" ? camera.symlink : undefined,
-      model: typeof camera.model === "string" ? camera.model : undefined,
-    };
-  });
+  return value.filter(isRecord).map((cam) => ({
+    device: typeof cam.device === "string" ? cam.device : "",
+    path: typeof cam.path === "string" ? cam.path : undefined,
+    kernels: typeof cam.kernels === "string" ? cam.kernels : undefined,
+    symlink: typeof cam.symlink === "string" ? cam.symlink : undefined,
+    model: typeof cam.model === "string" ? cam.model : undefined,
+  }));
 }
 
 function normalizeArms(value: unknown): DevicesResponse["arms"] {
   if (!Array.isArray(value)) return [];
 
-  return value.map((arm, idx) => {
-    if (typeof arm === "string") {
-      return { device: arm };
-    }
-
-    if (!isRecord(arm)) {
-      return { device: `arm-${idx + 1}` };
-    }
-
-    const device =
-      (typeof arm.device === "string" && arm.device) ||
-      (typeof arm.path === "string" && arm.path) ||
-      `arm-${idx + 1}`;
-
-    return {
-      device,
-      symlink: typeof arm.symlink === "string" ? arm.symlink : undefined,
-    };
-  });
+  return value.filter(isRecord).map((arm) => ({
+    device: typeof arm.device === "string" ? arm.device : "",
+    path: typeof arm.path === "string" ? arm.path : undefined,
+    symlink: typeof arm.symlink === "string" ? arm.symlink : undefined,
+    serial: typeof arm.serial === "string" ? arm.serial : undefined,
+    kernels: typeof arm.kernels === "string" ? arm.kernels : undefined,
+  }));
 }
 
 function normalizeDevices(payload: unknown): DevicesResponse {
@@ -207,47 +150,40 @@ export async function runBootstrap(): Promise<BootstrapResult> {
     whoamiResult,
     preflightResult,
   ] = await Promise.allSettled([
-    apiGet<unknown>("/api/config"),
-    apiGet<unknown>("/api/devices"),
-    apiGet<unknown>("/api/deps/status"),
-    apiGet<unknown>("/api/hf/whoami"),
-    apiGet<unknown>("/api/train/preflight?device=cuda"),
+    apiGet<LeStudioConfig>("/api/config"),
+    apiGet<DevicesResponse>("/api/devices"),
+    apiGet<DepsStatusResponse>("/api/deps/status"),
+    apiGet<HfWhoamiResponse>("/api/hf/whoami"),
+    apiGet<TrainPreflightResponse>("/api/train/preflight?device=cuda"),
   ]);
 
-  const configPayload = configResult.status === "fulfilled" ? configResult.value : null;
   if (configResult.status === "rejected") {
     errors.config = String(configResult.reason ?? "failed to load config");
   }
 
-  const devicesPayload = devicesResult.status === "fulfilled" ? devicesResult.value : null;
   if (devicesResult.status === "rejected") {
     errors.devices = String(devicesResult.reason ?? "failed to load devices");
   }
 
-  const depsPayload = depsResult.status === "fulfilled" ? depsResult.value : null;
   if (depsResult.status === "rejected") {
     errors.depsStatus = String(depsResult.reason ?? "failed to load deps status");
   }
 
-  const whoamiPayload = whoamiResult.status === "fulfilled" ? whoamiResult.value : null;
   if (whoamiResult.status === "rejected") {
     errors.hfWhoami = String(whoamiResult.reason ?? "failed to load hf identity");
   }
 
-  const preflightPayload = preflightResult.status === "fulfilled" ? preflightResult.value : null;
   if (preflightResult.status === "rejected") {
     errors.trainPreflight = String(preflightResult.reason ?? "failed to run train preflight");
   }
 
-  const config = normalizeConfig(configPayload);
-  const devices = normalizeDevices(devicesPayload);
-  const depsStatus = isRecord(depsPayload) ? (depsPayload as DepsStatusResponse) : null;
-  const hfWhoami = isRecord(whoamiPayload) ? (whoamiPayload as HfWhoamiResponse) : null;
+  const config = normalizeConfig(configResult.status === "fulfilled" ? configResult.value : null);
+  const devices = normalizeDevices(devicesResult.status === "fulfilled" ? devicesResult.value : null);
+  const depsStatus = depsResult.status === "fulfilled" ? depsResult.value : null;
+  const hfWhoami = whoamiResult.status === "fulfilled" ? whoamiResult.value : null;
   const hfUsername = extractHfUsername(hfWhoami);
   const trainPreflightOk =
-    isRecord(preflightPayload)
-      ? parseBoolean((preflightPayload as TrainPreflightResponse).ok)
-      : null;
+    preflightResult.status === "fulfilled" ? (preflightResult.value.ok ?? null) : null;
 
   const prefillPatch = buildRepoPrefillPatch(config, hfUsername);
   const sidebarSignals = deriveSidebarSignals(depsStatus, devices, trainPreflightOk);

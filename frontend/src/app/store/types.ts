@@ -78,6 +78,27 @@ export type DevicesResponse = {
   arms: DeviceArm[];
 };
 
+export type DepsStatusResponse = {
+  ok: boolean;
+  huggingface_cli: boolean;
+  teleop_antijitter_plugin: boolean;
+  rules_needs_root: boolean;
+  rules_needs_install: boolean;
+};
+
+export type HfWhoamiResponse = {
+  ok: boolean;
+  username: string | null;
+  error?: string | null;
+};
+
+export type TrainPreflightResponse = {
+  ok: boolean;
+  reason: string;
+  action: string;
+  command: string;
+};
+
 export type DatasetListItem = {
   id: string;
   timestamp?: number;
