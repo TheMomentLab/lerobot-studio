@@ -7,6 +7,7 @@ import {
   RotateCcw,
   ArrowRight,
 } from "lucide-react";
+import { buttonStyles } from "../../../components/ui/button";
 import { cn } from "../../../components/ui/utils";
 import {
   BarChart,
@@ -325,25 +326,41 @@ export function EvalResultsPanel({
       <div className="flex flex-wrap items-center gap-2 justify-end">
         <button
           onClick={onQuickRerun}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-emerald-500/40 text-sm text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer"
+          className={buttonStyles({
+            variant: "primary",
+            tone: "success",
+            className: "h-auto px-4 py-2 gap-1.5",
+          })}
         >
           <RotateCcw size={12} /> Quick Rerun (3 ep)
         </button>
         <button
           onClick={onStartNewEvaluation}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+          className={buttonStyles({
+            variant: "secondary",
+            tone: "neutral",
+            className: "h-auto px-4 py-2 gap-1.5",
+          })}
         >
           <RotateCcw size={12} /> Start New Evaluation
         </button>
         <Link
           to="/train"
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          className={buttonStyles({
+            variant: "secondary",
+            tone: "neutral",
+            className: "h-auto px-4 py-2 gap-1.5",
+          })}
         >
           <ArrowRight size={12} /> Go to Training
         </Link>
         <Link
           to="/record"
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          className={buttonStyles({
+            variant: "secondary",
+            tone: "neutral",
+            className: "h-auto px-4 py-2 gap-1.5",
+          })}
         >
           <ArrowRight size={12} /> Record New Data
         </Link>

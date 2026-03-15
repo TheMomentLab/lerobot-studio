@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { Loader2, RefreshCw, Unplug } from "lucide-react";
 import { apiGet } from "../services/apiClient";
+import { buttonStyles } from "./ui/button";
 
 type ArmDevice = {
   device: string;
@@ -83,14 +84,14 @@ export function MotorMappingGate({ children, skip, onSkip, skipLabel }: MotorMap
       <div className="flex items-center gap-3">
         <Link
           to="/motor-setup"
-          className="px-5 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 flex items-center gap-2"
+          className={buttonStyles({ variant: "primary", tone: "brand" })}
         >
           Go to Motor Setup
         </Link>
         {onSkip && (
           <button
             onClick={() => { setSkippedByUser(true); onSkip(); }}
-            className="px-5 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+            className={buttonStyles({ variant: "secondary", tone: "neutral" })}
           >
             {skipLabel ?? "Use Simulation"}
           </button>
@@ -100,7 +101,7 @@ export function MotorMappingGate({ children, skip, onSkip, skipLabel }: MotorMap
       <button
         onClick={() => { void checkMapping(); }}
         disabled={loading}
-        className="text-sm text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 flex items-center gap-1.5 cursor-pointer"
+        className={buttonStyles({ variant: "ghost", tone: "neutral", size: "sm" })}
       >
         <RefreshCw size={14} />
         Refresh Status

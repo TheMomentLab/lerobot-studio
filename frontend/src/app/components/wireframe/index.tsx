@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router";
 import { Play, Square, AlertTriangle, RefreshCw, CheckCircle, AlertCircle, Circle, Loader2 } from "lucide-react";
+import { buttonStyles } from "../ui/button";
 import { cn } from "../ui/utils";
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
@@ -248,7 +249,7 @@ export function ProcessButtons({
   className?: string;
   buttonClassName?: string;
 }) {
-  const btnBase = compact ? `px-4 py-2 rounded border text-sm font-medium flex items-center justify-center gap-1.5 transition-all` : `px-5 py-2 rounded border text-sm font-medium flex items-center justify-center gap-1.5 transition-all shadow-sm`;
+  const sizeClassName = compact ? "h-auto px-4 py-2 gap-1.5" : "h-auto px-5 py-2.5 gap-1.5";
   return (
     <div className={cn("flex items-center gap-2", className)}>
       {!running ? (
@@ -258,11 +259,15 @@ export function ProcessButtons({
           disabled={disabled}
           aria-label={typeof startLabel === "string" ? startLabel : "Start process"}
           className={cn(
-            btnBase,
+            buttonStyles({
+              variant: "primary",
+              tone: "success",
+              className: cn(
+                sizeClassName,
+                "disabled:border-zinc-200 disabled:bg-zinc-100 disabled:text-zinc-400 dark:disabled:border-zinc-800 dark:disabled:bg-zinc-900 dark:disabled:text-zinc-600",
+              ),
+            }),
             fullWidth && "w-full",
-            disabled
-              ? "border-zinc-600 text-zinc-500 cursor-not-allowed"
-              : "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer",
             buttonClassName
           )}
         >
@@ -274,8 +279,11 @@ export function ProcessButtons({
           onClick={onStop}
           aria-label="Stop process"
           className={cn(
-            btnBase,
-            "border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 cursor-pointer",
+            buttonStyles({
+              variant: "primary",
+              tone: "danger",
+              className: sizeClassName,
+            }),
             fullWidth && "w-full",
             buttonClassName
           )}

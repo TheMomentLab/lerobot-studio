@@ -189,10 +189,15 @@ border-amber-500/50 bg-amber-500/10 text-amber-400
 ```
 
 **G. ProcessButtons 컴포넌트**
-- 일반: `px-4 py-1.5 rounded text-sm`
-- 컴팩트: `px-4 py-1.5 rounded text-xs`
-- Start: emerald 계열
-- Stop: red 계열
+- 일반: `h-auto px-5 py-2.5 rounded-lg text-sm font-medium shadow-sm`
+- 컴팩트: `h-auto px-4 py-2 rounded-lg text-sm font-medium`
+- Start: `bg-emerald-700 text-white hover:bg-emerald-800`
+- Stop: `bg-red-600 text-white hover:bg-red-700`
+
+**H. 콘솔 액션 예외**
+- `RuntimeConsoleDrawer`의 탭 버튼, 아이콘 버튼, 로그 유틸 버튼은 메인 버튼 계층과 별개로 취급
+- 콘솔은 로그 가독성과 밀도가 우선이므로 현재의 가벼운 zinc/text 중심 스타일 유지
+- 즉, 메인 CTA 강화 규칙을 콘솔 버튼에 그대로 적용하지 않음
 
 > **규칙**: 모든 커스텀 버튼에 `cursor-pointer` 필수. disabled에 `cursor-not-allowed`.
 

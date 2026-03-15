@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Cloud, Download, ExternalLink, HardDrive, Heart, Search } from "lucide-react";
 
+import { buttonStyles } from "../../../components/ui/button";
 import { useHfAuth } from "../../../hf-auth-context";
 import { apiGet, apiPost } from "../../../services/apiClient";
 import { buildHubSearchPath, fromBackendHubSearch } from "../../../services/contracts";
@@ -205,13 +206,18 @@ export function HubSearchPanel() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search Hub — dataset ID, tags, keywords..."
+            aria-label="Search Hugging Face datasets"
             className="w-full h-9 pl-9 pr-3 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-sm outline-none placeholder:text-zinc-400 hover:border-zinc-300 dark:hover:border-zinc-600 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all"
             onKeyDown={(e) => e.key === "Enter" && doSearch()}
           />
         </div>
         <button
           onClick={doSearch}
-          className="px-4 h-9 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 text-sm font-medium hover:opacity-90 transition-opacity"
+          className={buttonStyles({
+            variant: "primary",
+            tone: "neutral",
+            className: "h-9 px-4 hover:opacity-90",
+          })}
         >
           Search
         </button>
@@ -272,7 +278,11 @@ export function HubSearchPanel() {
                     ) : (
                       <button
                         onClick={() => { void startDownload(r.id); }}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-sm font-medium text-zinc-700 dark:text-zinc-300 transition-colors"
+                        className={buttonStyles({
+                          variant: "secondary",
+                          tone: "neutral",
+                          className: "h-auto px-4 py-2 gap-1.5",
+                        })}
                       >
                         <Download size={12} />
                         Download
@@ -323,12 +333,17 @@ export function HubSearchPanel() {
                 {!ds.local_sync && (
                   <button
                     onClick={() => { void startDownload(ds.id); }}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-sm font-medium text-zinc-500 dark:text-zinc-400 transition-colors"
+                    className={buttonStyles({
+                      variant: "secondary",
+                      tone: "neutral",
+                      className: "h-auto px-4 py-2 gap-1.5",
+                    })}
                   >
                     <Download size={12} /> Pull
                   </button>
                 )}
                 <a href={`https://huggingface.co/datasets/${ds.id}`} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors">
+                  <span className="sr-only">Open {ds.id} on Hugging Face</span>
                   <ExternalLink size={13} />
                 </a>
               </div>

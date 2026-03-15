@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { ArrowRight, CheckCircle2, HardDrive, RefreshCw, RotateCcw } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
+import { buttonStyles } from "../../../components/ui/button";
 import type { CheckpointItem } from "../types";
 import { CustomTooltip } from "./CustomTooltip";
 
@@ -104,13 +105,21 @@ export function TrainCompletedPanel({
       <div className="flex items-center gap-3 justify-end">
         <Link
           to="/eval"
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
+          className={buttonStyles({
+            variant: "primary",
+            tone: "neutral",
+            className: "h-auto px-4 py-2 gap-1.5",
+          })}
         >
           <ArrowRight size={12} /> Go to Policy Evaluation
         </Link>
         <button
           onClick={onStartNewTraining}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+          className={buttonStyles({
+            variant: "secondary",
+            tone: "neutral",
+            className: "h-auto px-4 py-2 gap-1.5",
+          })}
         >
           <RotateCcw size={12} /> Start New Training
         </button>
