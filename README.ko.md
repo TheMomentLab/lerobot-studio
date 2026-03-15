@@ -156,6 +156,12 @@ conda activate lerobot
 make dev
 ```
 
+백엔드 (파일 변경 시 자동 리로드):
+
+```bash
+lestudio serve --reload
+```
+
 백엔드 검사:
 
 ```bash
