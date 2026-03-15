@@ -106,8 +106,8 @@ export function SetupTabPanel({
             disabled={noPort || hasConflict || arms.length === 0}
             className={buttonStyles({
               variant: "primary",
-              tone: "success",
-              className: "h-auto px-4 py-1.5 whitespace-nowrap",
+              tone: "neutral",
+              className: "h-10 px-5 whitespace-nowrap",
             })}
           >
             <Play size={12} className="inline mr-1.5 fill-current" />
@@ -172,8 +172,8 @@ export function SetupTabPanel({
                 onClick={onWizardPressEnter}
                 className={buttonStyles({
                   variant: "primary",
-                  tone: "success",
-                  className: "w-full max-w-sm h-auto px-6 py-4 text-base font-semibold gap-2",
+                  tone: "neutral",
+                  className: "w-full max-w-xs h-12 px-5 text-sm font-semibold gap-2",
                 })}
               >
                 <CornerDownLeft size={18} /> Next Motor ↵
@@ -285,8 +285,8 @@ export function SetupTabPanel({
               onClick={() => onSetMotorTab("monitor")}
               className={buttonStyles({
                 variant: "primary",
-                tone: "success",
-                className: "h-auto px-4 py-2",
+                tone: "neutral",
+                className: "h-10 px-5",
               })}
             >
               Verify with Motor Monitor -&gt;

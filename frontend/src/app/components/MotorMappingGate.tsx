@@ -84,7 +84,7 @@ export function MotorMappingGate({ children, skip, onSkip, skipLabel }: MotorMap
       <div className="flex items-center gap-3">
         <Link
           to="/motor-setup"
-          className={buttonStyles({ variant: "primary", tone: "brand" })}
+          className={buttonStyles({ variant: "primary", tone: "neutral" })}
         >
           Go to Motor Setup
         </Link>

@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { Link } from "react-router";
 import { Play } from "lucide-react";
 import { apiGet, apiPost } from "../../services/apiClient";
-import { UdevInstallGate } from "../../components/UdevInstallGate";
 import { MotorMappingGate } from "../../components/MotorMappingGate";
 import { useLeStudioStore, getLeStudioState } from "../../store";
 import {
@@ -17,6 +15,7 @@ import {
   PageHeader, StatusBadge, ModeToggle, StickyControlBar, ProcessButtons, SubTabs,
   BlockerCard, RefreshButton,
 } from "../../components/wireframe";
+import { buttonStyles } from "../../components/ui/button";
 import {
   buildMappedArmLists,
   defaultArmSelection,
@@ -83,7 +82,6 @@ export function Recording() {
   const lastErrorAtRef = useRef(0);
   const prevRunningRef = useRef(false);
   const { hfAuth } = useHfAuth();
-  const hfUsername = useLeStudioStore((s) => s.hfUsername);
   const [recordRepoId, setRecordRepoId] = useState(() =>
     getConfigString(config, "record_repo_id", ""),
   );
@@ -147,7 +145,7 @@ export function Recording() {
     updateConfig(patch);
     void apiPost<Record<string, unknown>>("/api/config", patch).catch(() => undefined);
   }, [updateConfig]);
-  const handleArmSetConfigResolved = (resolved: ResolvedArmConfig) => {
+  const handleArmSetConfigResolved = useCallback((resolved: ResolvedArmConfig) => {
     setSelectedFollowerPort(resolved.followerPort);
     setSelectedLeaderPort(resolved.leaderPort);
     setSelectedLeftFollowerPort(resolved.leftFollowerPort);
@@ -172,7 +170,7 @@ export function Recording() {
       left_teleop_id: resolved.leftTeleopId,
       right_teleop_id: resolved.rightTeleopId,
     });
-  };
+  }, [persistConfigPatch]);
 
   const handleStart = async () => {
     if (actionPending) return;
@@ -305,7 +303,7 @@ export function Recording() {
       setStartAccepted(false);
       setActionPending(false);
     }
-  }, [recordRunningOnBackend]);
+  }, [phase, recordRunningOnBackend]);
 
   useEffect(() => {
     if (phase !== "loading" || !startAccepted) return;
@@ -375,7 +373,7 @@ export function Recording() {
     lastErrorAtRef.current = Date.now();
   }, [flowError]);
 
-  const loadDevicesAndCalibration = async () => {
+  const loadDevicesAndCalibration = useCallback(async () => {
     const result = await apiGet<DevicesResponse>("/api/devices");
     const mapped = (result.cameras ?? [])
       .filter((cam) => cam.symlink)
@@ -413,19 +411,22 @@ export function Recording() {
     setArmSelection(sel);
     const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, lists, files);
     handleArmSetConfigResolved(resolved);
-  };
+  }, [handleArmSetConfigResolved, mode]);
 
   useEffect(() => {
     void loadDevicesAndCalibration();
-  }, []);
+  }, [loadDevicesAndCalibration]);
 
   useEffect(() => {
     if (armLists.followers.length === 0 && armLists.leaders.length === 0) return;
-    const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
-    setArmSelection(sel);
-    const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFilesRaw);
-    handleArmSetConfigResolved(resolved);
-  }, [mode]);
+    const timer = window.setTimeout(() => {
+      const sel = defaultArmSelection(armLists, mode as "Single Arm" | "Bi-Arm");
+      setArmSelection(sel);
+      const resolved = resolveArmConfig(mode as "Single Arm" | "Bi-Arm", sel, armLists, calibFilesRaw);
+      handleArmSetConfigResolved(resolved);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [armLists, calibFilesRaw, handleArmSetConfigResolved, mode]);
 
   useEffect(() => {
     const wasRunning = prevRunningRef.current;
@@ -455,10 +456,9 @@ export function Recording() {
 
   return (
     <div className="flex flex-col h-full">
-      <UdevInstallGate>
       <MotorMappingGate>
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
+        <section aria-label="Episode recording" className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           {/* Header */}
           <PageHeader
             title="Episode Recording"
@@ -551,7 +551,7 @@ export function Recording() {
               onToggleFeed={toggleFeed}
             />
           )}
-        </div>
+        </section>
       </div>
 
       {/* Sticky control bar */}
@@ -577,14 +577,22 @@ export function Recording() {
               <button
                 onClick={handleSave}
                 title="Save episode (→)"
-                className="px-4 py-1 rounded border text-sm font-medium transition-all border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 cursor-pointer"
+                className={buttonStyles({
+                  variant: "primary",
+                  tone: "success",
+                  className: "h-auto px-4 py-1.5",
+                })}
               >
                 Save
               </button>
               <button
                 onClick={handleDiscard}
                 title="Discard episode (←)"
-                className="px-4 py-1 rounded border text-sm font-medium transition-all border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 cursor-pointer"
+                className={buttonStyles({
+                  variant: "secondary",
+                  tone: "warning",
+                  className: "h-auto px-4 py-1.5",
+                })}
               >
                 Discard
               </button>
@@ -603,7 +611,6 @@ export function Recording() {
         </div>
       </StickyControlBar>
       </MotorMappingGate>
-      </UdevInstallGate>
     </div>
   );
 }

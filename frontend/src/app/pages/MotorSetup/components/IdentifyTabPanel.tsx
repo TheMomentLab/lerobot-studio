@@ -60,8 +60,8 @@ export function IdentifyTabPanel({
                 onClick={() => onSetIdentifyStep("waiting")}
                 className={buttonStyles({
                   variant: "primary",
-                  tone: "success",
-                  className: "ml-auto h-auto px-4 py-2 whitespace-nowrap",
+                  tone: "neutral",
+                  className: "ml-auto h-10 px-5 whitespace-nowrap",
                 })}
               >
                 <Zap size={12} className="inline mr-1.5" />

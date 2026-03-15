@@ -92,7 +92,7 @@ export function MappingTabPanel({
               className={buttonStyles({
                 variant: "secondary",
                 tone: "neutral",
-                className: "h-auto px-4 py-1.5 whitespace-nowrap",
+                className: "h-10 px-4 whitespace-nowrap",
               })}
             >
               <Trash2 size={12} className="inline mr-1.5" />
@@ -103,8 +103,8 @@ export function MappingTabPanel({
             onClick={onOpenIdentify}
             className={buttonStyles({
               variant: "primary",
-              tone: "success",
-              className: "h-auto px-4 py-1.5 whitespace-nowrap",
+              tone: "neutral",
+              className: "h-10 px-5 whitespace-nowrap",
             })}
           >
               <Zap size={12} className="inline mr-1.5" />
