@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, CheckCircle2, Film, Play, RefreshCw, ThumbsDown, ThumbsUp, Zap } from "lucide-react";
 
+import { buttonStyles } from "../../../components/ui/button";
 import { apiGet, apiPost } from "../../../services/apiClient";
 import { useLeStudioStore } from "../../../store";
 import type {
@@ -46,7 +47,7 @@ export function AutoFlagPanelContent({
     [flagged, tags],
   );
 
-  const fetchStats = async (): Promise<boolean> => {
+  const fetchStats = useCallback(async (): Promise<boolean> => {
     if (!parsed) return false;
     const res = await apiGet<DatasetStatsResponse>(
       `/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/stats`,
@@ -56,9 +57,9 @@ export function AutoFlagPanelContent({
     }
     setStats(res.episodes);
     return res.episodes.length > 0;
-  };
+  }, [parsed]);
 
-  const handleRecompute = async () => {
+  const handleRecompute = useCallback(async () => {
     if (!parsed) return;
     try {
       const res = await apiPost<StatsRecomputeResponse>(
@@ -79,7 +80,7 @@ export function AutoFlagPanelContent({
     } catch (error) {
       addToast(error instanceof Error ? error.message : "Failed to recompute stats", "error");
     }
-  };
+  }, [addToast, fetchStats, parsed]);
 
   const handleBulkTag = async () => {
     if (!parsed || pendingFlagged.length === 0) return;
@@ -149,7 +150,7 @@ export function AutoFlagPanelContent({
       }
     }, 1200);
     return () => window.clearInterval(timer);
-  }, [addToast, jobId]);
+  }, [addToast, fetchStats, jobId]);
 
   // Auto-run on tab mount: try cached stats first, if none then recompute
   useEffect(() => {
@@ -162,7 +163,7 @@ export function AutoFlagPanelContent({
       }
       setInitialLoading(false);
     })();
-  }, [parsed]);
+  }, [fetchStats, handleRecompute, parsed]);
 
   return (
     <div className="p-4 flex flex-col gap-4">
@@ -276,7 +277,11 @@ export function AutoFlagPanelContent({
                   type="button"
                   onClick={() => { void handleBulkTag(); }}
                   disabled={tagging}
-                  className="w-full py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                  className={buttonStyles({
+                    variant: "secondary",
+                    tone: "danger",
+                    className: "w-full h-auto py-2",
+                  })}
                 >
                   {tagging ? "Tagging..." : `Bulk tag ${pendingFlagged.length} remaining as Bad`}
                 </button>

@@ -1,5 +1,7 @@
 import { AlertTriangle } from "lucide-react";
 
+import { buttonStyles } from "../../../components/ui/button";
+
 export interface GymInstallCardProps {
   gymModuleName: string;
   installing: boolean;
@@ -26,7 +28,11 @@ export function GymInstallCard({
       <button
         onClick={onInstall}
         disabled={installing}
-        className="px-3 py-1.5 rounded border border-amber-500/40 text-sm text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors cursor-pointer disabled:opacity-50"
+        className={buttonStyles({
+          variant: "primary",
+          tone: "warning",
+          className: "h-auto px-3 py-1.5",
+        })}
       >
         {installing ? "Installing..." : `Install ${gymModuleName}`}
       </button>

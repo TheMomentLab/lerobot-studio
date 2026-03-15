@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  CheckCircle2,
   ChevronRight,
   Circle,
   Info,
-  Loader2,
   Square,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
 
+import { buttonStyles } from "../../../components/ui/button";
 import { Card, FieldRow, StatusBadge, WireInput } from "../../../components/wireframe";
 import { cn } from "../../../components/ui/utils";
 import { apiGet, apiPost } from "../../../services/apiClient";
@@ -439,12 +438,11 @@ export function CurationPanelContent({
           type="button"
           onClick={() => { void handleStartDerive(); }}
           disabled={!canCreate}
-          className={cn(
-            "w-full px-6 py-2.5 rounded-lg text-sm font-medium transition-all",
-            canCreate
-              ? "bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90 cursor-pointer"
-              : "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 cursor-not-allowed",
-          )}
+          className={buttonStyles({
+            variant: "primary",
+            tone: "neutral",
+            className: "w-full h-auto px-6 py-2.5",
+          })}
         >
           Create Derived Dataset ({keepIndices.length} of {detail.total_episodes} episodes)
         </button>
