@@ -64,6 +64,7 @@ const wsNonTrainListeners: Record<NonTrainProcessName, Set<(event: NonTrainOutpu
 let wsSocket: WebSocket | null = null;
 let wsEventSeq = 0;
 let wsTrainRunning: boolean | null = null;
+let lastKnownTotalSteps = 0;
 let lastDeviceGeneration = -1;
 let deviceRefreshInFlight = false;
 
@@ -526,13 +527,17 @@ function parseBackendWsEvent(obj: Record<string, unknown>): TrainStreamEvent[] {
     const step = Number(metric.step);
     const total = Number(metric.totalSteps ?? metric.total ?? metric.total_steps);
     const loss = Number(metric.loss);
-    if (!Number.isFinite(step) || !Number.isFinite(total) || !Number.isFinite(loss)) return [];
+    if (Number.isFinite(total)) {
+      lastKnownTotalSteps = total;
+    }
+    const resolvedTotal = Number.isFinite(total) ? total : lastKnownTotalSteps;
+    if (!Number.isFinite(step) || !Number.isFinite(loss)) return [];
     return [{
       channel: "metric",
       payload: {
         process: "train",
         step,
-        totalSteps: total,
+        totalSteps: resolvedTotal,
         loss,
       },
       ...nextWsMeta(),
@@ -562,6 +567,7 @@ function parseBackendWsEvent(obj: Record<string, unknown>): TrainStreamEvent[] {
 
     if (wsTrainRunning !== running) {
       wsTrainRunning = running;
+      if (!running) lastKnownTotalSteps = 0;
       events.push({
         channel: "status",
         payload: {

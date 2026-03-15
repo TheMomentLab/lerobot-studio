@@ -230,6 +230,7 @@ class ProcessManager:
         self._session_log_paths: dict[str, Path] = {}
         self.run_meta: dict[str, RunMeta] = {}
         self._run_history: deque[RunMeta] = deque(maxlen=50)
+        self._train_total_steps: int | None = None
 
     # ── PID persistence helpers ──────────────────────────────────────────────
 
@@ -481,6 +482,8 @@ class ProcessManager:
         self.seen_translations.pop(name, None)
         self._table_buf.pop(name, None)
         self._table_tag.pop(name, None)
+        if name == "train":
+            self._train_total_steps = None
         self.run_meta[name] = RunMeta(
             name=name,
             pid=0,
@@ -797,6 +800,10 @@ class ProcessManager:
         self.event_buffer.push(payload)
 
     def _push_metric(self, name: str, metric: TrainMetric):
+        if "total_steps" in metric:
+            self._train_total_steps = metric["total_steps"]
+        elif self._train_total_steps is not None and "step" in metric:
+            metric = {**metric, "total_steps": self._train_total_steps}
         self.event_buffer.push({"process": name, "kind": "metric", "metric": metric})
 
     def _push_translation(self, name: str, message: str):
