@@ -1,4 +1,4 @@
-import { AlertCircle, Check, CornerDownLeft, Loader2, Play, RotateCcw } from "lucide-react";
+import { AlertCircle, Check, CornerDownLeft, Loader2, Play, RotateCcw, Square } from "lucide-react";
 import {
   BlockerCard,
   FieldRow,
@@ -228,14 +228,14 @@ export function SetupTabPanel({
           )}
 
           {/* ── Footer: stop / demo ── */}
-          <div className="flex items-center gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
             {import.meta.env.DEV && (
               <>
-                <span className="text-xs text-zinc-400">Demo:</span>
+                <span className="mr-auto text-xs text-zinc-400">Demo:</span>
                 <button
                   onClick={onWizardSimulateError}
                   disabled={wizardMotorState[wizardStep] !== "waiting"}
-                  className="text-xs px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="mr-auto text-xs px-2 py-0.5 rounded border border-zinc-200 dark:border-zinc-700 text-zinc-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   Simulate Error
                 </button>
@@ -244,9 +244,9 @@ export function SetupTabPanel({
             {wizardProcessActive && (
               <button
                 onClick={onStopWizard}
-                className={buttonStyles({ variant: "secondary", tone: "danger", size: "sm", className: "h-auto px-2.5 py-0.5 text-xs" })}
+                className={buttonStyles({ variant: "secondary", tone: "danger", className: "h-10 px-5 whitespace-nowrap gap-1.5" })}
               >
-                Stop Process
+                <Square size={11} className="fill-current" /> Stop Process
               </button>
             )}
           </div>
