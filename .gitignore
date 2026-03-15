@@ -61,6 +61,8 @@ node_modules/
 coverage.xml
 htmlcov/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # ============================================================
 # Build artifacts
@@ -92,7 +94,6 @@ plugins/lerobot-antijitter/
 # ============================================================
 # Screenshots & audit images (local reference only)
 # ============================================================
-uiux-audit/
 *.png
 *.jpg
 *.jpeg
@@ -126,5 +127,5 @@ frontend_legacy/
 docs/
 
 
-uiux-audit/
 test-results/
+tmp/playwright-mcp-output/

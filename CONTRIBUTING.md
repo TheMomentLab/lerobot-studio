@@ -98,7 +98,7 @@ make test-hw
 2. Include validation commands and outcomes in the PR description.
 3. Keep commits focused and reviewable.
 4. Follow the release gate in [CHANGELOG.md](CHANGELOG.md) for release-facing changes.
-5. If user-visible functionality or top-level product messaging changes, update `docs/feature-spec.md`, `README.md`, and `README.ko.md` in the same PR.
+5. If user-visible functionality or top-level product messaging changes, update `docs_public/feature-spec.md`, `README.md`, and `README.ko.md` in the same PR.
 
 ## Security Reporting
 
