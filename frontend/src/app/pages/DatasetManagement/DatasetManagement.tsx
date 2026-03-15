@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import {
   AlertTriangle,
@@ -15,6 +15,7 @@ import {
   Upload,
 } from "lucide-react";
 
+import { buttonStyles } from "../../components/ui/button";
 import { PageHeader, RefreshButton, SubTabs } from "../../components/wireframe";
 import { useHfAuth } from "../../hf-auth-context";
 import { cn } from "../../components/ui/utils";
@@ -46,8 +47,6 @@ export function DatasetManagement() {
   const [selectedDataset, setSelectedDataset] = useState<LocalDataset | null>(null);
   const [detailData, setDetailData] = useState<DatasetDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [qualityData, setQualityData] = useState<DatasetQualityResponse | null>(null);
-  const [qualityLoading, setQualityLoading] = useState(false);
   const [datasetTags, setDatasetTags] = useState<Record<string, TagType>>({});
   const [deletingDatasetId, setDeletingDatasetId] = useState<string | null>(null);
   const [pushJobId, setPushJobId] = useState("");
@@ -73,7 +72,7 @@ export function DatasetManagement() {
     }
   };
 
-  const loadDatasets = async () => {
+  const loadDatasets = useCallback(async () => {
     apiGet<unknown>("/api/datasets").then((res) => {
       const datasets = fromBackendDatasetList(res);
       setLocalDatasets(datasets);
@@ -83,25 +82,16 @@ export function DatasetManagement() {
       } else {
         setSelectedDataset(null);
         setDetailData(null);
-        setQualityData(null);
         setDatasetTags({});
         setPushJobId("");
         setPushStatus(null);
       }
     });
-  };
+  }, []);
 
   useEffect(() => {
     void loadDatasets();
-    apiGet<unknown>("/api/datasets").then((res) => {
-      const datasets = fromBackendDatasetList(res);
-      setLocalDatasets(datasets);
-      if (datasets.length > 0) {
-        setSelectedDataset(datasets[0]);
-        void fetchDetail(datasets[0].id);
-      }
-    });
-  }, []);
+  }, [loadDatasets]);
 
   const selectDataset = (ds: LocalDataset) => {
     setSelectedDataset(ds);
@@ -112,7 +102,7 @@ export function DatasetManagement() {
     void fetchDetail(ds.id);
   };
 
-  const refreshDatasetTags = async (datasetId: string) => {
+  const refreshDatasetTags = useCallback(async (datasetId: string) => {
     const parsed = parseDatasetId(datasetId);
     if (!parsed) return;
     try {
@@ -123,34 +113,12 @@ export function DatasetManagement() {
     } catch {
       setDatasetTags({});
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!selectedDataset) return;
     void refreshDatasetTags(selectedDataset.id);
-  }, [selectedDataset?.id]);
-
-  const handleInspectQuality = async () => {
-    if (!selectedDataset) return;
-    const parsed = parseDatasetId(selectedDataset.id);
-    if (!parsed) return;
-    setQualityLoading(true);
-    try {
-      const res = await apiGet<DatasetQualityResponse>(
-        `/api/datasets/${encodeURIComponent(parsed.user)}/${encodeURIComponent(parsed.repo)}/quality`,
-      );
-      if (!res.ok) {
-        addToast(res.error ?? "Quality check failed", "error");
-        return;
-      }
-      setQualityData(res);
-      addToast("Quality check complete", "success");
-    } catch (error) {
-      addToast(error instanceof Error ? error.message : "Quality check failed", "error");
-    } finally {
-      setQualityLoading(false);
-    }
-  };
+  }, [refreshDatasetTags, selectedDataset]);
 
   const handlePushToHub = async () => {
     if (!selectedDataset || hfAuth !== "ready") return;
@@ -199,7 +167,6 @@ export function DatasetManagement() {
       if (selectedDataset?.id === datasetId) {
         setSelectedDataset(null);
         setDetailData(null);
-        setQualityData(null);
         setDatasetTags({});
       }
 
@@ -232,7 +199,7 @@ export function DatasetManagement() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
+        <section aria-label="Dataset management" className="p-6 flex flex-col gap-4 max-w-[1600px] mx-auto w-full">
           <PageHeader
             title="Dataset Management"
             subtitle="Manage datasets, quality checks, Hub integration, and curation"
@@ -342,7 +309,12 @@ export function DatasetManagement() {
                       <button
                         onClick={() => { void handlePushToHub(); }}
                         disabled={!selectedDataset}
-                        className="p-1.5 rounded-md bg-zinc-900 dark:bg-zinc-100 text-zinc-50 dark:text-zinc-900 hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                        className={buttonStyles({
+                          variant: "primary",
+                          tone: "neutral",
+                          size: "sm",
+                          className: "size-8 px-0",
+                        })}
                         title="Upload to Hub"
                         aria-label="Upload to Hub"
                       >
@@ -461,37 +433,6 @@ export function DatasetManagement() {
                   </div>
                 )}
 
-                {/* Quality Check Results */}
-                {qualityData && (
-                  <div className="px-3 py-3 border-t border-zinc-200 dark:border-zinc-800 animate-in slide-in-from-top-2">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className="flex flex-col items-center justify-center w-16 h-16 rounded-full bg-emerald-50 border-4 border-emerald-100 text-emerald-600">
-                        <span className="text-xl font-bold">{Math.max(0, Math.min(100, Number(qualityData.score ?? 0)))}</span>
-                        <span className="text-[9px] uppercase font-bold text-emerald-600 dark:text-emerald-400">Score</span>
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-medium text-sm text-zinc-800 dark:text-zinc-200">Quality Assessment Report</h4>
-                        <p className="text-sm text-zinc-500 mt-0.5">Checked {Array.isArray(qualityData.checks) ? qualityData.checks.length : 0} items across {selectedDataset?.episodes} episodes.</p>
-                      </div>
-                      <Link to="/train" className="text-sm px-4 py-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-lg border border-zinc-200 dark:border-zinc-700 font-medium hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors">
-                        → Go to AI Training
-                      </Link>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {(qualityData.checks ?? []).map((item, idx) => (
-                        <div key={`${item.name ?? "check"}-${idx}`} className="flex items-start gap-3 p-2 rounded bg-zinc-50 dark:bg-zinc-800/50">
-                           {item.level === "ok" ? <CheckCircle2 size={14} className="text-emerald-500 mt-0.5" /> : <AlertTriangle size={14} className="text-amber-500 mt-0.5" />}
-                           <div>
-                             <div className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{item.name ?? `check-${idx}`}</div>
-                             <div className="text-sm text-zinc-500">{item.message ?? ""}</div>
-                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {detailTab === "player" && selectedDataset && (
                   detailLoading ? (
                     <div className="p-8 flex items-center justify-center gap-2 text-sm text-zinc-400">
@@ -549,7 +490,7 @@ export function DatasetManagement() {
           )}
           </div>
 
-        </div>
+        </section>
       </div>
 
     </div>
