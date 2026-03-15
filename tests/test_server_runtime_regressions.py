@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import sys
 import types
 from pathlib import Path
 
+import pytest
+
 import lestudio.routes.training as training_routes
 import lestudio.services.training_service as training_service
 from lestudio.routes.models import HfTokenRequest
 from lestudio.server import create_app
+
+_has_lerobot_rl = importlib.util.find_spec("lerobot.rl") is not None
 
 
 def _make_app(tmp_path: Path):
@@ -347,6 +352,7 @@ def test_api_eval_start_rejects_invalid_bimanual_profile_ids(monkeypatch, tmp_pa
     assert "Invalid" in payload["error"]
 
 
+@pytest.mark.skipif(not _has_lerobot_rl, reason="lerobot.rl not available")
 def test_api_eval_start_auto_copies_missing_bimanual_calibration(monkeypatch, tmp_path: Path):
     started = {"called": False}
 
